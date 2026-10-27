@@ -23,6 +23,13 @@ def run(*args):
 
 BUILD.mkdir(exist_ok=True)
 OUT.parent.mkdir(exist_ok=True)
+# A Windows checkout must not ship CRLF shell scripts into the Linux container.
+for script in ASSETS.glob('*.sh'):
+    if b'\r' in script.read_bytes():
+        raise ValueError('Shell asset must use LF line endings: '+script.name)
+bash=shutil.which('bash') or next((str(p) for p in [Path('C:/Program Files/Git/bin/bash.exe'),Path('D:/Git/bin/bash.exe')] if p.exists()),None)
+if bash:
+    for script in ASSETS.glob('*.sh'):run(bash,'-n',script)
 assert sha(APK_SOURCE) == '1fedf883d431af658d89c28b86d85974cc1d11b74e0c5d46ef3d3cf8650b1961'
 notices = ASSETS / 'licenses'
 notices.mkdir(exist_ok=True)

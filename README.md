@@ -4,6 +4,8 @@
 
 [下载最新 APK](https://github.com/PythonBBQ/qq-workbench/releases/latest) · [0.1.20 更新说明](docs/RELEASE-0.1.20.md) · [构建和发布](BUILDING.md)
 
+当前修复版 **0.1.21** 解决 0.1.20 启动脚本换行导致 QQ 无法连接；[修复说明](docs/RELEASE-0.1.21.md)。直接覆盖安装保留数据。
+
 ## 使用
 
 1. 下载 APK 并安装；已有版本请覆盖更新，保留数据。
