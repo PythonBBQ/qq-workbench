@@ -6,20 +6,68 @@ export const ok = r => r?.status === 'ok' && Number(r.retcode) === 0;
 export function qqImage(raw) {
   try {const u=new URL(raw);return u.protocol==='https:'&&!u.username&&!u.password&&(!u.port||u.port==='443')&&['qq.com','qq.com.cn','qpic.cn','qlogo.cn','gtimg.cn'].some(h=>u.hostname===h||u.hostname.endsWith('.'+h))?u.href:null;}catch{return null;}
 }
+// Deliberately local: a collection request does not need a paid model call.
+export function collectionRequest(raw) {
+  const text=String(raw).replace(/能不能/g,'能').replace(/@deepseek\b/ig,'').replace(/[\s，,。！!？?]/g,'');
+  if(!text||text.length>64||/[“”「」『』"'：:]/.test(text)||/(?:不要|别|不想|不用|不能|不许|取消|怎么|如何|为什么|有人|他说|她说)/.test(text))return false;
+  const prefix='(?:(?:请|麻烦|帮我|给我|你|帮忙|替我|可以|能不能|能)*)';
+  const item='(?:(?:刚才|刚刚|上面|之前)(?:发的)?|这(?:个|张)|那(?:个|张))?(?:的)?(?:表情包|表情|图片)?';
+  const action='(?:收藏|保存|收下|存下|存起来|存着|存)';
+  const tail='(?:一下|下|起来|着)?(?:以后用)?(?:吧|呀|哦|啦|好吗|可以吗)?';
+  return new RegExp('^'+prefix+'(?:把)?'+item+prefix+action+tail+'$').test(text)
+    ||new RegExp('^'+prefix+action+'(?:一下|下)?'+item+tail+'$').test(text);
+}
+
+/** Short-lived references to the owner's own images, isolated by account and chat. */
+export class RecentOwnerStickers {
+  constructor(){this.scopes=new Map();this.account='';}
+  clear(){this.scopes.clear();this.account='';}
+  scope(event,owner){
+    if(event.post_type!=='message'||String(event.user_id)!==String(owner)||String(event.user_id)===String(event.self_id))return null;
+    if(!['group','private'].includes(event.message_type)||!event.self_id||!owner||(event.message_type==='group'&&!event.group_id))return null;
+    const account=String(event.self_id)+':'+String(owner);
+    if(account!==this.account){this.clear();this.account=account;}
+    return account+':'+event.message_type+':'+String(event.message_type==='group'?event.group_id:owner);
+  }
+  remember(event,owner,now=Date.now()){
+    const key=this.scope(event,owner);if(!key)return;
+    const images=(event.message||[]).filter(s=>s.type==='image').map(s=>qqImage(s.data?.url)).filter(Boolean);
+    if(!images.length)return;
+    const items=(this.scopes.get(key)||[]).filter(x=>now-x.at<300000&&String(x.id)!==String(event.message_id));
+    items.push({id:event.message_id,at:now,urls:[...new Set(images)]});
+    this.scopes.delete(key);this.scopes.set(key,items.slice(-8));
+    if(this.scopes.size>32)this.scopes.delete(this.scopes.keys().next().value);
+  }
+  select(event,owner,now=Date.now()){
+    const key=this.scope(event,owner);if(!key)throw new Error('只有主人可以收藏表情。');
+    let urls=(event.message||[]).filter(s=>s.type==='image').map(s=>qqImage(s.data?.url)).filter(Boolean);
+    if(!urls.length){
+      if((event.message||[]).some(s=>s.type==='image'))throw new Error('这张图片暂不可读取，请重新发送表情。');
+      const items=(this.scopes.get(key)||[]).filter(x=>now-x.at<300000);
+      const reply=(event.message||[]).find(s=>s.type==='reply')?.data?.id;
+      urls=(reply!=null?items.find(x=>String(x.id)===String(reply)):items.at(-1))?.urls||[];
+    }
+    urls=[...new Set(urls)];
+    if(!urls.length)throw new Error('请先在当前聊天发一张表情，再说“收藏一下”；我只记住主人最近5分钟发的图片。');
+    if(urls.length!==1)throw new Error('这条消息里有多张图片，请单独重发要收藏的那一张。');
+    return {message:[{type:'image',data:{url:urls[0]}}]};
+  }
+}
 export function mediaCommand(event,owner) {
   if(String(event.user_id)!==String(owner))return null;
   const raw=(event.message||[]).filter(s=>s.type==='text').map(s=>s.data?.text||'').join('').trim();
+  if(collectionRequest(raw))return {action:'collect'};
+  if(/^(?:开启|关闭)自动收藏表情[。！!\s]*$/.test(raw))return {action:'collectionHelp'};
   if(event.message_type==='group'&&!/@deepseek\b/i.test(raw)&&!(event.message||[]).some(s=>s.type==='at'&&String(s.data?.qq)===String(event.self_id)))return null;
   const text=raw.replace(/@deepseek\b/ig,'').trim().replace(/^(?:请|帮我|麻烦)(?:你)?\s*/,'');
   let m;
   if((m=text.match(/^(?:发(?:一)?条说说|发布说说|发(?:个|一条)?动态)[：:]\s*([\s\S]{1,1000})$/)))return {action:'post',text:m[1]};
   if((m=text.match(/^(?:写(?:一)?条说说|生成说说|写动态)(?:[：:]\s*([\s\S]{1,240}))?$/)))return {action:'draft',topic:m[1]||''};
-  if(/^(?:收藏这个表情|保存这个表情|收下这个表情)[。！!\s]*$/.test(text))return {action:'collect'};
   if(/^(?:检查软件更新|检查更新)$/.test(text))return {action:'update'};
   if((m=text.match(/^语音(?:回复)?[：:]\s*([\s\S]{1,260})$/)))return {action:'speak',text:m[1]};
   if(/^(?:开启|关闭)自动说说$/.test(text))return {action:'autoPost',enabled:text.startsWith('开启')};
   if(/^(?:把)?(?:这条)?(?:草稿|说说)(?:发出去|发布)$/.test(text))return {action:'publishDraft'};
-  if((m=text.match(/^(开启|关闭)(语音回复|自动收藏表情|聊天表情)$/)))return {action:'setting',key:({'语音回复':'voiceEnabled','自动收藏表情':'autoCollectEmoji','聊天表情':'emojiEnabled'}[m[2]]),value:m[1]==='开启'};
+  if((m=text.match(/^(开启|关闭)(语音回复|聊天表情)$/)))return {action:'setting',key:({'语音回复':'voiceEnabled','聊天表情':'emojiEnabled'}[m[2]]),value:m[1]==='开启'};
   if((m=text.match(/^(?:切换|使用)?音色[：:]\s*(晓晓|晓伊|曉臻|曉曼|七海|善熙)$/)))return {action:'voice',name:m[1]};
   if((m=text.match(/^(语速|音高)[：:]\s*([+-]?\d{1,3})\s*%?$/)))return {action:'prosody',key:m[1]==='语速'?'speechRate':'speechPitch',value:Math.max(m[1]==='语速'?-40:-30,Math.min(m[1]==='语速'?60:30,Number(m[2])))};
   return null;
@@ -42,7 +90,7 @@ export class QQStickers {
   async label(id,desc){if(!this.faces.some(f=>f.id===id)||typeof desc!=='string'||desc.length>60)throw new Error('请选择当前账号的表情，备注限60字');const r=await this.rpc('modify_custom_face',{emoji_id:id,desc});if(!ok(r))throw new Error('QQ 未确认备注更新');this.faces=this.faces.map(f=>f.id===id?{...f,desc}:f);}
   source(event,automatic=false){return (event.message||[]).filter(s=>s.type==='image'&&(!automatic||Number(s.data?.sub_type)===1||s.data?.emoji_id)).map(s=>qqImage(s.data?.url)).find(Boolean)||null;}
   async collect(event,{automatic=false,stillCurrent=()=>true}={}){
-    const url=this.source(event,automatic);if(!url)throw new Error('请把图片与“收藏这个表情”一起发送；自动收藏仅收表情消息');
+    const url=this.source(event,automatic);if(!url)throw new Error('请先发一张表情，再说“收藏一下”');
     const id=crypto.createHash('sha256').update(this.account+'\0'+url).digest('hex');
     if(this.collections.has(id))return '这张表情已处理，不重复收藏';
     if(!stillCurrent())throw new Error('操作已取消');

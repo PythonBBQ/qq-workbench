@@ -21,7 +21,7 @@ globalThis.WebSocket=class extends EventTarget{
   static OPEN=1;static CONNECTING=0;
   constructor(){super();socket=this;this.readyState=0;setImmediate(()=>{this.readyState=1;this.dispatchEvent(new Event('open'));});}
   receive(data){this.dispatchEvent(new MessageEvent('message',{data:JSON.stringify(data)}));}
-  send(raw){const d=JSON.parse(raw);process.send({rpc:d.action});const data=d.action==='get_login_info'?{user_id:765432}:d.action==='get_status'?{online:true}:{message_id:Date.now()};
+  send(raw){const d=JSON.parse(raw);process.send({rpc:d.action});const data=d.action==='get_login_info'?{user_id:765432}:d.action==='get_status'?{online:true}:d.action==='add_custom_face'?{emoji_id:'synthetic-face'}:{message_id:Date.now()};
     if(/^send_(group|private)_msg$/.test(d.action))process.send({sent:d.params});
     if(d.action.startsWith('send_')&&globalThis.sendControl==='unconfirmed')delete data.message_id;
     const delay=d.action.startsWith('send_')&&globalThis.sendControl==='delayed'?200:0;
@@ -195,5 +195,25 @@ globalThis.fetch=async(url,options)=>{
     const beforeRepeat=rpcs.filter(x=>x==='send_qzone_msg').length;n=sent.length;sendOwner(222,'发条说说：不会重发');await until(()=>sent.length===n+1);assert.equal(rpcs.filter(x=>x==='send_qzone_msg').length,beforeRepeat);
     n=sent.length;sendOwner(223,'音高：10%');await until(()=>sent.length===n+1);assert.equal(JSON.parse(await fs.readFile(path.join(dir,'settings.json'),'utf8')).speechPitch,10);assert.match(sent.at(-1).message[0].data.text,/已应用/);
     n=sent.length;child.send({event:groupMessage(224,888888,'@deepseek 音高：30%')});await until(()=>sent.length===n+1);assert.equal(JSON.parse(await fs.readFile(path.join(dir,'settings.json'),'utf8')).speechPitch,10);
+    // Request-based collection: no real QQ, including legacy automatic collection enabled.
+    await update({autoCollectEmoji:true,rate:0});
+    const collections=()=>rpcs.filter(x=>x==='add_custom_face').length;
+    const image=url=>({type:'image',data:{url:'https://qpic.cn/'+url,sub_type:1}});
+    n=sent.length;const firstCollection=collections(),beforeCollectModel=models.length;
+    child.send({event:groupMessage(230,999999,'收藏这个',[image('owner-direct')])});await until(()=>sent.length===n+1);
+    assert.equal(collections(),firstCollection+1);assert.match(sent.at(-1).message[0].data.text,/已保存/);assert.equal(models.length,beforeCollectModel,'collection needs no model request');
+    n=sent.length;child.send({event:groupMessage(231,888888,'收藏这个',[image('unauthorized')])});await until(()=>sent.length===n+1);assert.match(sent.at(-1).message[0].data.text,/只有主人/);assert.equal(collections(),firstCollection+1);
+    // No @ and participation rate 0: the owner's image still becomes available for a later request.
+    child.send({event:groupMessage(232,999999,'',[image('owner-followup')])});
+    child.send({event:groupMessage(233,888888,'',[image('other-user-image')])});
+    n=sent.length;child.send({event:groupMessage(234,999999,'把刚才的表情收藏起来')});await until(()=>sent.length===n+1);assert.equal(collections(),firstCollection+2);assert.match(sent.at(-1).message[0].data.text,/已保存/);
+    n=sent.length;child.send({event:groupMessage(235,999999,'收藏一下')});await until(()=>sent.length===n+1);assert.equal(collections(),firstCollection+2);assert.match(sent.at(-1).message[0].data.text,/不重复/);
+    n=sent.length;child.send({event:{...groupMessage(236,999999,'收藏一下'),group_id:54322}});await until(()=>sent.length===n+1);assert.equal(collections(),firstCollection+2);assert.match(sent.at(-1).message[0].data.text,/当前聊天/);
+    // A private chat reply and an old auto-collect setting cannot cause collection.
+    n=sent.length;child.send({event:{...event,user_id:888888,message_id:237,message:[image('ordinary-chat-image')]}});await until(()=>sent.length===n+1);await pause();assert.equal(collections(),firstCollection+2);
+    // Changing the owner clears the former owner's pending image references.
+    child.send({event:groupMessage(238,999999,'',[image('former-owner')])});await pause();
+    await update({owner:'123456'});n=sent.length;child.send({event:groupMessage(239,123456,'收藏一下')});await until(()=>sent.length===n+1);assert.equal(collections(),firstCollection+2);assert.match(sent.at(-1).message[0].data.text,/当前聊天/);
+    n=sent.length;child.send({event:groupMessage(240,999999,'收藏这个',[image('former-owner-denied')])});await until(()=>sent.length===n+1);assert.equal(collections(),firstCollection+2);assert.match(sent.at(-1).message[0].data.text,/只有主人/);
   }finally{try{await api('/shutdown',{});}catch{}await until(()=>exited||false).catch(()=>child.kill());if(child.connected)child.disconnect();}
 });

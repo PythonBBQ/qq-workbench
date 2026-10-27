@@ -1,5 +1,5 @@
 import http from 'node:http';
-import {QQStickers,QzonePosts,mediaCommand,ok} from './qq-media.mjs';
+import {QQStickers,RecentOwnerStickers,QzonePosts,mediaCommand,ok} from './qq-media.mjs';
 import {synthesize,wantsVoice,clearSpeech,FEMALE_VOICES} from './voice.mjs';
 import {chatBudget,systemPrompt,worldContext,requestHistory,addUsage} from './chat-style.mjs';
 import {ConversationMemory,conversationScope} from './conversation-memory.mjs';
@@ -96,6 +96,7 @@ async function main() {
   const learning=new LearningStore(here);
   const moderation=new GroupModeration(here);
   const memory=new ConversationMemory(here,process.env.WORKBENCH_MEMORY_KEY||'');delete process.env.WORKBENCH_MEMORY_KEY;
+  const ownerStickers=new RecentOwnerStickers();
   const stickers=new QQStickers(rpc),posts=new QzonePosts(here),speechDirectory=path.join(here,'speech-temp');clearSpeech(speechDirectory);
   let autoPosting=false;
   const summarizing=new Set();
@@ -111,12 +112,12 @@ async function main() {
     let saved={};try{saved=JSON.parse(fs.readFileSync(path.join(here,'settings.json'),'utf8'));}catch{}
     if(saved.visionMode==null&&saved.visionUrl&&saved.visionModel)saved.visionMode='separate';
     const next={...defaults,...saved},owner=JSON.stringify([String(next.owner),next.characterName||'',next.persona||'',next.worldBook||'',next.voiceEnabled,next.voiceAlways,next.speechProvider,next.speechVoice,next.speechRate,next.speechPitch,next.emojiEnabled,next.autoCollectEmoji,next.speechRegion,next.qqVoiceId]);
-    if(ownerSnapshot!==null&&ownerSnapshot!==owner){connectionEpoch++;contexts.clear();sessions.clear();groupContext.clear();queue=[];}
+    if(ownerSnapshot!==null&&ownerSnapshot!==owner){ownerStickers.clear();connectionEpoch++;contexts.clear();sessions.clear();groupContext.clear();queue=[];}
     ownerSnapshot=owner;return next;
   }
   function record(role, text) { recent.push(`${role}：${String(text).slice(0,180)}`); if (recent.length > 20) recent.shift(); }
   function disconnect(message) {
-    connectionEpoch++;connected=false;connectionMessage=message;sessions.clear();ambientActivity.clear();groupContext.clear();queue=[];
+    ownerStickers.clear();connectionEpoch++;connected=false;connectionMessage=message;sessions.clear();ambientActivity.clear();groupContext.clear();queue=[];
     for(const entry of pending.values())entry.reject(new Error('连接断开，结果不确定；不自动重发'));
     pending.clear();
   }
@@ -188,10 +189,15 @@ async function main() {
   }
   function accept(event) {
     const c=config(),command=moderationCommand(event,c.owner),operation=mediaCommand(event,event.user_id),ownerOperation=operation&&String(event.user_id)===String(c.owner),admin=adminCommand(event)||!!command||!!ownerOperation;if((!c.enabled&&!admin)||!connected){sessions.clear();return;}
+    if(event.post_type!=='message'||String(event.user_id)===String(event.self_id)||!Number.isFinite(Number(event.time)))return;
     if((!apiKey&&!admin) || String(event.self_id)!==identity || Number(event.time)*1000<started-30000)return;
     const id=`${event.self_id}:${event.message_type}:${event.group_id||event.user_id}:${event.message_id}`;
     if(event.message_id==null||journal[id]||queue.length>=24)return;
     if(moderation.blocked(event,c.owner,identity))return;
+    ownerStickers.remember(event,c.owner);
+    if(ownerOperation&&operation.action==='collect'){
+      try{operation.source=ownerStickers.select(event,c.owner);}catch(e){operation.sourceError=e.message;}
+    }
     if(command){
       let answer;
       try{
@@ -290,7 +296,6 @@ async function main() {
     const result=await rpc(event.message_type==='group'?'send_group_msg':'send_private_msg',params);
     if(!confirmed(result))throw new Error('QQ 没有返回完整发送凭据，结果不确定；不自动重发');
     journal[id]='accepted';saveJournal();speech?.cleanup();
-    if(c.autoCollectEmoji&&['reply','ambient'].includes(mode)&&stickers.source(event,true)&&epoch===connectionEpoch){try{await stickers.collect(event,{automatic:true,stillCurrent:()=>epoch===connectionEpoch});record('表情','已收藏一张表情');}catch(e){record('表情',e.message);}}
     // A setting change or deletion may happen while QQ acknowledges the send.
     // Its reply is already sent; do not restore the discarded history.
     if(epoch!==connectionEpoch)return;
@@ -334,7 +339,8 @@ async function main() {
     try{const c=config();if(String(event.user_id)!==String(c.owner))return '只有主人可以操作。';
       if(operation.action==='post'||operation.action==='publishDraft')return await posts.publish(c,identity,operation.action==='post'?operation.text:posts.state(c.owner,identity).draft,rpc,stillCurrent);
       if(operation.action==='draft'){const text=await generatePost(operation.topic);if(!stillCurrent())return '操作已取消';posts.preview(c,identity,text);return '说说草稿：\n'+text+'\n想发布时说“发条说说：正文”。';}
-      if(operation.action==='collect'){stickers.reset(identity);return await stickers.collect(event,{stillCurrent});}
+      if(operation.action==='collect'){if(operation.sourceError)return operation.sourceError;stickers.reset(identity);return await stickers.collect(operation.source,{stillCurrent});}
+      if(operation.action==='collectionHelp')return '现在只在主人要求时收藏。发一张表情，再说“收藏一下”或“这个表情帮我存着”就可以。';
       if(operation.action==='update'){const r=await checkUpdate();return r.message+(r.available?'，请在软件设置中下载安装。':'');}
       if(operation.action==='autoPost'){if(!stillCurrent())return '操作已取消';const next=config();next.qzoneEnabled=operation.enabled;fs.writeFileSync(path.join(here,'settings.json'),JSON.stringify(next),{mode:0o600});return operation.enabled?'已开启自动说说，按设置中的间隔、时段和每日上限运行。':'已关闭自动说说。';}
       if(['setting','voice','prosody'].includes(operation.action)){

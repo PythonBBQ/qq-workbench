@@ -1,6 +1,6 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
 import fs from 'node:fs';import path from 'node:path';import os from 'node:os';
-import {QQStickers,QzonePosts,mediaCommand,qqImage} from '../assets/qq-media.mjs';
+import {QQStickers,RecentOwnerStickers,collectionRequest,QzonePosts,mediaCommand,qqImage} from '../assets/qq-media.mjs';
 import {speechRequest,synthesize,wantsVoice,clearSpeech} from '../assets/voice.mjs';
 const event=(text,user_id=123456,extra={})=>({self_id:765432,user_id,message_type:'private',message:[{type:'text',data:{text}}],...extra});
 const receipt={status:'ok',retcode:0,data:{tid:'synthetic-post-id'}};
@@ -77,3 +77,46 @@ test('speech cleanup only removes generated old audio',()=>{
  test('a damaged post journal disables only posts and preserves the original',()=>{
    const dir=temp();try{const file=path.join(dir,'qzone-journal.json');fs.writeFileSync(file,'broken journal');const p=new QzonePosts(dir);assert.match(p.problem,/损坏/);assert.equal(p.due({owner:'123456',enabled:true,qzoneEnabled:true},'765432'),false);assert.throws(()=>p.preview({owner:'123456'},'765432','草稿'),/损坏/);assert.equal(fs.readFileSync(file,'utf8'),'broken journal');}finally{fs.rmSync(dir,{recursive:true,force:true});}
  });
+
+
+test('natural collection requests are explicit actions, not quotes, negation or discussions',()=>{
+  for(const text of ['收藏这个','收藏一下','存一下这个表情','这个表情帮我收藏一下','把刚才的表情收藏起来','收下这张','这个你存着以后用','帮我存一下这个表情','能不能收藏这个表情？','@deepseek 请把这个表情收藏一下吧'])assert.equal(collectionRequest(text),true,text);
+  for(const text of ['不要收藏这个','这个不用收藏','怎么收藏这个表情','有人说收藏一下','他说收藏这个','我喜欢收藏表情','收藏这个是什么功能','“收藏这个”','发条说说：收藏这个','转发给别人收藏','不允许收藏'])assert.equal(collectionRequest(text),false,text);
+  assert.equal(mediaCommand(event('收藏这个',999999),'123456'),null);
+  assert.equal(mediaCommand(event('收藏这个',123456,{message_type:'group'}),'123456').action,'collect');
+  assert.equal(mediaCommand(event('开启自动收藏表情'),'123456').action,'collectionHelp');
+});
+
+test('recent owner images expire and cannot cross chats, owners or accounts; replies select only owned images',()=>{
+  const cache=new RecentOwnerStickers(),owner='123456';
+  const img=(id,url='first')=>({...event('',123456),post_type:'message',message_id:id,message:[{type:'image',data:{url:'https://qpic.cn/'+url}}]});
+  const ask={...img(2),message:[]};
+  cache.remember(img(1),owner,1000);
+  cache.remember({...img(3,'other'),user_id:999999},owner,1001);
+  assert.equal(cache.select(ask,owner,1002).message[0].data.url,'https://qpic.cn/first');
+  assert.throws(()=>cache.select({...ask,user_id:999999},owner,1002),/只有主人/);
+  assert.throws(()=>cache.select({...ask,message_type:'group',group_id:42},owner,1002),/先在当前聊天/);
+  cache.remember(img(4,'second'),owner,1003);
+  assert.equal(cache.select({...ask,message:[{type:'reply',data:{id:1}}]},owner,1004).message[0].data.url,'https://qpic.cn/first');
+  assert.throws(()=>cache.select({...ask,message:[{type:'reply',data:{id:3}}]},owner,1004),/先在当前聊天/);
+  assert.throws(()=>cache.select(ask,owner,301003),/先在当前聊天/);
+  cache.remember(img(5),owner,302000);
+  assert.throws(()=>cache.select({...ask,self_id:888888},owner,302001),/先在当前聊天/);
+  assert.throws(()=>cache.select(ask,owner,302002),/先在当前聊天/);
+  cache.remember(img(6),owner,302003);cache.clear();
+  assert.throws(()=>cache.select(ask,owner,302004),/先在当前聊天/);
+  const multi=img(7);multi.message.push({type:'image',data:{url:'https://qpic.cn/another'}});
+  assert.throws(()=>cache.select(multi,owner,302005),/多张/);
+  assert.throws(()=>cache.select({...ask,message:[{type:'image',data:{url:'file:///secret'}}]},owner,302005),/不可读取/);
+});
+
+test('collection downloads only the selected QQ image and deduplicates; cancellation never mutates QQ',async()=>{
+  const fetcher=globalThis.fetch,calls=[];globalThis.fetch=async()=>new Response(new Uint8Array([1,2,3]),{headers:{'content-type':'image/png'}});
+  try{
+    const stickers=new QQStickers(async(action,params)=>{calls.push({action,params});return {status:'ok',retcode:0,data:{emoji_id:'synthetic'}};});stickers.reset('765432');
+    const img={message:[{type:'image',data:{url:'https://qpic.cn/selected'}}]};
+    assert.match(await stickers.collect(img),/已保存/);assert.equal(calls.length,1);assert.equal(calls[0].action,'add_custom_face');assert.equal(calls[0].params.file,'base64://AQID');
+    assert.match(await stickers.collect(img),/不重复/);assert.equal(calls.length,1);
+    await assert.rejects(()=>stickers.collect({message:[{type:'image',data:{url:'https://qpic.cn/cancel'}}]},{stillCurrent:()=>false}),/取消/);assert.equal(calls.length,1);
+  }finally{globalThis.fetch=fetcher;}
+});
