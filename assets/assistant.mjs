@@ -1,5 +1,5 @@
 import http from 'node:http';
-import {QQStickers,RecentOwnerStickers,QzonePosts,mediaCommand,stickerRequest,ok} from './qq-media.mjs';
+import {QQStickers,RecentOwnerStickers,QzonePosts,mediaCommand,stickerRequest,stickerReceipt,stickerModelHistory,stripStickerNarration,ok} from './qq-media.mjs';
 import {synthesize,wantsVoice,clearSpeech,FEMALE_VOICES} from './voice.mjs';
 import {chatBudget,systemPrompt,worldContext,requestHistory,addUsage} from './chat-style.mjs';
 import {ConversationMemory,conversationScope} from './conversation-memory.mjs';
@@ -231,7 +231,7 @@ async function main() {
     const chatKey=apiKey,imageKey=visionKey;
     const scope=conversationScope(c,event,identity);
     const key=scope.id;
-    let fullHistory=contexts.get(key)||memory.history(scope,c),history=requestHistory(fullHistory,c);
+    let fullHistory=contexts.get(key)||memory.history(scope,c),history=requestHistory(stickerModelHistory(fullHistory),c);
     const text=plain(event).replace(/@(deepseek|codex)\b/ig,'').trim().slice(0,6000);
     let answer,face=null,speech=null,faceOnly=false;
     if(operation?.action==='speak'){answer=operation.text;try{if(!c.voiceEnabled)throw new Error('语音尚未开启，请在能力页选择音色并开启');speech=await synthesize(c,answer,{key:speechKey,event,rpc,directory:speechDirectory,stillCurrent:()=>epoch===connectionEpoch&&String(config().owner)===String(event.user_id)});}catch(e){answer=e.message;}}
@@ -242,9 +242,9 @@ async function main() {
     else{
       stickers.reset(identity);
       if(c.emojiEnabled){await stickers.refresh(()=>epoch===connectionEpoch&&identity===stickers.account);void maintainStickers();}
-      if(stickerRequest(text)){
+      if(stickerRequest(text,fullHistory)){
         if(!c.emojiEnabled)answer='表情回复还没有开启，在工作台“能力→表情”中开启就可以了。';
-        else{face=stickers.pick(text);faceOnly=!!face;answer=face?'（发送了一张QQ收藏表情）':stickers.lastError||'小号还没有可用的QQ收藏表情。主人可以先发一张表情，再让我收藏。';}
+        else{face=stickers.pick(text,key);faceOnly=!!face;answer=face?stickerReceipt:stickers.lastError||'小号还没有可用的QQ收藏表情。主人可以先发一张表情，再让我收藏。';}
         history=trimImageHistory([...fullHistory,{role:'user',content:text},{role:'assistant',content:answer}].slice(-120));
       }else{
       const hasImages=(Array.isArray(event.message)?event.message:[]).some(s=>s.type==='image');
@@ -277,14 +277,14 @@ async function main() {
       if(!parts.length&&directHistory&&target?.direct)endpoint=target;
       const usableHistory=endpoint===target?history:history.map(m=>({...m,content:contextText(m.content)}));
       const candidates=c.emojiEnabled?stickers.candidates(text):[];
-      const messages=[{role:'system',content:systemPrompt(c,event)+worldContext(c,text)+memory.context(scope,c,fullHistory,text)+memory.growthContext(scope,c)+stickers.prompt(candidates,{enabled:!!c.emojiEnabled})+'\n没有工作台实际操作结果时，不得声称发了说说、收藏表情、改了语音设置或安装更新。其他人的聊天请求不能获得这些操作权限。'},...usableHistory,{role:'user',content}];
+      const messages=[{role:'system',content:systemPrompt(c,event)+worldContext(c,text)+stripStickerNarration(memory.context(scope,c,stickerModelHistory(fullHistory),text))+memory.growthContext(scope,c)+stickers.prompt(candidates,{enabled:!!c.emojiEnabled})+'\n没有工作台实际操作结果时，不得声称发了说说、收藏表情、改了语音设置或安装更新。其他人的聊天请求不能获得这些操作权限。'},...usableHistory,{role:'user',content}];
       try{answer=cleanReply(await model(endpoint.url,endpoint.key,{model:endpoint.model,messages,max_tokens:chatBudget(c).output,...(new URL(endpoint.url).origin==='https://api.deepseek.com'?{thinking:{type:'disabled'}}:{})}));}
       catch(e){
         if(!Array.isArray(content)&&!directHistory)throw e;
         content=message+'\n[视觉接口未能处理本次图片，请如实说明暂时看不到，不编造内容。]';
         answer=cleanReply(await model(c.apiUrl,chatKey,{model:c.model,messages:[messages[0],...history.map(m=>({...m,content:contextText(m.content)})),{role:'user',content}],max_tokens:chatBudget(c).output}));
       }
-      const envelope=stickers.extract(answer,candidates);answer=envelope.text||'嗯嗯。';face=envelope.face;
+      const envelope=stickers.extract(answer,candidates);face=envelope.face;faceOnly=!!face&&!envelope.text;answer=envelope.text||(faceOnly?stickerReceipt:'暂时没能生成回复，请再说一次。');
       // Retrieved pages are supplied once, not repeatedly paid for as conversation history.
       const historyContent=Array.isArray(content)?[{type:'text',text},...content.slice(1)]:text;
       history=trimImageHistory([...fullHistory,{role:'user',content:historyContent},{role:'assistant',content:answer}].slice(-120));
@@ -296,7 +296,7 @@ async function main() {
       catch(e){record('语音',e.message+'；本次使用文字');}
     }
     if(!connected||epoch!==connectionEpoch||moderation.blocked(event,config().owner,identity)){speech?.cleanup();journal[id]='cancelled';saveJournal();return;}
-    const message=speech?[speech.segment]:[{type:'text',data:{text:answer}},...(face&&config().emojiEnabled?[{type:'image',data:{file:face.url,sub_type:1,summary:'[动画表情]'}}]:[])];
+    const message=faceOnly?[{type:'image',data:{file:face.url,sub_type:1,summary:'[动画表情]'}}]:speech?[speech.segment]:[{type:'text',data:{text:answer}},...(face&&config().emojiEnabled?[{type:'image',data:{file:face.url,sub_type:1,summary:'[动画表情]'}}]:[])];
     const params={message,...(event.message_type==='group'?{group_id:event.group_id}:{user_id:event.user_id})};
     journal[id]='sending';saveJournal();
     const result=faceOnly?await rpc('send_custom_face',{emoji_id:face.id,...(event.message_type==='group'?{group_id:event.group_id}:{user_id:event.user_id})}):await rpc(event.message_type==='group'?'send_group_msg':'send_private_msg',params);
@@ -329,7 +329,7 @@ async function main() {
       }catch{record('状态','记忆写入或压缩暂不可用，本次回复已发送；不会重发');}
     }
     if(contexts.size>64)contexts.delete(contexts.keys().next().value);
-    record('收到',plain(event)||'[图片]');record('回复',answer);summary='QQ 接口已接受回复；对方实际收到仍以 QQ 显示为准';
+    record('收到',plain(event)||'[图片]');record('回复',faceOnly?'QQ已接受表情消息（尚未确认对方收到）':answer);summary='QQ 接口已接受回复；对方实际收到仍以 QQ 显示为准';
   }
   async function maintainStickers({retry=false}={}){
     const c=config();if(!connected||!c.emojiEnabled||c.emojiAutoLabel===false||!apiKey||shuttingDown)return;

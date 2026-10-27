@@ -37,6 +37,7 @@ globalThis.fetch=async(url,options)=>{
     const body=JSON.parse(options.body);process.send({model:body,auth:options.headers.Authorization,host:u.hostname});
     if(body.messages[0].content.includes('为QQ收藏表情生成简短'))return Response.json({choices:[{message:{content:'{\"label\":\"开心、卖萌\"}'}}]});
     if(body.messages[0].content.includes('工作台具备QQ收藏表情发送能力')&&JSON.stringify(body.messages.at(-1)).includes('今天开心吗'))return Response.json({choices:[{message:{content:'好开心[[表情:1]]'}}]});
+    if(JSON.stringify(body.messages.at(-1)).includes('测试旧版占位回复'))return Response.json({choices:[{message:{content:'（发送了一张QQ收藏表情）'}}]});
     if(body.model==='unavailable-model')return Response.json({error:{code:'invalid_api_key',message:'synthetic-upstream-secret'}},{status:401});
     if(body.messages[0].content.includes('联网检索路由器'))return Response.json({choices:[{message:{content:JSON.stringify({search:true,query:'DeepSeek 最新发布版本'})}}]});
     if(body.messages[0].content.includes('请将以下旧对话压缩'))await new Promise(r=>setTimeout(r,1200));
@@ -230,5 +231,18 @@ globalThis.fetch=async(url,options)=>{
     await until(async()=>{const s=await(await api('/media/state')).json();return s.faces.find(f=>f.id==='unlabelled-one')?.desc==='开心、卖萌';});
     const annotated=await(await api('/media/state')).json();assert.equal(annotated.faces.find(f=>f.id==='manual-two').desc,'自定义手工备注');
     const labelCall=models.find(m=>m.model.messages[0].content.includes('为QQ收藏表情生成简短'));assert.equal(labelCall.model.messages.length,2);assert.equal(labelCall.model.messages[1].content[1].type,'image_url');assert.ok(!JSON.stringify(labelCall.model.messages).includes('补充长对话'));
+    // Reproduce exactly the screenshot sequence after an initial image, never a textual stage direction.
+    beforeDirect=models.length;
+    for(const [id,text] of [[260,'还有其他表情吗'],[261,'没表情啊'],[262,'再试试'],[263,'再来一个'],[264,'再试试']]){
+      n=sent.length;sendOwner(id,text);await until(()=>sent.length===n+1);
+      assert.deepEqual(sent.at(-1).message.map(s=>s.type),['image'],text);assert.ok(!JSON.stringify(sent.at(-1)).includes('发送了一张'));
+    }
+    assert.equal(models.length,beforeDirect,'followups use the current chat, not another paid model call');
+    // A provider that imitates the old history must still produce a real image, never the placeholder text.
+    n=sent.length;sendOwner(265,'测试旧版占位回复');await until(()=>sent.length===n+1);assert.deepEqual(sent.at(-1).message.map(s=>s.type),['image']);
+    n=sent.length;sendOwner(266,'现在聊聊白饭');await until(()=>sent.length===n+1);
+    const cleanHistory=models.at(-1).model.messages.slice(1,-1);assert.ok(!JSON.stringify(cleanHistory).includes('发送了一张QQ收藏表情'));assert.ok(!JSON.stringify(cleanHistory).includes('工作台非文字消息记录'));
+    // Short retries from another conversation must not borrow the owner's previous sticker context.
+    n=sent.length;const beforeOther=models.length;child.send({event:{...event,user_id:777777,message_id:267,message:[{type:'text',data:{text:'再试试'}}]}});await until(()=>sent.length===n+1);assert.equal(sent.at(-1).message[0].type,'text');assert.equal(models.length,beforeOther+1);
   }finally{try{await api('/shutdown',{});}catch{}await until(()=>exited||false).catch(()=>child.kill());if(child.connected)child.disconnect();}
 });

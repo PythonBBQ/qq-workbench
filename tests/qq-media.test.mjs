@@ -1,6 +1,6 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
 import fs from 'node:fs';import path from 'node:path';import os from 'node:os';
-import {QQStickers,RecentOwnerStickers,collectionRequest,QzonePosts,mediaCommand,stickerRequest,qqImage} from '../assets/qq-media.mjs';
+import {QQStickers,RecentOwnerStickers,collectionRequest,QzonePosts,mediaCommand,stickerRequest,stickerReceipt,stripStickerNarration,stickerModelHistory,qqImage} from '../assets/qq-media.mjs';
 import {speechRequest,synthesize,wantsVoice,clearSpeech} from '../assets/voice.mjs';
 const event=(text,user_id=123456,extra={})=>({self_id:765432,user_id,message_type:'private',message:[{type:'text',data:{text}}],...extra});
 const receipt={status:'ok',retcode:0,data:{tid:'synthetic-post-id'}};
@@ -159,4 +159,31 @@ test('uncertain QQ annotation writes are never retried automatically or by resta
     const stickers=new QQStickers(rpc,{directory:dir});stickers.reset('765432');await stickers.sync();await stickers.autoLabel(async()=>'{"label":"开心"}');assert.equal(writes,1);
     const again=new QQStickers(rpc,{directory:dir});again.reset('765432');await again.sync();await again.autoLabel(async()=>'{"label":"开心"}',{retry:true});assert.equal(writes,1);assert.match(stickers.labelMessage,/未确认/);
   }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+
+test('the screenshot followup sequence requests real stickers while unrelated retry stays ordinary chat',()=>{
+  const h=[{role:'user',content:'发个表情'},{role:'assistant',content:'（发送了一张QQ收藏表情）'}];
+  for(const text of ['还有其他表情吗','没表情啊','再试试']){
+    assert.equal(stickerRequest(text,h),true,text);h.push({role:'user',content:text},{role:'assistant',content:stickerReceipt});
+  }
+  for(const text of ['还有其他表情吗','有没有别的表情','换个表情','再来一个表情'])assert.equal(stickerRequest(text),true,text);
+  assert.equal(stickerRequest('再试试'),false);assert.equal(stickerRequest('再试试',[...h,{role:'user',content:'帮我搜索今天新闻'},{role:'assistant',content:'搜索没有完成'}]),false);
+  assert.equal(stickerRequest('别发其他表情'),false);assert.equal(stickerRequest('还有其他API吗'),false);
+});
+
+test('internal and legacy sticker records never reach the model or turn into text-only pretend sends',()=>{
+  const s=new QQStickers(()=>{}),faces=[{id:'one',url:'https://qpic.cn/one',desc:'开心'}];
+  for(const stage of ['（发送了一张QQ收藏表情）','(发送了一张 QQ 收藏表情)','【发送表情】',stickerReceipt]){
+    assert.equal(stripStickerNarration(stage),'');assert.deepEqual(s.extract(stage,faces),{text:'',face:faces[0]});
+  }
+  assert.deepEqual(s.extract('好的（发送了一张QQ收藏表情）',faces),{text:'好的',face:faces[0]});
+  const h=[{role:'user',content:'发个表情'},{role:'assistant',content:'（发送了一张QQ收藏表情）'},{role:'user',content:'还有其他表情吗'},{role:'assistant',content:stickerReceipt},{role:'user',content:'聊聊天'},{role:'assistant',content:'你好呀'}];
+  assert.deepEqual(stickerModelHistory(h),h.slice(-2));assert.equal(h.length,6,'original history remains available for routing and display');
+});
+
+test('sticker rotation belongs to the current conversation, not other private chats or groups',()=>{
+  const s=new QQStickers(()=>{});s.reset('765432');s.faces=[{id:'one',desc:''},{id:'two',desc:''}];
+  assert.equal(s.pick('发个表情','private-one').id,'one');assert.equal(s.pick('发个表情','group-one').id,'one');assert.equal(s.pick('还有其他表情吗','private-one').id,'two');
+  s.reset('888888');assert.equal(s.selections.size,0);
 });
