@@ -95,6 +95,7 @@ public final class RuntimeService extends Service {
             // Raw upstream logs can contain account and bootstrap details; publish explicit phases only.
             if(line.startsWith("QQWB:"))update(line.substring(5));
             else if(line.contains("error while loading shared libraries")||line.contains("EADDRINUSE")||line.contains("PTRACE_")||line.startsWith("E:")||line.contains("Segmentation fault")||line.contains("Permission denied"))record(line.substring(0,Math.min(line.length(),500)));
+            else if(line.matches(".*(?:install|session)\\.sh: line [0-9]+:.*(?:syntax error|command not found|bad interpreter).*"))record("启动脚本错误："+line.replaceAll("[^\\p{L}\\p{N} /_.:()\\-]","?").substring(0,Math.min(line.length(),500)));
         }}
         int code=process.waitFor();process=null;if(!stopped)update("运行已停止（退出码 "+code+"），请查看诊断后重试");return code;
     }

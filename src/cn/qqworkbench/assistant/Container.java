@@ -51,7 +51,17 @@ final class Container {
         File[] files=directory.listFiles();if(files==null)return;
         for(File file:files)if(file.getName().matches(pattern)&&!Files.isSymbolicLink(file.toPath())&&file.isFile())file.delete();
     }
-    void copyAsset(String name,File target)throws IOException{target.getParentFile().mkdirs();try(InputStream in=context.getAssets().open(name);OutputStream out=new FileOutputStream(target)){byte[] b=new byte[131072];int n;while((n=in.read(b))!=-1)out.write(b,0,n);}}
+    void copyAsset(String name,File target)throws IOException{
+        target.getParentFile().mkdirs();
+        if(name.endsWith(".sh")){
+            try(InputStream in=context.getAssets().open(name);ByteArrayOutputStream bytes=new ByteArrayOutputStream()){
+                byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1){if(bytes.size()+n>1024*1024)throw new IOException("启动脚本超过读取上限");bytes.write(b,0,n);}
+                writePrivate(target,UnixText.normalize(bytes.toByteArray()));
+            }
+            return;
+        }
+        try(InputStream in=context.getAssets().open(name);OutputStream out=new FileOutputStream(target)){byte[] b=new byte[131072];int n;while((n=in.read(b))!=-1)out.write(b,0,n);}
+    }
     void resolver()throws Exception{
         ConnectivityManager cm=(ConnectivityManager)context.getSystemService(Context.CONNECTIVITY_SERVICE);
         LinkProperties lp=cm.getLinkProperties(cm.getActiveNetwork());StringBuilder s=new StringBuilder();
