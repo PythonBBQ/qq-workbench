@@ -16,23 +16,27 @@ import dns from 'node:dns/promises';dns.lookup=async()=>[{address:'93.184.216.34
 SnowLumaBridge.prototype.start=function(){};SnowLumaBridge.prototype.stop=async function(){};
 SnowLumaBridge.prototype.state=async function(){return {status:{isLogin:true},info:{uin:'765432'}}};
 SnowLumaBridge.prototype.remember=async function(){};
-let socket;
+let socket;let syntheticFaces=[];
 globalThis.WebSocket=class extends EventTarget{
   static OPEN=1;static CONNECTING=0;
   constructor(){super();socket=this;this.readyState=0;setImmediate(()=>{this.readyState=1;this.dispatchEvent(new Event('open'));});}
   receive(data){this.dispatchEvent(new MessageEvent('message',{data:JSON.stringify(data)}));}
-  send(raw){const d=JSON.parse(raw);process.send({rpc:d.action});const data=d.action==='get_login_info'?{user_id:765432}:d.action==='get_status'?{online:true}:d.action==='add_custom_face'?{emoji_id:'synthetic-face'}:{message_id:Date.now()};
+  send(raw){const d=JSON.parse(raw);process.send({rpc:d.action});const data=d.action==='get_login_info'?{user_id:765432}:d.action==='get_status'?{online:true}:d.action==='add_custom_face'?{emoji_id:'synthetic-face'}:d.action==='fetch_custom_face_detail'?syntheticFaces.map(f=>({...f})):{message_id:Date.now()};
+    if(d.action==='modify_custom_face'){const f=syntheticFaces.find(f=>f.emoji_id===d.params.emoji_id);if(f)f.desc=d.params.desc;}
+    if(d.action==='send_custom_face')process.send({sent:{...d.params,message:[{type:'image',data:{emoji_id:d.params.emoji_id}}]}});
     if(/^send_(group|private)_msg$/.test(d.action))process.send({sent:d.params});
     if(d.action.startsWith('send_')&&globalThis.sendControl==='unconfirmed')delete data.message_id;
     const delay=d.action.startsWith('send_')&&globalThis.sendControl==='delayed'?200:0;
     setTimeout(()=>this.receive({echo:d.echo,status:'ok',retcode:0,data}),delay);}
   close(){this.readyState=3;}
 };
-process.on('message',m=>{if(m.control)globalThis.sendControl=m.control;if(m.event)socket?.receive(m.event);});
+process.on('message',m=>{if(m.control)globalThis.sendControl=m.control;if(m.faces)syntheticFaces=m.faces;if(m.event)socket?.receive(m.event);});
 globalThis.fetch=async(url,options)=>{
   const u=new URL(url);
   if(u.origin==='https://api.deepseek.com'||u.origin==='https://relay.example'){
     const body=JSON.parse(options.body);process.send({model:body,auth:options.headers.Authorization,host:u.hostname});
+    if(body.messages[0].content.includes('为QQ收藏表情生成简短'))return Response.json({choices:[{message:{content:'{\"label\":\"开心、卖萌\"}'}}]});
+    if(body.messages[0].content.includes('工作台具备QQ收藏表情发送能力')&&JSON.stringify(body.messages.at(-1)).includes('今天开心吗'))return Response.json({choices:[{message:{content:'好开心[[表情:1]]'}}]});
     if(body.model==='unavailable-model')return Response.json({error:{code:'invalid_api_key',message:'synthetic-upstream-secret'}},{status:401});
     if(body.messages[0].content.includes('联网检索路由器'))return Response.json({choices:[{message:{content:JSON.stringify({search:true,query:'DeepSeek 最新发布版本'})}}]});
     if(body.messages[0].content.includes('请将以下旧对话压缩'))await new Promise(r=>setTimeout(r,1200));
@@ -187,7 +191,7 @@ globalThis.fetch=async(url,options)=>{
     n=sent.length;child.send({event:groupMessage(215,888888,'@deepseek 解除后可以继续聊天')});await until(()=>sent.length===n+1);assert.match(sent.at(-1).message[0].data.text,/白饭/);
     // No real QQ: these mocks verify strict owner gating before any model or mutating RPC.
     for(const route of ['/media/state'])assert.equal((await api(route,undefined,false)).status,401);
-    for(const route of ['/stickers/sync','/voice/preview','/voice/characters','/qzone/draft','/qzone/publish'])assert.equal((await api(route,{},false)).status,401);
+    for(const route of ['/stickers/sync','/stickers/annotate','/voice/preview','/voice/characters','/qzone/draft','/qzone/publish'])assert.equal((await api(route,{},false)).status,401);
     n=sent.length;const beforeUnauthorized=rpcs.length,modelBefore=models.length;
     child.send({event:groupMessage(220,888888,'@deepseek 发条说说：不允许发布')});await until(()=>sent.length===n+1);
     assert.match(sent.at(-1).message[0].data.text,/只有主人/);assert.ok(!rpcs.slice(beforeUnauthorized).includes('send_qzone_msg'));assert.equal(models.length,modelBefore);
@@ -215,5 +219,16 @@ globalThis.fetch=async(url,options)=>{
     child.send({event:groupMessage(238,999999,'',[image('former-owner')])});await pause();
     await update({owner:'123456'});n=sent.length;child.send({event:groupMessage(239,123456,'收藏一下')});await until(()=>sent.length===n+1);assert.equal(collections(),firstCollection+2);assert.match(sent.at(-1).message[0].data.text,/当前聊天/);
     n=sent.length;child.send({event:groupMessage(240,999999,'收藏这个',[image('former-owner-denied')])});await until(()=>sent.length===n+1);assert.equal(collections(),firstCollection+2);assert.match(sent.at(-1).message[0].data.text,/只有主人/);
+    // Empty descriptions were previously excluded: direct requests must send an actual image without a model refusal.
+    child.send({faces:[{emoji_id:'unlabelled-one',url:'https://qpic.cn/sendable',desc:''},{emoji_id:'manual-two',url:'https://qpic.cn/manual',desc:'自定义手工备注'}]});
+    await update({emojiEnabled:true,emojiAutoLabel:false,visionMode:'chat'});await api('/stickers/sync',{});
+    let beforeDirect=models.length;n=sent.length;sendOwner(250,'发个表情');await until(()=>sent.length===n+1);assert.equal(sent.at(-1).message[0].type,'image');assert.equal(models.length,beforeDirect);assert.ok(rpcs.includes('send_custom_face'));
+    await update({rate:100});n=sent.length;child.send({event:groupMessage(251,888888,'@deepseek 发个表情')});await until(()=>sent.length===n+1);assert.equal(sent.at(-1).message[0].type,'image','sending existing faces is available to allowed chat users');
+    n=sent.length;sendOwner(252,'今天开心吗');await until(()=>sent.length===n+1);assert.ok(sent.at(-1).message.some(s=>s.type==='image'));assert.ok(!JSON.stringify(sent.at(-1)).includes('[[表情:'));
+    // The authenticated background job uses image bytes and no private conversation, updates only empty QQ labels.
+    await update({emojiAutoLabel:true});await api('/stickers/annotate',{});
+    await until(async()=>{const s=await(await api('/media/state')).json();return s.faces.find(f=>f.id==='unlabelled-one')?.desc==='开心、卖萌';});
+    const annotated=await(await api('/media/state')).json();assert.equal(annotated.faces.find(f=>f.id==='manual-two').desc,'自定义手工备注');
+    const labelCall=models.find(m=>m.model.messages[0].content.includes('为QQ收藏表情生成简短'));assert.equal(labelCall.model.messages.length,2);assert.equal(labelCall.model.messages[1].content[1].type,'image_url');assert.ok(!JSON.stringify(labelCall.model.messages).includes('补充长对话'));
   }finally{try{await api('/shutdown',{});}catch{}await until(()=>exited||false).catch(()=>child.kill());if(child.connected)child.disconnect();}
 });

@@ -1,6 +1,6 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
 import fs from 'node:fs';import path from 'node:path';import os from 'node:os';
-import {QQStickers,RecentOwnerStickers,collectionRequest,QzonePosts,mediaCommand,qqImage} from '../assets/qq-media.mjs';
+import {QQStickers,RecentOwnerStickers,collectionRequest,QzonePosts,mediaCommand,stickerRequest,qqImage} from '../assets/qq-media.mjs';
 import {speechRequest,synthesize,wantsVoice,clearSpeech} from '../assets/voice.mjs';
 const event=(text,user_id=123456,extra={})=>({self_id:765432,user_id,message_type:'private',message:[{type:'text',data:{text}}],...extra});
 const receipt={status:'ok',retcode:0,data:{tid:'synthetic-post-id'}};
@@ -119,4 +119,44 @@ test('collection downloads only the selected QQ image and deduplicates; cancella
     assert.match(await stickers.collect(img),/不重复/);assert.equal(calls.length,1);
     await assert.rejects(()=>stickers.collect({message:[{type:'image',data:{url:'https://qpic.cn/cancel'}}]},{stillCurrent:()=>false}),/取消/);assert.equal(calls.length,1);
   }finally{globalThis.fetch=fetcher;}
+});
+
+
+test('unlabelled QQ faces remain sendable; direct requests do not match negation or third party instructions',()=>{
+  const stickers=new QQStickers(()=>{});stickers.faces=[{id:'one',url:'https://qpic.cn/one',desc:''},{id:'two',url:'https://qpic.cn/two',desc:'开心'}];
+  assert.equal(stickers.candidates('你好').length,2);assert.match(stickers.prompt(stickers.candidates('你好')),/未备注/);
+  assert.match(stickers.prompt(stickers.candidates('你好')),/不要说自己只能打字/);
+  assert.deepEqual(new Set([stickers.pick('发个表情').id,stickers.pick('发个表情').id]),new Set(['one','two']));
+  for(const text of ['发个表情','发个表情包','来个表情','给我发个表情看看','@deepseek 请发一张表情','能不能发个表情？','用表情回复我'])assert.equal(stickerRequest(text),true,text);
+  for(const text of ['不要发个表情','怎么发个表情','他说发个表情','发个表情是什么意思','发张图片','收藏这个表情','“发个表情”'])assert.equal(stickerRequest(text),false,text);
+});
+
+test('AI annotates only empty QQ labels from visual JSON and persists successful jobs',async()=>{
+  const dir=temp(),calls=[],faces=[{emoji_id:'one',url:'https://qpic.cn/one',desc:''},{emoji_id:'manual',url:'https://qpic.cn/two',desc:'手工备注'}];
+  try{
+    const stickers=new QQStickers(async(action,params)=>{calls.push({action,params});if(action==='fetch_custom_face_detail')return {status:'ok',retcode:0,data:faces.map(f=>({...f}))};if(action==='modify_custom_face'){faces.find(f=>f.emoji_id===params.emoji_id).desc=params.desc;return {status:'ok',retcode:0};}throw new Error('No sends');},{directory:dir});
+    stickers.reset('765432');await stickers.sync();let descriptions=0;
+    const result=await stickers.autoLabel(async face=>{descriptions++;assert.equal(face.id,'one');return '{"label":"开心、卖萌"}';});
+    assert.equal(result.labelled,1);assert.equal(descriptions,1);assert.equal(faces[0].desc,'开心、卖萌');assert.equal(faces[1].desc,'手工备注');
+    assert.equal(calls.filter(c=>c.action==='modify_custom_face').length,1);assert.equal(stickers.faces[0].desc,'开心、卖萌');
+    await stickers.autoLabel(()=>{throw new Error('must not repeat');});
+    assert.equal(Object.values(JSON.parse(fs.readFileSync(path.join(dir,'sticker-label-journal.json'),'utf8')))[0].status,'accepted');
+  }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test('visual annotation refuses hallucinated/error labels, backs off, preserves concurrent manual labels and cancels old accounts',async()=>{
+  const face={emoji_id:'one',url:'https://qpic.cn/one',desc:''},calls=[];
+  const stickers=new QQStickers(async(action,params)=>{calls.push(action);return action==='fetch_custom_face_detail'?{status:'ok',retcode:0,data:[{...face}]}:{status:'ok',retcode:0};});stickers.reset('765432');await stickers.sync();
+  let attempts=0;await stickers.autoLabel(async()=>{attempts++;return '{"label":"无法看清"}';});await stickers.autoLabel(async()=>{attempts++;return '{"label":"开心"}';});assert.equal(attempts,1);assert.ok(!calls.includes('modify_custom_face'));
+  await stickers.autoLabel(async()=>{face.desc='主人刚手写的备注';return '{"label":"开心"}';},{retry:true});assert.ok(!calls.includes('modify_custom_face'));assert.equal(stickers.faces[0].desc,face.desc);
+  face.desc='';await stickers.sync();let release;const running=stickers.autoLabel(()=>new Promise(r=>release=r),{retry:true});
+  assert.equal((await stickers.autoLabel(()=>{})).busy,true);stickers.reset('888888');release('{"label":"开心"}');await running;assert.ok(!calls.includes('modify_custom_face'));assert.equal(stickers.account,'888888');
+});
+
+test('uncertain QQ annotation writes are never retried automatically or by restart',async()=>{
+  const dir=temp();let writes=0;const rpc=async action=>{if(action==='fetch_custom_face_detail')return {status:'ok',retcode:0,data:[{emoji_id:'one',url:'https://qpic.cn/one',desc:''}]};writes++;throw new Error('timeout');};
+  try{
+    const stickers=new QQStickers(rpc,{directory:dir});stickers.reset('765432');await stickers.sync();await stickers.autoLabel(async()=>'{"label":"开心"}');assert.equal(writes,1);
+    const again=new QQStickers(rpc,{directory:dir});again.reset('765432');await again.sync();await again.autoLabel(async()=>'{"label":"开心"}',{retry:true});assert.equal(writes,1);assert.match(stickers.labelMessage,/未确认/);
+  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
