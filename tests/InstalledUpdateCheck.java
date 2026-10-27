@@ -9,7 +9,7 @@ import org.json.JSONObject;
 
 /** Read-only validation with the installed app's real context; never starts an installer. */
 public final class InstalledUpdateCheck {
-    public static void main(String[] args){try{diagnose(args);}catch(Throwable e){System.out.println("QQWB_INSTALLED_UPDATE_CHECK "+new JSONObject().put("completed",false).put("errorType",e.getClass().getSimpleName()));System.exit(2);}}
+    public static void main(String[] args)throws Exception{try{diagnose(args);}catch(Throwable e){System.out.println("QQWB_INSTALLED_UPDATE_CHECK "+new JSONObject().put("completed",false).put("errorType",e.getClass().getSimpleName()));System.exit(2);}}
     static void diagnose(String[] args)throws Exception{
         android.os.Looper.prepareMainLooper();Class<?> at=Class.forName("android.app.ActivityThread");
         java.lang.reflect.Constructor<?> constructor=at.getDeclaredConstructor();constructor.setAccessible(true);Object thread=constructor.newInstance();Method getContext=at.getDeclaredMethod("getSystemContext");getContext.setAccessible(true);
