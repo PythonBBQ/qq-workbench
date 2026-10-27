@@ -1,0 +1,13 @@
+build/
+__pycache__/
+*.apk
+*.p12
+*.jks
+*.keystore
+.env*
+settings.json
+shared_prefs/
+*.log
+assets/*.bin
+assets/*.gz
+assets/*.deb

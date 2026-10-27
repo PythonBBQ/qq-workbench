@@ -1,0 +1,21 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="cn.qqworkbench.assistant" android:versionCode="21" android:versionName="0.1.20-preview">
+  <uses-sdk android:minSdkVersion="30" android:targetSdkVersion="35"/>
+  <uses-permission android:name="android.permission.INTERNET"/>
+  <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+  <uses-permission android:name="android.permission.WAKE_LOCK"/>
+  <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
+  <queries><package android:name="com.miui.securitycenter"/><intent><action android:name="miui.intent.action.HIDDEN_APPS_CONFIG_ACTIVITY"/></intent></queries>
+  <application android:label="七丘 QQ 工作台" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:extractNativeLibs="true" android:allowBackup="false" android:debuggable="true" android:networkSecurityConfig="@xml/network_security">
+    <provider android:name=".UpdateFileProvider" android:authorities="cn.qqworkbench.assistant.updates" android:exported="false" android:grantUriPermissions="true"/>
+    <activity android:name=".MainActivity" android:exported="true" android:windowSoftInputMode="adjustResize">
+      <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+    </activity>
+    <service android:name=".RuntimeService" android:stopWithTask="false" android:exported="false" android:foregroundServiceType="specialUse">
+      <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="User-started local QQ session and assistant runtime"/>
+    </service>
+  </application>
+</manifest>

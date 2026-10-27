@@ -1,0 +1,199 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import {fork} from 'node:child_process';
+import {fileURLToPath,pathToFileURL} from 'node:url';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+const pause=()=>new Promise(r=>setTimeout(r,40));
+test('first-run Key applies without restart; pictures and follow-ups use context in one call, no real QQ or model traffic',async()=>{
+  const parent=path.join(root,'build','flow-tests');await fs.mkdir(parent,{recursive:true});const dir=await fs.mkdtemp(path.join(parent,'case-'));
+  for(const name of ['assistant.mjs','qq-media.mjs','voice.mjs','model-client.mjs','personality-growth.mjs','group-moderation.mjs','conversation-memory.mjs','video.mjs','video-decoder.mjs','native-network.mjs','web-learning.mjs','browse-intent.mjs','learning.mjs','snowluma-bridge.mjs','images.mjs','chat-style.mjs'])await fs.copyFile(path.join(root,'assets',name),path.join(dir,name));
+  await fs.writeFile(path.join(dir,'settings.json'),JSON.stringify({owner:'123456',enabled:true,others:true,rate:100,apiUrl:'https://api.deepseek.com',model:'deepseek-flash',persona:'温柔，爱吃白饭',maxReplyTokens:400,memoryEnabled:false}));
+  await fs.writeFile(path.join(dir,'mock.mjs'),`
+import {SnowLumaBridge} from './snowluma-bridge.mjs';
+import dns from 'node:dns/promises';dns.lookup=async()=>[{address:'93.184.216.34'}];
+SnowLumaBridge.prototype.start=function(){};SnowLumaBridge.prototype.stop=async function(){};
+SnowLumaBridge.prototype.state=async function(){return {status:{isLogin:true},info:{uin:'765432'}}};
+SnowLumaBridge.prototype.remember=async function(){};
+let socket;
+globalThis.WebSocket=class extends EventTarget{
+  static OPEN=1;static CONNECTING=0;
+  constructor(){super();socket=this;this.readyState=0;setImmediate(()=>{this.readyState=1;this.dispatchEvent(new Event('open'));});}
+  receive(data){this.dispatchEvent(new MessageEvent('message',{data:JSON.stringify(data)}));}
+  send(raw){const d=JSON.parse(raw);process.send({rpc:d.action});const data=d.action==='get_login_info'?{user_id:765432}:d.action==='get_status'?{online:true}:{message_id:Date.now()};
+    if(/^send_(group|private)_msg$/.test(d.action))process.send({sent:d.params});
+    if(d.action.startsWith('send_')&&globalThis.sendControl==='unconfirmed')delete data.message_id;
+    const delay=d.action.startsWith('send_')&&globalThis.sendControl==='delayed'?200:0;
+    setTimeout(()=>this.receive({echo:d.echo,status:'ok',retcode:0,data}),delay);}
+  close(){this.readyState=3;}
+};
+process.on('message',m=>{if(m.control)globalThis.sendControl=m.control;if(m.event)socket?.receive(m.event);});
+globalThis.fetch=async(url,options)=>{
+  const u=new URL(url);
+  if(u.origin==='https://api.deepseek.com'||u.origin==='https://relay.example'){
+    const body=JSON.parse(options.body);process.send({model:body,auth:options.headers.Authorization,host:u.hostname});
+    if(body.model==='unavailable-model')return Response.json({error:{code:'invalid_api_key',message:'synthetic-upstream-secret'}},{status:401});
+    if(body.messages[0].content.includes('联网检索路由器'))return Response.json({choices:[{message:{content:JSON.stringify({search:true,query:'DeepSeek 最新发布版本'})}}]});
+    if(body.messages[0].content.includes('请将以下旧对话压缩'))await new Promise(r=>setTimeout(r,1200));
+    if(JSON.stringify(body).includes('等待切换'))await new Promise(r=>setTimeout(r,200));
+    return Response.json({choices:[{message:{content:'好呀，配一碗白饭！'}}],usage:{prompt_tokens:100,completion_tokens:10,prompt_cache_hit_tokens:20}});
+  }
+  if(u.hostname==='api.bilibili.com')return Response.json({code:0,data:{bvid:'BV1GJ411x7h7',title:'做饭与白饭',owner:{name:'测试作者'},desc:'仅供隔离测试的公开简介'}});
+  if(u.hostname==='cn.bing.com'){process.send({browse:{url:u.href,auth:options.headers?.Authorization}});return new Response('<li class="b_algo"><h2><a href="https://example.com/deepseek">DeepSeek 官方资料</a></h2><p>公开搜索摘要</p></li>',{headers:{'content-type':'text/html'}});}
+  if(u.hostname==='example.com'){process.send({browse:{url:u.href,auth:options.headers?.Authorization}});return new Response('<title>公开版本资料</title><main>'+('测试版本更新信息，仅供隔离验证。'.repeat(10))+'</main>',{headers:{'content-type':'text/html'}});}
+  if(u.hostname==='qpic.cn')return new Response(new Uint8Array([1,2,3]),{headers:{'content-type':'image/png'}});
+  throw new Error('Unmocked network refused');
+};`);
+  const token='qqwb-isolated-test-token-1234567890';let log='',exited=false;const models=[],sent=[],browses=[],rpcs=[];
+  const child=fork(path.join(dir,'assistant.mjs'),[],{execArgv:['--import',pathToFileURL(path.join(dir,'mock.mjs')).href],env:{...process.env,WORKBENCH_TOKEN:token,DEEPSEEK_API_KEY:'',VISION_API_KEY:''},stdio:['ignore','pipe','pipe','ipc']});
+  child.stdout.on('data',v=>log+=v);child.stderr.on('data',v=>log+=v);child.on('exit',()=>exited=true);child.on('message',m=>{if(m.rpc)rpcs.push(m.rpc);if(m.model)models.push(m);if(m.sent)sent.push(m.sent);if(m.browse)browses.push(m.browse);});
+  const api=async(route,body,auth=true)=>fetch('http://127.0.0.1:13480'+route,{method:body===undefined?'GET':'POST',headers:{...(auth?{Authorization:'Bearer '+token}:{}),'Content-Type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(1000)});
+  const until=async(fn)=>{const end=Date.now()+6000;while(Date.now()<end){if(exited)throw new Error(log||'child exited');try{const r=await fn();if(r)return r;}catch(e){if(e.message.includes('child'))throw e;}await pause();}throw new Error('Flow timeout: '+log);};
+  try{
+    const state=await until(async()=>{const r=await api('/state');const s=await r.json();return s.connected?s:null;});assert.equal(state.modelConfigured,false);
+    assert.equal((await api('/credentials',{apiKey:'fake-key',visionKey:''},false)).status,401);
+    const credentials=await api('/credentials',{apiKey:'fake-key',visionKey:''});assert.equal(credentials.status,200);assert.ok(!(await credentials.text()).includes('fake-key'));
+    const event={post_type:'message',message_type:'private',self_id:765432,user_id:123456,time:Math.floor(Date.now()/1000),message_id:101,message:[{type:'text',data:{text:'这张图里的菜，想吃吗？'}},{type:'image',data:{url:'https://qpic.cn/test.png'}}]};
+    child.send({event});await until(()=>sent.length===1);
+    assert.equal(models.length,1);assert.equal(models[0].auth,'Bearer fake-key');assert.equal(models[0].model.max_tokens,400);assert.equal(models[0].model.thinking.type,'disabled');
+    assert.match(models[0].model.messages[0].content,/温柔，爱吃白饭/);assert.equal(models[0].model.messages.at(-1).content[1].type,'image_url');assert.match(models[0].model.messages.at(-1).content[0].text,/这张图/);
+    child.send({event:{...event,message_id:102,message:[{type:'text',data:{text:'要不要加白饭？'}}]}});await until(()=>sent.length===2);
+    assert.equal(models.length,2);assert.equal(models[1].model.messages[1].content[1].type,'image_url');assert.equal(sent[1].user_id,123456);
+    const latest=await(await api('/state')).json();assert.deepEqual(latest.usage,{input:200,output:20,cached:40});
+    assert.equal((await api('/context/clear',{},false)).status,401);
+    assert.equal((await api('/context/clear',{})).status,200);
+    child.send({event:{...event,message_id:103,message:[{type:'text',data:{text:'我们重新开始'}}]}});await until(()=>sent.length===3);
+    assert.equal(models[2].model.messages.length,2);
+    child.send({event:{...event,user_id:999999,message_id:104,message:[{type:'text',data:{text:'#sl'}}]}});
+    await new Promise(r=>setTimeout(r,100));assert.equal(sent.length,3);assert.equal(models.length,3);
+    child.send({event:{...event,message_id:105,message:[{type:'text',data:{text:'#sl'}}]}});await until(()=>sent.length===4);
+    assert.equal(models.length,3);assert.match(sent[3].message[0].data.text,/SnowLuma/);
+    child.send({event:{...event,message_type:'group',group_id:42,user_id:999999,message_id:106,message:[{type:'text',data:{text:'这个游戏大家觉得好玩吗'}}]}});await until(()=>sent.length===5);
+    assert.equal(models.length,4);assert.equal(sent[4].group_id,42);assert.match(models[3].model.messages.at(-1).content,/群聊近期发言/);
+    child.send({event:{...event,message_type:'group',group_id:42,user_id:888888,message_id:107,message:[{type:'text',data:{text:'我们再聊一下游戏'}}]}});
+    await new Promise(r=>setTimeout(r,100));assert.equal(sent.length,5);
+    assert.equal((await api('/learning/notes',undefined,false)).status,401);
+    assert.equal((await api('/learning/read',{kind:'read',value:'https://www.bilibili.com/video/BV1GJ411x7h7',save:true},false)).status,401);
+    const read=await(await api('/learning/read',{kind:'read',value:'https://www.bilibili.com/video/BV1GJ411x7h7',save:true})).json();assert.equal(read.items.length,1);assert.equal((await(await api('/learning/notes')).json()).notes.length,1);
+    child.send({event:{...event,message_id:108,message:[{type:'text',data:{text:'https://www.bilibili.com/video/BV1GJ411x7h7 你学到了什么'}}]}});await until(()=>sent.length===6);assert.match(models[4].model.messages.at(-1).content,/未读取视频画面/);
+    assert.equal((await api('/learning/delete',{id:'all'})).status,200);assert.equal((await(await api('/learning/notes')).json()).notes.length,0);
+    const profile={settings:{apiUrl:'https://relay.example/v1',model:'relay-model',visionMode:'auto',visionUrl:'',visionModel:''},apiKey:'relay-test-key',visionKey:''};
+    assert.equal((await api('/model/apply',profile,false)).status,401);
+    child.send({event:{...event,message_id:109,message:[{type:'text',data:{text:'等待切换'}}]}});await until(()=>models.length===6);
+    assert.equal((await api('/model/apply',profile)).status,200);await new Promise(r=>setTimeout(r,250));assert.equal(sent.length,6,'old in-flight reply must be cancelled');
+    child.send({event:{...event,message_id:110,message:[{type:'text',data:{text:'现在使用哪个模型'}}]}});await until(()=>sent.length===7);
+    assert.equal(models.at(-1).host,'relay.example');assert.equal(models.at(-1).auth,'Bearer relay-test-key');assert.equal(models.at(-1).model.model,'relay-model');assert.equal(models.at(-1).model.messages.length,2);assert.match(models.at(-1).model.messages[0].content,/温柔，爱吃白饭/);
+    const saved=JSON.parse(await fs.readFile(path.join(dir,'settings.json'),'utf8'));assert.equal(saved.owner,'123456');assert.equal(saved.persona,'温柔，爱吃白饭');assert.ok(!JSON.stringify(saved).includes('relay-test-key'));
+    assert.ok(!log.includes('fake-key'));assert.ok(!(await fs.readFile(path.join(dir,'settings.json'),'utf8')).includes('fake-key'));
+    assert.equal((await api('/model/test',{},false)).status,401);
+    const checked=await(await api('/model/test',{})).json();assert.equal(checked.ok,true);assert.equal(sent.length,7,'model check never sends QQ messages');
+    const beforeChange=models.length;
+    child.send({event:{...event,message_id:111,message:[{type:'text',data:{text:'等待切换大号'}}]}});await until(()=>models.length===beforeChange+1);
+    await fs.writeFile(path.join(dir,'settings.json'),JSON.stringify({...saved,owner:'999999'}));
+    await api('/state');await new Promise(r=>setTimeout(r,250));assert.equal(sent.length,7,'changing owner cancels old in-flight reply');
+    child.send({event:{...event,message_id:112,message:[{type:'text',data:{text:'我还是主人吗'}}]}});await until(()=>sent.length===8);
+    assert.match(models.at(-1).model.messages[0].content,/当前发言者不是大号/);assert.equal(models.at(-1).model.messages.length,2,'old identity history is cleared');
+    child.send({event:{...event,message_id:113,user_id:999999,message_type:'group',group_id:42,message:[{type:'text',data:{text:'@deepseek 你知道我是谁吗'}}]}});await until(()=>sent.length===9);
+    assert.match(models.at(-1).model.messages[0].content,/当前发言者就是大号/);assert.match(models.at(-1).model.messages[0].content,/称呼统一为“主人”/);
+    // Memory and video routes are exercised in the isolated mock server.
+    const active=JSON.parse(await fs.readFile(path.join(dir,'settings.json'),'utf8'));
+    const update=async values=>{Object.assign(active,values);await fs.writeFile(path.join(dir,'settings.json'),JSON.stringify(active));await api('/state');};
+    await update({memoryEnabled:true,worldBook:'白饭 | 白饭是这只鲸鱼的最爱'});
+    assert.equal((await api('/memory/list',undefined,false)).status,401);
+    const sendOwner=(id,text)=>child.send({event:{...event,user_id:999999,message_id:id,message:[{type:'text',data:{text}}]}});
+    sendOwner(114,'记住：我喜欢白饭');await until(()=>sent.length===10);
+    let memories=await until(async()=>{const list=await(await api('/memory/list')).json();return list.sessions.length?list.sessions:null;});
+    assert.equal(memories[0].turns,1);assert.equal(memories[0].notes[0].content,'我喜欢白饭');
+    assert.match(models.at(-1).model.messages[0].content,/白饭是这只鲸鱼的最爱/);
+    let exported=await(await api('/memory/export',{})).json();assert.equal(JSON.parse(exported.jsonl).messages[0].content,'记住：我喜欢白饭');
+    const memoryId=memories[0].id;
+    assert.equal((await api('/memory/note',{id:memoryId,content:'回答简短'})).status,200);
+    sendOwner(115,'你好');await until(()=>sent.length===11);assert.match(models.at(-1).model.messages[0].content,/回答简短/);
+    // An analysis is local-only and must not send to QQ.
+    await update({visionMode:'chat'});
+    const video=await(await api('/video/analyze',{durationSeconds:3,frames:[{seconds:1,url:'data:image/jpeg;base64,AQID'}],question:'概括画面'})).json();
+    assert.equal(video.ok,true);assert.match(video.message,/抽样画面/);assert.equal(sent.length,11);
+    assert.equal((await api('/video/analyze',{},false)).status,401);
+    const badClip=await(await api('/video/analyze',{clip:'../../settings.json'})).json();assert.equal(badClip.ok,false);
+    sendOwner(116,'等待切换并删除记忆');await until(()=>models.at(-1).model.messages.at(-1).content.includes('等待切换并删除记忆'));
+    assert.equal((await api('/memory/delete',{id:'all'})).status,200);await new Promise(r=>setTimeout(r,260));
+    assert.equal(sent.length,11);assert.equal((await(await api('/memory/list')).json()).sessions.length,0);
+    // Deletion while an already-issued send awaits acknowledgement must stay deleted.
+    child.send({control:'delayed'});sendOwner(117,'这次等待QQ确认');await until(()=>sent.length===12);
+    await api('/memory/delete',{id:'all'});await new Promise(r=>setTimeout(r,260));
+    assert.equal((await(await api('/memory/list')).json()).sessions.length,0);
+    child.send({control:'normal'});sendOwner(118,'现在正常回复');await until(()=>sent.length===13);
+    await until(async()=>((await(await api('/memory/list')).json()).sessions[0]?.turns===1));
+    const originalScopes=(await(await api('/memory/list')).json()).sessions;
+    await update({persona:'另一位角色'});sendOwner(119,'角色更换以后');await until(()=>sent.length===14);
+    assert.equal(models.at(-1).model.messages.length,2,'new persona never reuses old conversation');
+    await until(async()=>((await(await api('/memory/list')).json()).sessions.length===2));
+    assert.ok((await(await api('/memory/list')).json()).sessions.some(r=>r.id===originalScopes[0].id));
+    assert.equal((await(await api('/memory/export',{})).json()).jsonl.split('\n').length,1,'training export does not mix different characters');
+    await update({compressionMode:'model'});
+    for(let i=0;i<15;i++){const count=sent.length;sendOwner(130+i,'补充长对话'+i);await until(()=>sent.length===count+1);}
+    await until(()=>models.some(m=>m.model.messages[0].content.includes('请将以下旧对话压缩')));
+    const beforeNext=sent.length,startedNext=Date.now();sendOwner(145,'摘要在后台时继续说话');await until(()=>sent.length===beforeNext+1);
+    assert.ok(Date.now()-startedNext<800,'optional summarization must not block the QQ reply queue');
+    // Natural chat performs the search AND opens its source before final completion.
+    await update({compressionMode:'local'});
+    assert.equal((await api('/learning/preview',{text:'联网看看DeepSeek最新版本'},false)).status,401);
+    let previousSent=sent.length,previousModels=models.length;
+    sendOwner(150,'联网看看DeepSeek最新版本');await until(()=>sent.length===previousSent+1);
+    assert.equal(models.length,previousModels+1,'an explicit topic uses one final completion, without a routing call');
+    assert.ok(browses.some(n=>n.url.includes('bing.com/search')));assert.ok(browses.some(n=>n.url.includes('example.com/deepseek')));
+    assert.ok(browses.every(n=>n.auth===undefined));assert.match(models.at(-1).model.messages.at(-1).content,/公开网页正文摘录/);
+    assert.match(models.at(-1).model.messages.at(-1).content,/来源：https:\/\/example.com\/deepseek/);
+    previousSent=sent.length;previousModels=models.length;sendOwner(151,'那你再查一下');await until(()=>sent.length===previousSent+1);
+    assert.equal(models.length,previousModels+1,'simple repeat search uses the known topic without an extra model call');
+    previousSent=sent.length;previousModels=models.length;sendOwner(154,'那它当前版本支持什么，联网查一下');await until(()=>sent.length===previousSent+1);
+    assert.equal(models.length,previousModels+2,'ambiguous followup uses one bounded planner then answers');
+    assert.match(models.at(-2).model.messages.at(-1).content,/DeepSeek/);
+    const beforeDecline=browses.length;previousSent=sent.length;sendOwner(152,'不要联网，直接和我聊聊白饭');await until(()=>sent.length===previousSent+1);assert.equal(browses.length,beforeDecline);
+    const preview=await(await api('/learning/preview',{text:'去搜一下DeepSeek最新版本'})).json();assert.equal(preview.items.length,1);assert.equal(sent.length,previousSent+1,'preview cannot send QQ');
+    await update({learningEnabled:false});previousSent=sent.length;const beforeDisabled=browses.length;sendOwner(153,'去搜一下禁用时不能查');await until(()=>sent.length===previousSent+1);assert.equal(browses.length,beforeDisabled);
+    // An unconfirmed send is not a training sample and disables automatic reply.
+    const beforeUnconfirmed=(await(await api('/memory/export',{})).json()).jsonl;
+    const beforeFailed=sent.length;child.send({control:'unconfirmed'});sendOwner(146,'不会记住未确认发送');await until(()=>sent.length===beforeFailed+1);
+    await until(async()=>!(await(await api('/state')).json()).enabled);
+    assert.equal((await(await api('/memory/export',{})).json()).jsonl,beforeUnconfirmed);
+    // Candidate-card testing cannot mutate the live model or send a QQ message.
+    const liveBefore=await(await api('/state')).json(),sentBeforeCheck=sent.length;
+    const badProfile={settings:{apiUrl:'https://relay.example/v1',model:'unavailable-model',apiProtocol:'chat'},apiKey:'synthetic-bad-key'};
+    assert.equal((await api('/model/check',badProfile,false)).status,401);
+    const badCheck=await(await api('/model/check',badProfile)).json();assert.equal(badCheck.ok,false);assert.match(badCheck.message,/401/);assert.ok(!badCheck.message.includes('synthetic-upstream-secret'));
+    const liveAfter=await(await api('/state')).json();assert.equal(liveAfter.activeModel,liveBefore.activeModel);assert.equal(liveAfter.activeApiUrl,liveBefore.activeApiUrl);assert.equal(sent.length,sentBeforeCheck);
+    // The tavern-growth API is authenticated and observed feedback changes the next real request.
+    await update({enabled:true,others:true,growthEnabled:true,growthReflection:false,compressionMode:'local'});child.send({control:'normal'});
+    assert.equal((await api('/growth/list',undefined,false)).status,401);assert.equal((await api('/growth/update',{id:'all',reset:true},false)).status,401);
+    let n=sent.length;sendOwner(200,'请温柔一点，回答简短一点');await until(()=>sent.length===n+1);
+    const growthRows=await until(async()=>{const a=(await(await api('/growth/list')).json()).sessions;return a.find(r=>r.scores.warmth>0)?a:null;});
+    const grown=growthRows.find(r=>r.scores.warmth>0);assert.equal(grown.scores.detail,-1);
+    n=sent.length;sendOwner(201,'今天过得怎么样');await until(()=>sent.length===n+1);assert.match(models.at(-1).model.messages[0].content,/酒馆对话养成/);assert.match(models.at(-1).model.messages[0].content,/更温柔/);
+    await api('/growth/update',{id:grown.id,locked:true});n=sent.length;sendOwner(202,'再温柔一点');await until(()=>sent.length===n+1);
+    assert.equal((await(await api('/growth/list')).json()).sessions.find(r=>r.id===grown.id).scores.warmth,1);
+    // Owner moderation is applied immediately even while a target's model request is pending.
+    const groupMessage=(id,user,text,extra=[])=>({post_type:'message',message_type:'group',self_id:765432,user_id:user,group_id:54321,time:Math.floor(Date.now()/1000),message_id:id,message:[{type:'text',data:{text}},...extra]});
+    n=sent.length;const modelCount=models.length;
+    child.send({event:groupMessage(210,888888,'@deepseek 等待切换并被拉黑')});await until(()=>models.length>modelCount);
+    child.send({event:groupMessage(211,999999,'@deepseek 拉黑 ',[{type:'at',data:{qq:'888888'}}])});await until(()=>sent.length===n+1);
+    assert.match(sent.at(-1).message[0].data.text,/已在本群停止回应/);assert.ok(!sent.slice(n).some(p=>p.message[0].data.text.includes('配一碗白饭')),'pending target answer is cancelled');
+    assert.equal((await api('/moderation/list',undefined,false)).status,401);
+    assert.equal((await(await api('/moderation/list')).json()).groups[0].users[0],'888888');
+    const afterBlock=models.length;n=sent.length;child.send({event:groupMessage(212,888888,'@deepseek 去搜一下今天新闻')});await pause();await pause();assert.equal(sent.length,n);assert.equal(models.length,afterBlock,'blocked event makes no model request');
+    child.send({event:groupMessage(213,123456,'@deepseek 解除拉黑 ',[{type:'at',data:{qq:'888888'}}])});await pause();await pause();assert.equal((await(await api('/moderation/list')).json()).groups[0].users[0],'888888','former owner cannot unblock');
+    n=sent.length;child.send({event:groupMessage(214,999999,'@deepseek 解除拉黑 ',[{type:'at',data:{qq:'888888'}}])});await until(()=>sent.length===n+1);assert.match(sent.at(-1).message[0].data.text,/已解除/);
+    n=sent.length;child.send({event:groupMessage(215,888888,'@deepseek 解除后可以继续聊天')});await until(()=>sent.length===n+1);assert.match(sent.at(-1).message[0].data.text,/白饭/);
+    // No real QQ: these mocks verify strict owner gating before any model or mutating RPC.
+    for(const route of ['/media/state'])assert.equal((await api(route,undefined,false)).status,401);
+    for(const route of ['/stickers/sync','/voice/preview','/voice/characters','/qzone/draft','/qzone/publish'])assert.equal((await api(route,{},false)).status,401);
+    n=sent.length;const beforeUnauthorized=rpcs.length,modelBefore=models.length;
+    child.send({event:groupMessage(220,888888,'@deepseek 发条说说：不允许发布')});await until(()=>sent.length===n+1);
+    assert.match(sent.at(-1).message[0].data.text,/只有主人/);assert.ok(!rpcs.slice(beforeUnauthorized).includes('send_qzone_msg'));assert.equal(models.length,modelBefore);
+    n=sent.length;sendOwner(221,'发条说说：隔离测试');await until(()=>sent.length===n+1);assert.ok(rpcs.includes('send_qzone_msg'));assert.match(sent.at(-1).message[0].data.text,/未确认/);
+    const beforeRepeat=rpcs.filter(x=>x==='send_qzone_msg').length;n=sent.length;sendOwner(222,'发条说说：不会重发');await until(()=>sent.length===n+1);assert.equal(rpcs.filter(x=>x==='send_qzone_msg').length,beforeRepeat);
+    n=sent.length;sendOwner(223,'音高：10%');await until(()=>sent.length===n+1);assert.equal(JSON.parse(await fs.readFile(path.join(dir,'settings.json'),'utf8')).speechPitch,10);assert.match(sent.at(-1).message[0].data.text,/已应用/);
+    n=sent.length;child.send({event:groupMessage(224,888888,'@deepseek 音高：30%')});await until(()=>sent.length===n+1);assert.equal(JSON.parse(await fs.readFile(path.join(dir,'settings.json'),'utf8')).speechPitch,10);
+  }finally{try{await api('/shutdown',{});}catch{}await until(()=>exited||false).catch(()=>child.kill());if(child.connected)child.disconnect();}
+});

@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>QQ 登录</title>
+<style>
+body{font:17px system-ui,sans-serif;color:#1d2c3a;background:#f0f6fa;margin:0;padding:22px;line-height:1.6}
+main{max-width:620px;margin:auto}h1{font-size:24px}button{display:block;width:100%;padding:13px;margin:12px 0;border:1px solid #a6cbdc;border-radius:12px;background:#fff;color:#163e52;font:inherit}
+#qr{display:block;width:256px;height:256px;max-width:90%;object-fit:contain;margin:20px auto;background:white;image-rendering:pixelated}#qr[hidden],button[hidden]{display:none}
+#status{white-space:pre-wrap}small{color:#526777}button:disabled{opacity:.6}
+</style>
+<main><h1>接入 QQ</h1><p id="status">正在检查本机 QQ 接入…</p><div id="accounts"></div>
+<img id="qr" hidden alt="QQ 登录二维码"><button id="refresh" hidden>刷新登录二维码</button>
+<small>使用手机 QQ 扫码并按官方提示确认。已有登录缓存可快速登录。账号与在线状态核验通过后，返回工作台即可。</small></main>
+<script src="/login.js"></script></html>

@@ -1,0 +1,13 @@
+{
+  "source": "native-runtime/snow-preload.c",
+  "sourceSha256": "dfcfdd9214505e6a14995e9dcd250672be3afb5bea8bd56ac0abbaab46192f68",
+  "binarySha256": "969ce03a9ac5eddbb05f8cdb5b1eb493bfde7d9928ee61010389a4bcfc764c1e",
+  "target": "Linux AArch64 glibc",
+  "compiler": "Ubuntu GCC 13.3.0",
+  "flags": [
+    "-shared",
+    "-fPIC",
+    "-O2",
+    "-nostdlib"
+  ]
+}
