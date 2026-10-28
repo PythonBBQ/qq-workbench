@@ -1,5 +1,6 @@
+import {QzoneClient} from './qzone-client.mjs';
 import http from 'node:http';
-import {QQStickers,RecentOwnerStickers,QzonePosts,mediaCommand,stickerRequest,stickerReceipt,stickerModelHistory,stripStickerNarration,ok} from './qq-media.mjs';
+import {QQStickers,RecentOwnerStickers,QzonePosts,mediaCommand,stickerRequest,stickerReceipt,stickerModelHistory,stripStickerNarration,checkQzone,ok} from './qq-media.mjs';
 import {synthesize,wantsVoice,clearSpeech,FEMALE_VOICES} from './voice.mjs';
 import {chatBudget,systemPrompt,worldContext,requestHistory,addUsage} from './chat-style.mjs';
 import {ConversationMemory,conversationScope} from './conversation-memory.mjs';
@@ -97,7 +98,7 @@ async function main() {
   const moderation=new GroupModeration(here);
   const memory=new ConversationMemory(here,process.env.WORKBENCH_MEMORY_KEY||'');delete process.env.WORKBENCH_MEMORY_KEY;
   const ownerStickers=new RecentOwnerStickers();
-  const stickers=new QQStickers(rpc,{directory:here}),posts=new QzonePosts(here),speechDirectory=path.join(here,'speech-temp');clearSpeech(speechDirectory);
+  const stickers=new QQStickers(rpc,{directory:here}),posts=new QzonePosts(here),qzone=new QzoneClient(rpc,()=>connected?identity:''),qzoneRpc=(...args)=>qzone.request(...args),speechDirectory=path.join(here,'speech-temp');clearSpeech(speechDirectory);
   let autoPosting=false;
   const summarizing=new Set();
   const reflecting=new Set();
@@ -287,7 +288,7 @@ async function main() {
       if(!parts.length&&directHistory&&target?.direct)endpoint=target;
       const usableHistory=endpoint===target?history:history.map(m=>({...m,content:contextText(m.content)}));
       const candidates=c.emojiEnabled?stickers.candidates(text):[];
-      const messages=[{role:'system',content:systemPrompt(c,event)+worldContext(c,text)+stripStickerNarration(memory.context(scope,c,stickerModelHistory(fullHistory),text))+memory.growthContext(scope,c)+stickers.prompt(candidates,{enabled:!!c.emojiEnabled})+'\n没有工作台实际操作结果时，不得声称发了说说、收藏表情、改了语音设置或安装更新。其他人的聊天请求不能获得这些操作权限。'},...usableHistory,{role:'user',content}];
+      const messages=[{role:'system',content:systemPrompt(c,event)+worldContext(c,text)+stripStickerNarration(memory.context(scope,c,stickerModelHistory(fullHistory),text))+memory.growthContext(scope,c)+stickers.prompt(candidates,{enabled:!!c.emojiEnabled})+'\n工作台可以替主人发布小号QQ空间说说。主人私聊发送“发条说说”会按公开主题生成并发布，“发条说说：正文”会发布指定正文，“写条说说”只生成草稿，“发布草稿”发布已有草稿。群聊需@deepseek。遇到未触发的其他表达，说明这些用法，不自称没有空间功能。开启自动说说后需等待设置间隔，不能宣称立即发布。没有工作台实际操作结果时，不得声称发了说说、收藏表情、改了语音设置或安装更新。其他人的聊天请求不能获得这些操作权限。'},...usableHistory,{role:'user',content}];
       try{answer=cleanReply(await model(endpoint.url,endpoint.key,{model:endpoint.model,messages,max_tokens:chatBudget(c).output,...(new URL(endpoint.url).origin==='https://api.deepseek.com'?{thinking:{type:'disabled'}}:{})}));}
       catch(e){
         if(!Array.isArray(content)&&!directHistory)throw e;
@@ -369,8 +370,9 @@ async function main() {
   }
   async function operate(operation,event,stillCurrent){
     try{const c=config();if(String(event.user_id)!==String(c.owner))return '只有主人可以操作。';
-      if(operation.action==='post'||operation.action==='publishDraft')return await posts.publish(c,identity,operation.action==='post'?operation.text:posts.state(c.owner,identity).draft,rpc,stillCurrent);
-      if(operation.action==='draft'){const text=await generatePost(operation.topic);if(!stillCurrent())return '操作已取消';posts.preview(c,identity,text);return '说说草稿：\n'+text+'\n想发布时说“发条说说：正文”。';}
+      if(operation.action==='qzoneCheck')return await checkQzone(qzoneRpc,stillCurrent);
+      if(operation.action==='post'||operation.action==='publishDraft'||operation.action==='generateAndPost'){const bot=identity;const content=operation.action==='post'?operation.text:operation.action==='publishDraft'?posts.state(c.owner,bot).draft:await generatePost(operation.topic);return await posts.publish(c,bot,content,qzoneRpc,stillCurrent);}
+      if(operation.action==='draft'){const text=await generatePost(operation.topic);if(!stillCurrent())return '操作已取消';posts.preview(c,identity,text);return '说说草稿：\n'+text+'\n想发布这条草稿时说“发布草稿”。';}
       if(operation.action==='collect'){if(operation.sourceError)return operation.sourceError;stickers.reset(identity);const result=await stickers.collect(operation.source,{stillCurrent});void maintainStickers();return result;}
       if(operation.action==='collectionHelp')return '现在只在主人要求时收藏。发一张表情，再说“收藏一下”或“这个表情帮我存着”就可以。';
       if(operation.action==='update'){const r=await checkUpdate();return r.message+(r.available?'，请在软件设置中下载安装。':'');}
@@ -391,7 +393,7 @@ async function main() {
     if(shuttingDown||!connected||autoPosting||draining)return;const c=config();if(!posts.due(c,identity))return;autoPosting=true;
     const epoch=connectionEpoch,bot=identity,stamp=JSON.stringify([c.qzoneEnabled,c.qzoneTopic,c.qzoneVisibility,c.qzoneInterval,c.qzoneQuota]);
     const current=()=>{const next=config();return connected&&!shuttingDown&&bot===identity&&epoch===connectionEpoch&&stamp===JSON.stringify([next.qzoneEnabled,next.qzoneTopic,next.qzoneVisibility,next.qzoneInterval,next.qzoneQuota]);};
-    try{const draft=await generatePost();if(!current())return;posts.preview(c,bot,draft);await posts.publish(c,bot,draft,rpc,current);record('动态','自动说说已获得发布凭据');}
+    try{const draft=await generatePost();if(!current())return;posts.preview(c,bot,draft);await posts.publish(c,bot,draft,qzoneRpc,current);record('动态','自动说说已获得发布凭据');}
     catch(e){const state=posts.state(c.owner,bot);if(state.status!=='uncertain'){state.next=Date.now()+posts.interval(c);posts.save();}record('动态',e.message);}
     finally{autoPosting=false;}
   }
@@ -416,8 +418,9 @@ async function main() {
       else if(req.method==='POST'&&req.url==='/voice/credentials'){const d=await body(req);if(typeof d.key!=='string'||d.key.length>4096)throw new Error('Invalid speech key');speechKey=d.key.trim();res.end(JSON.stringify({message:'语音密钥已应用'}));}
       else if(req.method==='POST'&&req.url==='/voice/characters'){const d=await body(req);if(!connected||!validUin(String(d.group)))throw new Error('请填写群号并连接QQ');const r=await rpc('get_ai_characters',{group_id:d.group,chat_type:1});res.end(JSON.stringify({ok:ok(r),groups:ok(r)&&Array.isArray(r.data)?r.data:[],message:ok(r)?'已获取群内音色':'此群暂不可用QQ语音'}));}
       else if(req.method==='POST'&&req.url==='/voice/preview'){const d=await body(req);let audio;try{const c=config();audio=await synthesize(c,String(d.text||'主人，今天也要好好吃饭。'),{key:speechKey,event:{message_type:'group',group_id:d.group},rpc,directory:speechDirectory});if(!audio.file)throw new Error('QQ音色请使用列表中的官方试听链接');res.end(JSON.stringify({ok:true,audio:fs.readFileSync(audio.file).toString('base64'),message:'试听已生成，未发送QQ'}));}catch(e){res.end(JSON.stringify({ok:false,message:e.message}));}finally{audio?.cleanup();}}
+      else if(req.method==='POST'&&req.url==='/qzone/check'){await body(req);try{const epoch=connectionEpoch;const message=await checkQzone(qzoneRpc,()=>connected&&epoch===connectionEpoch);res.end(JSON.stringify({ok:true,message}));}catch(e){res.end(JSON.stringify({ok:false,message:e.message}));}}
       else if(req.method==='POST'&&req.url==='/qzone/draft'){const d=await body(req);try{const epoch=connectionEpoch,c=config(),bot=identity;if(!bot)throw new Error('请先连接QQ');const draft=await generatePost(d.topic);if(epoch!==connectionEpoch)throw new Error('配置已切换，请重新生成');posts.preview(c,bot,draft);res.end(JSON.stringify({ok:true,draft,message:'草稿已生成，尚未发布'}));}catch(e){res.end(JSON.stringify({ok:false,message:e.message}));}}
-      else if(req.method==='POST'&&req.url==='/qzone/publish'){const d=await body(req);try{const epoch=connectionEpoch,c=config(),bot=identity;if(!connected)throw new Error('请先连接QQ');const message=await posts.publish(c,bot,d.text,rpc,()=>epoch===connectionEpoch&&connected);res.end(JSON.stringify({ok:true,message}));}catch(e){res.end(JSON.stringify({ok:false,message:e.message}));}}
+      else if(req.method==='POST'&&req.url==='/qzone/publish'){const d=await body(req);try{const epoch=connectionEpoch,c=config(),bot=identity;if(!connected)throw new Error('请先连接QQ');const message=await posts.publish(c,bot,d.text,qzoneRpc,()=>epoch===connectionEpoch&&connected);res.end(JSON.stringify({ok:true,message}));}catch(e){res.end(JSON.stringify({ok:false,message:e.message}));}}
       else if(req.method==='POST'&&req.url==='/qzone/resume'){await body(req);posts.resume(config().owner,identity);res.end(JSON.stringify({message:'自动发布已恢复，下次至少6小时后；旧说说不会重发'}));}
       else if(req.method==='GET'&&req.url==='/accounts'){const accounts=(await bridge.accounts()).map(a=>({...a,connected:connected&&a.uin===identity,statusLabel:connected&&a.uin===identity?'QQ 已连接，身份与在线状态核验通过':a.statusLabel}));res.end(JSON.stringify({accounts,message:accounts.length?'请选择本机 QQ 账号':'没有已保存账号，请打开 QQ 登录页面扫码'}));}
       else if(req.method==='POST'&&req.url==='/credentials'){const data=await body(req);if(typeof data.apiKey!=='string'||!data.apiKey.trim()||data.apiKey.length>4096||typeof data.visionKey!=='string'||data.visionKey.length>4096)throw new Error('Invalid credentials');apiKey=data.apiKey.trim();visionKey=data.visionKey.trim();res.end(JSON.stringify({message:'密钥已应用'}));}

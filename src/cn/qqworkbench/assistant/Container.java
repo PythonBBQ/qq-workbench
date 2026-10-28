@@ -38,7 +38,7 @@ final class Container {
             progress.update("导入已验证的 SnowLuma 1.14.22 接入组件…");bridgeRuntime.mkdirs();extract("snowluma-bridge.tar.gz",bridgeRuntime);Files.write(new File(bridgeRuntime,".bundle-1.14.22").toPath(),new byte[]{1});
         }
         File qq=new File(root,"opt/qq-workbench/linuxqq.deb");if(!qq.isFile())copyAsset("linuxqq.deb",qq);
-          for(String name:new String[]{"install.sh","session.sh","assistant.mjs","qq-media.mjs","voice.mjs","model-client.mjs","personality-growth.mjs","group-moderation.mjs","conversation-memory.mjs","video.mjs","video-decoder.mjs","native-network.mjs","web-learning.mjs","browse-intent.mjs","learning.mjs","images.mjs","chat-style.mjs","proc-locks-compat.mjs","snow-setup.py","snowluma-bridge.mjs","login.html","login.js"})copyAsset(name,new File(root,"opt/qq-workbench/"+name));
+          for(String name:new String[]{"install.sh","session.sh","assistant.mjs","qq-media.mjs","qzone-client.mjs","voice.mjs","model-client.mjs","personality-growth.mjs","group-moderation.mjs","conversation-memory.mjs","video.mjs","video-decoder.mjs","native-network.mjs","web-learning.mjs","browse-intent.mjs","learning.mjs","images.mjs","chat-style.mjs","proc-locks-compat.mjs","snow-setup.py","snowluma-bridge.mjs","login.html","login.js"})copyAsset(name,new File(root,"opt/qq-workbench/"+name));
         copyAsset("snow-preload-loader.bin",new File(root,"opt/qq-workbench/snow-preload-loader.so"));
         File settings=new File(context.getFilesDir(),"settings.json");
         File liveSettings=new File(root,"opt/qq-workbench/settings.json");

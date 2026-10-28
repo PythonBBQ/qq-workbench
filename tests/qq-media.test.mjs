@@ -35,14 +35,14 @@ test('posts schedule a delayed first attempt, enforce quiet hours and daily quot
   const dir=temp();try{const p=new QzonePosts(dir),c={owner:'123456',enabled:true,qzoneEnabled:true,qzoneInterval:6,qzoneQuota:1};
     const first=Date.parse('2026-10-27T02:00:00Z');assert.equal(p.due(c,'765432',first),false);assert.equal(p.due(c,'765432',first+6*3600000),true);
     assert.equal(p.due(c,'765432',Date.parse('2026-10-27T18:00:00Z')),false);
-    let calls=0;await p.publish(c,'765432','白饭真好吃',async(action,params)=>{calls++;assert.equal(action,'send_qzone_msg');assert.equal(params.ugc_right,4);return receipt;},()=>true,first);
+    let calls=0;await p.publish(c,'765432','白饭真好吃',async(action,params)=>{if(action==='get_qzone_msg_list')return {status:'ok',retcode:0,data:{total:0,msglist:[]}};calls++;assert.equal(action,'send_qzone_msg');assert.equal(params.ugc_right,4);return receipt;},()=>true,first);
     assert.equal(calls,1);assert.equal(p.due(c,'765432',first+6*3600000),false);
     await assert.rejects(()=>p.publish(c,'765432','第二条',async()=>receipt,()=>true,first),/上限/);
     assert.equal(p.state(c.owner,'765432').last,'白饭真好吃');
   }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
 test('uncertain post persists pause across restart; resume never replays its draft',async()=>{
-  const dir=temp();try{const c={owner:'123456'},p=new QzonePosts(dir);let calls=0;await assert.rejects(()=>p.publish(c,'765432','不重发',async()=>{calls++;throw new Error('timeout');}),/未确认/);
+  const dir=temp();try{const c={owner:'123456'},p=new QzonePosts(dir);let calls=0;await assert.rejects(()=>p.publish(c,'765432','不重发',async(action)=>{if(action==='get_qzone_msg_list')return {status:'ok',retcode:0,data:{total:0,msglist:[]}};calls++;throw new Error('timeout');}),/未确认/);
     const again=new QzonePosts(dir);assert.equal(again.state(c.owner,'765432').paused,true);await assert.rejects(()=>again.publish(c,'765432','不重发',async()=>{calls++;return receipt;}),/未确认/);assert.equal(calls,1);
     again.resume(c.owner,'765432');assert.equal(again.state(c.owner,'765432').status,'idle');assert.ok(again.state(c.owner,'765432').next>Date.now());
   }finally{fs.rmSync(dir,{recursive:true,force:true});}
@@ -186,4 +186,25 @@ test('sticker rotation belongs to the current conversation, not other private ch
   const s=new QQStickers(()=>{});s.reset('765432');s.faces=[{id:'one',desc:''},{id:'two',desc:''}];
   assert.equal(s.pick('发个表情','private-one').id,'one');assert.equal(s.pick('发个表情','group-one').id,'one');assert.equal(s.pick('还有其他表情吗','private-one').id,'two');
   s.reset('888888');assert.equal(s.selections.size,0);
+});
+
+
+test('natural owner Qzone publishing, drafts and read-only checks retain explicit intent',()=>{
+  for(const text of ['发条说说','发个说说吧','去发QQ空间','帮我发个动态','在QQ空间发一条说说','给我发个QQ空间动态'])assert.deepEqual(mediaCommand(event(text),'123456'),{action:'generateAndPost',topic:''},text);
+  assert.deepEqual(mediaCommand(event('发一条关于白饭的说说'),'123456'),{action:'generateAndPost',topic:'白饭'});
+  assert.deepEqual(mediaCommand(event('发QQ空间：今天想吃白饭'),'123456'),{action:'post',text:'今天想吃白饭'});
+  assert.deepEqual(mediaCommand(event('发条说说 今天想吃白饭'),'123456'),{action:'post',text:'今天想吃白饭'});
+  assert.equal(mediaCommand(event('写个说说'),'123456').action,'draft');
+  assert.equal(mediaCommand(event('发布草稿'),'123456').action,'publishDraft');
+  assert.equal(mediaCommand(event('检查QQ空间'),'123456').action,'qzoneCheck');
+  for(const text of ['别发条说说','不要发QQ空间','怎么发条说说','有人说发个说说','“发条说说”','发条说说是什么功能','我发了说说'])assert.equal(mediaCommand(event(text),'123456'),null,text);
+  assert.equal(mediaCommand(event('发条说说',999999),'123456'),null);
+  assert.equal(mediaCommand(event('发条说说',123456,{message_type:'group'}),'123456'),null);
+  assert.equal(mediaCommand(event('@deepseek 发条说说',123456,{message_type:'group'}),'123456').action,'generateAndPost');
+});
+test('a failed read-only Qzone preflight preserves draft and does not consume quota, write or pause',async()=>{
+  const dir=temp();try{const p=new QzonePosts(dir),c={owner:'123456'},actions=[];
+    await assert.rejects(()=>p.publish(c,'765432','保留正文',async a=>{actions.push(a);return {status:'failed',retcode:100,message:'cookie invalid synthetic-secret'};}),/尚未发布.*凭据/);
+    assert.deepEqual(actions,['get_qzone_msg_list']);const s=p.state(c.owner,'765432');assert.equal(s.count,0);assert.equal(s.paused,false);assert.equal(s.draft,'保留正文');assert.ok(s.next>Date.now()+5*3600000,'automatic failures back off rather than generating every minute');assert.ok(!JSON.stringify(s).includes('synthetic-secret'));
+  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });

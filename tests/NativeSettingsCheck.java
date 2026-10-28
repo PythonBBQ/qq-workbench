@@ -6,6 +6,10 @@ import org.json.JSONObject;
 public final class NativeSettingsCheck {
     static void check(boolean value){if(!value)throw new AssertionError();}
     public static void main(String[] args)throws Exception{
+        String endpoint="https://h5.qzone.qq.com/proxy/domain/taotao.qzone.qq.com/cgi-bin/emotion_cgi_publish_v6";
+        check(NativeNetwork.qzoneCredentials(new java.net.URL(endpoint),"POST"));
+        check(!NativeNetwork.qzoneCredentials(new java.net.URL(endpoint),"GET"));
+        for(String url:new String[]{endpoint.replace("h5.qzone.qq.com","h5.qzone.qq.com.evil.example"),endpoint+"/extra",endpoint.replace("https:","http:"),endpoint.replace("h5.qzone.qq.com","h5.qzone.qq.com:8443")})check(!NativeNetwork.qzoneCredentials(new java.net.URL(url),"POST"));
         check(RuntimePolicy.mayRecover(1000,0,2));check(!RuntimePolicy.mayRecover(1000,0,3));check(RuntimePolicy.mayRecover(601000,0,3));
         check(RuntimePolicy.resetWindow(601000,0));check(RuntimePolicy.resetWindow(500,1000));
         check(RuntimePolicy.unexpectedExit(137,false));check(!RuntimePolicy.unexpectedExit(75,false));check(!RuntimePolicy.unexpectedExit(0,false));check(!RuntimePolicy.unexpectedExit(137,true));

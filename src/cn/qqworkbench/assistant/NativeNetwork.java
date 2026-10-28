@@ -69,13 +69,19 @@ final class NativeNetwork implements AutoCloseable {
             try{if(updates){if(context==null)throw new IOException("Update service unavailable");response(s,200,AppUpdates.check(context));}else if(video){if(context==null)throw new IOException("Video service unavailable");response(s,200,VideoFrames.remote(context,request.getString("url")));}else response(s,200,fetch(request));}catch(Exception e){String type=e instanceof java.net.SocketTimeoutException?"timeout":e instanceof java.net.UnknownHostException?"dns":e instanceof javax.net.ssl.SSLException?"tls":"network";response(s,502,new JSONObject().put("error",type));}
         }catch(Exception ignored){}
     }
+    static boolean qzoneCredentials(URL url,String method){
+        if(!url.getProtocol().equals("https")||(url.getPort()!=-1&&url.getPort()!=443)||url.getUserInfo()!=null)return false;
+        String prefix=url.getHost().equalsIgnoreCase("h5.qzone.qq.com")?"/proxy/domain/taotao.qzone.qq.com/":url.getHost().equalsIgnoreCase("user.qzone.qq.com")?"/proxy/domain/taotao.qq.com/":"";
+        if(prefix.isEmpty())return false;
+        return (method.equals("GET")&&url.getPath().equals(prefix+"cgi-bin/emotion_cgi_msglist_v6"))||(method.equals("POST")&&url.getPath().equals(prefix+"cgi-bin/emotion_cgi_publish_v6"));
+    }
     JSONObject fetch(JSONObject request)throws Exception{
         URL url=publicUrl(request.getString("url"));String method=request.optString("method","GET");
         if(!method.equals("GET")&&!method.equals("POST"))throw new IOException("Unsupported method");
         HttpURLConnection c=(HttpURLConnection)url.openConnection();active.add(c);
         int timeout=Math.max(500,Math.min(90000,request.optInt("timeoutMs",90000)));
         try{c.setInstanceFollowRedirects(false);c.setConnectTimeout(Math.min(15000,timeout));c.setReadTimeout(timeout);c.setRequestMethod(method);
-            JSONObject h=request.optJSONObject("headers");if(h!=null)for(Iterator<String> keys=h.keys();keys.hasNext();){String key=keys.next();if(Arrays.asList("authorization","content-type","accept","user-agent","ocp-apim-subscription-key","x-microsoft-outputformat").contains(key.toLowerCase(Locale.ROOT)))c.setRequestProperty(key,h.getString(key));}
+            JSONObject h=request.optJSONObject("headers");if(h!=null)for(Iterator<String> keys=h.keys();keys.hasNext();){String key=keys.next();if((qzoneCredentials(url,method)&&Arrays.asList("cookie","referer").contains(key.toLowerCase(Locale.ROOT)))||Arrays.asList("authorization","content-type","accept","user-agent","ocp-apim-subscription-key","x-microsoft-outputformat").contains(key.toLowerCase(Locale.ROOT)))c.setRequestProperty(key,h.getString(key));}
             if(method.equals("POST")){byte[] bytes=request.optString("body","").getBytes(StandardCharsets.UTF_8);c.setDoOutput(true);c.setFixedLengthStreamingMode(bytes.length);try(OutputStream out=c.getOutputStream()){out.write(bytes);}}
             int status=c.getResponseCode();JSONObject resultHeaders=new JSONObject();for(String key:new String[]{"Content-Type","Location","Retry-After"}){String value=c.getHeaderField(key);if(value!=null)resultHeaders.put(key,value);}
             try(InputStream stream=status>=400?c.getErrorStream():c.getInputStream()){

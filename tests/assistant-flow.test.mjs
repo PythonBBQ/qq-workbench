@@ -8,7 +8,7 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const pause=()=>new Promise(r=>setTimeout(r,40));
 test('first-run Key applies without restart; pictures and follow-ups use context in one call, no real QQ or model traffic',async()=>{
   const parent=path.join(root,'build','flow-tests');await fs.mkdir(parent,{recursive:true});const dir=await fs.mkdtemp(path.join(parent,'case-'));
-  for(const name of ['assistant.mjs','qq-media.mjs','voice.mjs','model-client.mjs','personality-growth.mjs','group-moderation.mjs','conversation-memory.mjs','video.mjs','video-decoder.mjs','native-network.mjs','web-learning.mjs','browse-intent.mjs','learning.mjs','snowluma-bridge.mjs','images.mjs','chat-style.mjs'])await fs.copyFile(path.join(root,'assets',name),path.join(dir,name));
+  for(const name of ['assistant.mjs','qq-media.mjs','qzone-client.mjs','voice.mjs','model-client.mjs','personality-growth.mjs','group-moderation.mjs','conversation-memory.mjs','video.mjs','video-decoder.mjs','native-network.mjs','web-learning.mjs','browse-intent.mjs','learning.mjs','snowluma-bridge.mjs','images.mjs','chat-style.mjs'])await fs.copyFile(path.join(root,'assets',name),path.join(dir,name));
   await fs.writeFile(path.join(dir,'settings.json'),JSON.stringify({owner:'123456',enabled:true,others:true,rate:100,apiUrl:'https://api.deepseek.com',model:'deepseek-flash',persona:'温柔，爱吃白饭',maxReplyTokens:400,memoryEnabled:false}));
   await fs.writeFile(path.join(dir,'mock.mjs'),`
 import {SnowLumaBridge} from './snowluma-bridge.mjs';
@@ -21,7 +21,7 @@ globalThis.WebSocket=class extends EventTarget{
   static OPEN=1;static CONNECTING=0;
   constructor(){super();socket=this;this.readyState=0;setImmediate(()=>{this.readyState=1;this.dispatchEvent(new Event('open'));});}
   receive(data){this.dispatchEvent(new MessageEvent('message',{data:JSON.stringify(data)}));}
-  send(raw){const d=JSON.parse(raw);process.send({rpc:d.action});const data=d.action==='get_login_info'?{user_id:765432}:d.action==='get_status'?{online:true}:d.action==='add_custom_face'?{emoji_id:'synthetic-face'}:d.action==='fetch_custom_face_detail'?syntheticFaces.map(f=>({...f})):{message_id:Date.now()};
+  send(raw){const d=JSON.parse(raw);process.send({rpc:d.action});const data=d.action==='get_login_info'?{user_id:765432}:d.action==='get_status'?{online:true}:d.action==='get_cookies'?{cookies:'uin=o765432; p_uin=o765432; p_skey=synthetic-cookie'}:d.action==='add_custom_face'?{emoji_id:'synthetic-face'}:d.action==='fetch_custom_face_detail'?syntheticFaces.map(f=>({...f})):{message_id:Date.now()};
     if(d.action==='modify_custom_face'){const f=syntheticFaces.find(f=>f.emoji_id===d.params.emoji_id);if(f)f.desc=d.params.desc;}
     if(d.action==='send_custom_face')process.send({sent:{...d.params,message:[{type:'image',data:{emoji_id:d.params.emoji_id}}]}});
     if(/^send_(group|private)_msg$/.test(d.action))process.send({sent:d.params});
@@ -43,6 +43,10 @@ globalThis.fetch=async(url,options)=>{
     if(body.messages[0].content.includes('请将以下旧对话压缩'))await new Promise(r=>setTimeout(r,1200));
     if(JSON.stringify(body).includes('等待切换'))await new Promise(r=>setTimeout(r,200));
     return Response.json({choices:[{message:{content:'好呀，配一碗白饭！'}}],usage:{prompt_tokens:100,completion_tokens:10,prompt_cache_hit_tokens:20}});
+  }
+  if(['h5.qzone.qq.com','user.qzone.qq.com'].includes(u.hostname)){
+    if(options.method==='POST'){process.send({rpc:'send_qzone_msg',qzoneBody:options.body});return Response.json({code:0,...(globalThis.sendControl==='qzone-accepted'?{tid:'synthetic-post-id'}:{})});}
+    return Response.json({code:0,total:0,msglist:null,logininfo:{uin:765432}});
   }
   if(u.hostname==='api.bilibili.com')return Response.json({code:0,data:{bvid:'BV1GJ411x7h7',title:'做饭与白饭',owner:{name:'测试作者'},desc:'仅供隔离测试的公开简介'}});
   if(u.hostname==='cn.bing.com'){process.send({browse:{url:u.href,auth:options.headers?.Authorization}});return new Response('<li class="b_algo"><h2><a href="https://example.com/deepseek">DeepSeek 官方资料</a></h2><p>公开搜索摘要</p></li>',{headers:{'content-type':'text/html'}});}
@@ -192,7 +196,7 @@ globalThis.fetch=async(url,options)=>{
     n=sent.length;child.send({event:groupMessage(215,888888,'@deepseek 解除后可以继续聊天')});await until(()=>sent.length===n+1);assert.match(sent.at(-1).message[0].data.text,/白饭/);
     // No real QQ: these mocks verify strict owner gating before any model or mutating RPC.
     for(const route of ['/media/state'])assert.equal((await api(route,undefined,false)).status,401);
-    for(const route of ['/stickers/sync','/stickers/annotate','/voice/preview','/voice/characters','/qzone/draft','/qzone/publish'])assert.equal((await api(route,{},false)).status,401);
+    for(const route of ['/stickers/sync','/stickers/annotate','/voice/preview','/voice/characters','/qzone/check','/qzone/draft','/qzone/publish'])assert.equal((await api(route,{},false)).status,401);
     n=sent.length;const beforeUnauthorized=rpcs.length,modelBefore=models.length;
     child.send({event:groupMessage(220,888888,'@deepseek 发条说说：不允许发布')});await until(()=>sent.length===n+1);
     assert.match(sent.at(-1).message[0].data.text,/只有主人/);assert.ok(!rpcs.slice(beforeUnauthorized).includes('send_qzone_msg'));assert.equal(models.length,modelBefore);
@@ -244,6 +248,13 @@ globalThis.fetch=async(url,options)=>{
     const cleanHistory=models.at(-1).model.messages.slice(1,-1);assert.ok(!JSON.stringify(cleanHistory).includes('发送了一张QQ收藏表情'));assert.ok(!JSON.stringify(cleanHistory).includes('工作台非文字消息记录'));
     // Short retries from another conversation must not borrow the owner's previous sticker context.
     n=sent.length;const beforeOther=models.length;child.send({event:{...event,user_id:777777,message_id:267,message:[{type:'text',data:{text:'再试试'}}]}});await until(()=>sent.length===n+1);assert.equal(sent.at(-1).message[0].type,'text');assert.equal(models.length,beforeOther+1);
+    // Natural owner posts generate from public topics only; other users get no write capability.
+    await api('/qzone/resume',{});await update({qzoneQuota:3});child.send({control:'qzone-accepted'});
+    n=sent.length;const postsBefore=rpcs.filter(x=>x==='send_qzone_msg').length,modelsBeforePost=models.length;
+    child.send({event:{...event,message_id:270,message:[{type:'text',data:{text:'发条说说'}}]}});await until(()=>sent.length===n+1);assert.match(sent.at(-1).message[0].data.text,/发布凭据/);assert.equal(rpcs.filter(x=>x==='send_qzone_msg').length,postsBefore+1);assert.equal(models.length,modelsBeforePost+1);
+    assert.equal(models.at(-1).model.messages.length,2);assert.ok(!JSON.stringify(models.at(-1).model.messages).includes('现在聊聊白饭'));
+    n=sent.length;child.send({event:groupMessage(271,888888,'@deepseek 发QQ空间')});await until(()=>sent.length===n+1);assert.match(sent.at(-1).message[0].data.text,/只有主人/);assert.equal(rpcs.filter(x=>x==='send_qzone_msg').length,postsBefore+1);
+    const qzoneChecked=await(await api('/qzone/check',{})).json();assert.equal(qzoneChecked.ok,true);assert.match(qzoneChecked.message,/未发布/);assert.equal(rpcs.filter(x=>x==='send_qzone_msg').length,postsBefore+1);
     // Authenticated Android network/idle events recover the existing session, without re-enabling or replaying.
     assert.equal((await api('/runtime/resume',{reason:'network'},false)).status,401);
     child.send({socketClose:true});await until(async()=>!(await(await api('/state')).json()).connected);

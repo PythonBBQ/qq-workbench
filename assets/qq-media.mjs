@@ -92,20 +92,45 @@ export function mediaCommand(event,owner) {
   if(collectionRequest(raw))return {action:'collect'};
   if(/^(?:开启|关闭)自动收藏表情[。！!\s]*$/.test(raw))return {action:'collectionHelp'};
   if(event.message_type==='group'&&!/@deepseek\b/i.test(raw)&&!(event.message||[]).some(s=>s.type==='at'&&String(s.data?.qq)===String(event.self_id)))return null;
-  const text=raw.replace(/@deepseek\b/ig,'').trim().replace(/^(?:请|帮我|麻烦)(?:你)?\s*/,'');
+  const text=raw.replace(/@deepseek\b/ig,'').trim().replace(/^(?:(?:请|帮我|替我|给我|麻烦你?|你|现在|去|帮忙)\s*)+/,'');
   let m;
-  if((m=text.match(/^(?:发(?:一)?条说说|发布说说|发(?:个|一条)?动态)[：:]\s*([\s\S]{1,1000})$/)))return {action:'post',text:m[1]};
-  if((m=text.match(/^(?:写(?:一)?条说说|生成说说|写动态)(?:[：:]\s*([\s\S]{1,240}))?$/)))return {action:'draft',topic:m[1]||''};
+  const destination='(?:在|到|去)?(?:QQ\\s*空间|空间)(?:里|上)?';
+  const publish='(?:发(?:布|送)?|发表)(?:一)?(?:条|个)?(?:QQ\\s*空间(?:动态)?|空间动态|说说|动态)';
+  const start='(?:'+destination+'\\s*)?'+publish;
+  if(new RegExp('^(?:检查|测试|检测)(?:一下)?(?:QQ\\s*空间|空间)(?:连接|发布)?[。！!\\s]*$','i').test(text))return {action:'qzoneCheck'};
+  if((m=text.match(new RegExp('^'+start+'(?:[：:]\\s*|\\s+|(?:内容|正文)(?:是|为)[：:]?\\s*)([\\s\\S]{1,1000})$','i'))))return {action:'post',text:m[1]};
+  if(new RegExp('^'+start+'(?:一下|吧|看看|呀|哦)*[。！!\\s]*$','i').test(text))return {action:'generateAndPost',topic:''};
+  if((m=text.match(/^(?:(?:在|到|去)?(?:QQ\s*空间|空间)(?:里|上)?\s*)?发(?:布|表)?(?:一)?(?:条|个)?关于(.{1,200}?)的(?:说说|动态)[。！!\s]*$/i)))return {action:'generateAndPost',topic:m[1]};
+  if((m=text.match(/^(?:写|生成)(?:一)?(?:条|个)?(?:说说|动态)(?:[：:]\s*([\s\S]{1,240}))?[。！!\s]*$/)))return {action:'draft',topic:m[1]||''};
   if(/^(?:检查软件更新|检查更新)$/.test(text))return {action:'update'};
   if((m=text.match(/^语音(?:回复)?[：:]\s*([\s\S]{1,260})$/)))return {action:'speak',text:m[1]};
   if(/^(?:开启|关闭)自动说说$/.test(text))return {action:'autoPost',enabled:text.startsWith('开启')};
-  if(/^(?:把)?(?:这条)?(?:草稿|说说)(?:发出去|发布)$/.test(text))return {action:'publishDraft'};
+  if(/^(?:把|将)?(?:这条|这个)?(?:草稿|说说)(?:发出去|发布)(?:吧|一下)?[。！!\s]*$/.test(text)||/^(?:发布|发出)(?:这条|这个)?草稿[。！!\s]*$/.test(text))return {action:'publishDraft'};
   if((m=text.match(/^(开启|关闭)(语音回复|聊天表情)$/)))return {action:'setting',key:({'语音回复':'voiceEnabled','聊天表情':'emojiEnabled'}[m[2]]),value:m[1]==='开启'};
   if((m=text.match(/^(?:切换|使用)?音色[：:]\s*(晓晓|晓伊|曉臻|曉曼|七海|善熙)$/)))return {action:'voice',name:m[1]};
   if((m=text.match(/^(语速|音高)[：:]\s*([+-]?\d{1,3})\s*%?$/)))return {action:'prosody',key:m[1]==='语速'?'speechRate':'speechPitch',value:Math.max(m[1]==='语速'?-40:-30,Math.min(m[1]==='语速'?60:30,Number(m[2])))};
   return null;
 }
 function atomic(file,data){fs.writeFileSync(file+'.tmp',JSON.stringify(data),{mode:0o600});fs.renameSync(file+'.tmp',file);}
+
+// Upstream messages may contain cookies or response bodies. Return fixed diagnostics only.
+export function qzoneFailure(value){
+  const text=String(value?.message||value?.wording||value||'');
+  if(/captcha|验证|风控|频繁|risk/i.test(text))return 'QQ空间要求验证或限制了操作，请在QQ空间完成官方验证后再试';
+  if(/cookie|skey|clientkey|登录|认证|credential|login/i.test(text))return 'QQ空间登录凭据暂不可用，请打开小号QQ空间确认可访问，再重新连接QQ';
+  if(/结构异常|msglist|parse|json/i.test(text))return 'QQ空间返回格式不兼容，请更新工作台后检查连接';
+  if(/not found|unsupported|不支持|未知/i.test(text))return '当前QQ接入不支持空间接口，请检查接入组件';
+  if(/timeout|timed out|超时|网络|域名|证书|network|fetch|ECONN|ETIMEDOUT|ENOTFOUND|EAI_AGAIN/i.test(text))return 'QQ空间网络请求超时或连接失败，请检查网络后重试';
+  return 'QQ空间没有确认请求，请打开小号QQ空间检查登录及访问权限';
+}
+export async function checkQzone(rpc,stillCurrent=()=>true){
+  if(!stillCurrent())throw new Error('空间检查已取消');
+  let r;try{r=await rpc('get_qzone_msg_list',{pos:0,num:1},60000);}catch(e){throw new Error(qzoneFailure(e));}
+  if(!stillCurrent())throw new Error('账号或配置已切换，请重新检查空间');
+  if(!ok(r))throw new Error(qzoneFailure(r));
+  if(!Array.isArray(r.data?.msglist)||!Number.isFinite(r.data?.total))throw new Error('QQ空间返回格式不兼容，请更新工作台后检查连接');
+  return 'QQ空间连接正常，已读取当前小号空间；未发布内容。发布权限仍以实际发布凭据为准';
+}
 
 /** QQ owns the collection. Only bounded descriptions and resource references live here. */
 export class QQStickers {
@@ -214,10 +239,14 @@ export class QzonePosts {
       if(s.paused)throw new Error('上次发布结果未确认，请检查 QQ 空间后在设置恢复');
       if(s.count>=this.quota(c))throw new Error('今天的动态已达到上限');
       const content=String(text).trim().slice(0,1000);if(!content)throw new Error('请先生成或填写说说');if(!stillCurrent())throw new Error('发布已取消');
+      // Read-only validation happens before counting or marking an external write.
+      s.draft=content;this.save();
+      try{await checkQzone(rpc,stillCurrent);}catch(e){s.error=e.message;s.next=now+this.interval(c);this.save();throw new Error('尚未发布：'+e.message);}
+      s.error='';
       s.status='sending';s.next=now+this.interval(c);s.count++;s.draft=content;this.save();
-      try{const r=await rpc('send_qzone_msg',{content,ugc_right:[1,4,64].includes(Number(c.qzoneVisibility))?Number(c.qzoneVisibility):4});
-        if(!ok(r)||typeof r.data?.tid!=='string'||!r.data.tid)throw new Error('missing receipt');s.status='accepted';s.last=content;s.draft='';s.at=now;this.save();return 'QQ 空间已返回发布凭据';
-      }catch{s.status='uncertain';s.paused=true;this.save();throw new Error('说说发布结果未确认，自动发布已暂停；请检查 QQ 空间，不自动重发');}
+      try{const r=await rpc('send_qzone_msg',{content,ugc_right:[1,4,64].includes(Number(c.qzoneVisibility))?Number(c.qzoneVisibility):4},65000);
+        if(!ok(r))throw new Error(qzoneFailure(r));if(typeof r.data?.tid!=='string'||!r.data.tid)throw new Error('missing receipt');s.status='accepted';s.last=content;s.draft='';s.at=now;this.save();return 'QQ 空间已返回发布凭据';
+      }catch(e){s.status='uncertain';s.paused=true;s.error=qzoneFailure(e);this.save();throw new Error('说说发布结果未确认，自动发布已暂停；请检查 QQ 空间，不自动重发。'+s.error);}
     }finally{this.busy=false;}
   }
   resume(owner,bot){const s=this.state(owner,bot);s.paused=false;s.status='idle';s.next=Date.now()+6*3600000;this.save();}
