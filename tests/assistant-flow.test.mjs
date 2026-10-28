@@ -30,7 +30,7 @@ globalThis.WebSocket=class extends EventTarget{
     setTimeout(()=>this.receive({echo:d.echo,status:'ok',retcode:0,data}),delay);}
   close(){this.readyState=3;}
 };
-process.on('message',m=>{if(m.control)globalThis.sendControl=m.control;if(m.faces)syntheticFaces=m.faces;if(m.event)socket?.receive(m.event);});
+process.on('message',m=>{if(m.socketClose&&socket){socket.readyState=3;socket.dispatchEvent(new Event('close'));}if(m.control)globalThis.sendControl=m.control;if(m.faces)syntheticFaces=m.faces;if(m.event)socket?.receive(m.event);});
 globalThis.fetch=async(url,options)=>{
   const u=new URL(url);
   if(u.origin==='https://api.deepseek.com'||u.origin==='https://relay.example'){
@@ -244,5 +244,13 @@ globalThis.fetch=async(url,options)=>{
     const cleanHistory=models.at(-1).model.messages.slice(1,-1);assert.ok(!JSON.stringify(cleanHistory).includes('发送了一张QQ收藏表情'));assert.ok(!JSON.stringify(cleanHistory).includes('工作台非文字消息记录'));
     // Short retries from another conversation must not borrow the owner's previous sticker context.
     n=sent.length;const beforeOther=models.length;child.send({event:{...event,user_id:777777,message_id:267,message:[{type:'text',data:{text:'再试试'}}]}});await until(()=>sent.length===n+1);assert.equal(sent.at(-1).message[0].type,'text');assert.equal(models.length,beforeOther+1);
+    // Authenticated Android network/idle events recover the existing session, without re-enabling or replaying.
+    assert.equal((await api('/runtime/resume',{reason:'network'},false)).status,401);
+    child.send({socketClose:true});await until(async()=>!(await(await api('/state')).json()).connected);
+    n=sent.length;const beforeRecoveryModels=models.length;
+    const recovery=await(await api('/runtime/resume',{reason:'network'})).json();assert.equal(recovery.ok,true);assert.equal(recovery.scheduled,true);
+    await until(async()=>(await(await api('/state')).json()).connected);assert.equal(sent.length,n);assert.equal(models.length,beforeRecoveryModels);
+    const repeated=await(await api('/runtime/resume',{reason:'wake'})).json();assert.equal(repeated.scheduled,false,'network callbacks are debounced');
+    await update({enabled:false});await api('/runtime/resume',{reason:'idle'});assert.equal((await(await api('/state')).json()).enabled,false,'manual pause survives network recovery');
   }finally{try{await api('/shutdown',{});}catch{}await until(()=>exited||false).catch(()=>child.kill());if(child.connected)child.disconnect();}
 });

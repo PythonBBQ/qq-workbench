@@ -3,6 +3,14 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {spawn} from 'node:child_process';
 
+/** A half-open local socket must not prevent all later reconnect attempts. */
+export function socketDeadline(socket,onTimeout,{milliseconds=12000,schedule=setTimeout,cancel=clearTimeout}={}){
+  let active=true;
+  const done=()=>{if(!active)return;active=false;cancel(timer);for(const type of ['open','error','close'])socket.removeEventListener(type,done);};
+  const timer=schedule(()=>{if(!active)return;done();if(socket.readyState===0)onTimeout();},milliseconds);
+  for(const type of ['open','error','close'])socket.addEventListener(type,done);
+  return done;
+}
 export const validUin=value=>/^[1-9][0-9]{4,11}$/.test(String(value));
 export function readyAccount(items) {
   const online=items.filter(p=>p.connected&&p.loggedIn&&validUin(p.uin));

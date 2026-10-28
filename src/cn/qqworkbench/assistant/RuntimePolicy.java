@@ -7,5 +7,6 @@ final class RuntimePolicy {
     static boolean resetWindow(long now,long window){return now<window||now-window>=WINDOW_MS;}
     static long retryDelay(int attempt){return Math.min(30000,5000L*Math.max(1,attempt));}
     static boolean unexpectedExit(int code,boolean stopping){return !stopping&&code!=0&&code!=75;}
+    static boolean resumeDue(long previous,long now){return previous==0||now<previous||now-previous>=15000;}
     static boolean schedulingGap(long previous,long now){return previous>0&&now-previous>90000;}
 }

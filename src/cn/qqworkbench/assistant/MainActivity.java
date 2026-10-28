@@ -292,7 +292,14 @@ public final class MainActivity extends Activity {
     public void onBackPressed(){back();}
     void toast(String s){Toast.makeText(this,s,Toast.LENGTH_LONG).show();}
     protected void onPause(){handler.removeCallbacks(refresh);super.onPause();}
-    protected void onResume(){super.onResume();handler.removeCallbacks(refresh);handler.post(refresh);}
+    protected void onResume(){super.onResume();handler.removeCallbacks(refresh);handler.post(refresh);handler.postDelayed(this::offerBackgroundPermission,2000);}
+    void offerBackgroundPermission(){
+        if(destroyed||!RuntimeService.running||!hasKey()||prefs().getBoolean("backgroundPermissionOffered",false))return;
+        android.os.PowerManager pm=getSystemService(android.os.PowerManager.class);
+        if(pm.isIgnoringBatteryOptimizations(getPackageName()))return;
+        prefs().edit().putBoolean("backgroundPermissionOffered",true).apply();
+        new AlertDialog.Builder(this).setTitle("允许熄屏后继续回复").setMessage("QQ需要在锁屏后持续联网。请允许本应用不受系统电池优化限制；厂商的省电策略可在后台运行设置里查看。").setPositiveButton("去允许",(d,w)->openSystem(new Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,android.net.Uri.parse("package:"+getPackageName())))).setNegativeButton("稍后",null).show();
+    }
     public void onDestroy(){destroyed=true;handler.removeCallbacksAndMessages(null);io.shutdownNow();poller.shutdownNow();if(voicePreview!=null){voicePreview.release();voicePreview=null;}new File(getCacheDir(),"voice-preview.mp3").delete();if(browser!=null)browser.destroy();super.onDestroy();}
     void openSystem(Intent intent){try{startActivity(intent);}catch(ActivityNotFoundException e){toast("系统未提供此入口，请在应用详情中设置");}}
     void backgroundSettings(){base("后台运行","background");section("持续接收 QQ 消息","");
@@ -301,6 +308,9 @@ public final class MainActivity extends Activity {
         note(nm.areNotificationsEnabled()?"运行通知：已允许。":"运行通知：未允许，后台状态通知不可见。请在通知设置开启；这与电池优化是独立设置。");
         android.content.SharedPreferences runtime=getSharedPreferences("runtime",0);long checked=runtime.getLong("lastHealthy",0),gap=runtime.getLong("lastSchedulingGap",0),test=runtime.getLong("backgroundTestStart",0);
         note(runtime.getString("healthStatus","启动后约30秒完成首次独立后台检查。"));
+        note(runtime.getBoolean("networkAvailable",false)?"后台网络：可用":"后台网络：等待连接");
+        note(runtime.getBoolean("wifiProtected",false)?"Wi-Fi熄屏保护：运行中":"Wi-Fi熄屏保护：未启用或当前不是Wi-Fi");
+        long resumed=runtime.getLong("lastNetworkResume",0);if(resumed>0)note("最近网络恢复检查："+android.text.format.DateFormat.format("MM-dd HH:mm:ss",resumed));
         if(checked>0)note("最近健康检查："+android.text.format.DateFormat.format("MM-dd HH:mm:ss",checked));
         if(gap>0)note("曾发现超过90秒的调度中断："+android.text.format.DateFormat.format("MM-dd HH:mm:ss",gap)+"；可能来自系统休眠/冻结，需要结合省电设置检查。");
         if(test>0)note(checked>=test+60000&&gap<test?"短时后台检查：60秒后仍有健康记录；不能代表长期熄屏稳定。":"后台检查尚未通过60秒观察；请稍候返回查看，不要据此认定长期稳定。");
@@ -308,7 +318,7 @@ public final class MainActivity extends Activity {
         button("开始60秒后台检查",()->{runtime.edit().putLong("backgroundTestStart",System.currentTimeMillis()).commit();toast("已开始，请保持后台约一分钟后再打开查看；不发送QQ消息");openSystem(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME));});
         button("刷新后台检查状态",this::backgroundSettings);
         note(pm.isIgnoringBatteryOptimizations(getPackageName())?"系统电池优化：已允许。厂商省电策略仍需单独检查。":"系统电池优化：尚未放开。");
-        help("后台收消息说明","QQ 需要持续联网。若离开软件后不回复，请允许通知、后台运行和厂商自启动，将省电策略设为无限制。系统强行停止或冻结仍会中断，重新打开只能临时恢复。");
+        help("后台收消息说明","服务会保持CPU和Wi-Fi运行，网络变化、退出休眠和亮屏后主动核验QQ连接；不会重发结果未确认的消息。QQ 需要持续联网。若离开软件后不回复，请允许通知、后台运行和厂商自启动，将省电策略设为无限制。系统强行停止或冻结仍会中断，重新打开只能临时恢复。");
         button("允许系统持续后台运行",()->{
             if(pm.isIgnoringBatteryOptimizations(getPackageName())){toast("系统电池优化已放开，请再检查厂商省电策略");return;}
             openSystem(new Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,android.net.Uri.parse("package:"+getPackageName())));

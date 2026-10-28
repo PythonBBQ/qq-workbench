@@ -19,6 +19,8 @@ public final class RuntimeService extends Service {
     private volatile boolean stopped;
     private PowerManager.WakeLock wake;
     private NativeNetwork network;
+    private BackgroundGuard background;
+    private long lastResume;
     private long lastHealthTick;
     private volatile int healthFailures;
     private volatile boolean adopted;
@@ -29,7 +31,8 @@ public final class RuntimeService extends Service {
         NotificationManager nm=getSystemService(NotificationManager.class);nm.createNotificationChannel(new NotificationChannel("runtime","QQ 工作台运行状态",NotificationManager.IMPORTANCE_LOW));
         PendingIntent open=PendingIntent.getActivity(this,0,new Intent(this,MainActivity.class),PendingIntent.FLAG_IMMUTABLE);
         startForeground(17,new Notification.Builder(this,"runtime").setSmallIcon(android.R.drawable.stat_notify_sync).setContentTitle("七丘 QQ 工作台").setContentText("手机本地运行；点击查看状态").setContentIntent(open).setOngoing(true).build());
-        wake=((PowerManager)getSystemService(POWER_SERVICE)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"qqworkbench:runtime");wake.acquire();
+        wake=((PowerManager)getSystemService(POWER_SERVICE)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"qqworkbench:runtime");wake.setReferenceCounted(false);wake.acquire();
+        background=new BackgroundGuard(this,health,this::resumeConnection);background.start();
     }
     public int onStartCommand(Intent i,int flags,int id){
         android.content.SharedPreferences preferences=getSharedPreferences("runtime",0);
@@ -46,13 +49,25 @@ public final class RuntimeService extends Service {
         return p.edit().putLong("recoveryWindow",window).putInt("recoveryAttempts",attempts+1).commit();
     }
     private void update(String s){state=s;record(s);try{Container.writePrivate(new File(getFilesDir(),"runtime-status.txt"),s+"\n"+logText());}catch(IOException ignored){}}
+    private void resumeConnection(String reason){
+        if(stopped||!running||!RuntimePolicy.resumeDue(lastResume,SystemClock.elapsedRealtime()))return;
+        lastResume=SystemClock.elapsedRealtime();
+        try{Container container=new Container(this);if(new File(container.root,".qq-rootfs-v1").isFile())container.resolver();}catch(Exception ignored){}
+        java.net.HttpURLConnection c=null;
+        try{
+            c=(java.net.HttpURLConnection)new java.net.URL("http://127.0.0.1:13480/runtime/resume").openConnection();c.setConnectTimeout(1000);c.setReadTimeout(2000);c.setRequestMethod("POST");c.setRequestProperty("Authorization","Bearer "+new Secrets(this).ensure("internal"));c.setRequestProperty("Content-Type","application/json");c.setDoOutput(true);
+            try(OutputStream out=c.getOutputStream()){out.write(("{\"reason\":\""+reason+"\"}").getBytes(java.nio.charset.StandardCharsets.UTF_8));}
+            if(c.getResponseCode()==200)getSharedPreferences("runtime",0).edit().putLong("lastNetworkResume",System.currentTimeMillis()).apply();
+        }catch(Exception ignored){}finally{if(c!=null)c.disconnect();}
+    }
     private JSONObject localState()throws Exception{
         java.net.HttpURLConnection c=(java.net.HttpURLConnection)new java.net.URL("http://127.0.0.1:13480/state").openConnection();c.setConnectTimeout(1000);c.setReadTimeout(2500);c.setRequestProperty("Authorization","Bearer "+new Secrets(this).ensure("internal"));
         try(InputStream in=c.getInputStream()){ByteArrayOutputStream bytes=new ByteArrayOutputStream();byte[] b=new byte[4096];int n;while((n=in.read(b))!=-1){if(bytes.size()+n>131072)throw new IOException("Local response too large");bytes.write(b,0,n);}return new JSONObject(bytes.toString("UTF-8"));}finally{c.disconnect();}
     }
     private void checkHealth(){if(stopped)return;long now=SystemClock.elapsedRealtime();
-        if(RuntimePolicy.schedulingGap(lastHealthTick,now)){record("后台检查曾暂停超过90秒，可能被系统冻结或休眠；返回后已继续检查");getSharedPreferences("runtime",0).edit().putLong("lastSchedulingGap",System.currentTimeMillis()).apply();}lastHealthTick=now;
-        try{JSONObject s=localState();healthFailures=0;getSharedPreferences("runtime",0).edit().putLong("lastHealthy",System.currentTimeMillis()).putBoolean("qqConnected",s.optBoolean("connected")).putString("healthStatus",s.optBoolean("connected")?"后台服务与QQ在线核验通过":"后台服务可达，QQ等待重新连接").apply();
+        if(RuntimePolicy.schedulingGap(lastHealthTick,now)){record("后台检查曾暂停超过90秒，可能被系统冻结或休眠；返回后已继续检查");getSharedPreferences("runtime",0).edit().putLong("lastSchedulingGap",System.currentTimeMillis()).apply();resumeConnection("wake");}lastHealthTick=now;
+        if(background!=null)background.refresh();
+        try{JSONObject s=localState();healthFailures=0;if(!s.optBoolean("connected")&&background!=null&&background.online())resumeConnection("health");getSharedPreferences("runtime",0).edit().putLong("lastHealthy",System.currentTimeMillis()).putBoolean("qqConnected",s.optBoolean("connected")).putString("healthStatus",s.optBoolean("connected")?"后台服务与QQ在线核验通过":"后台服务可达，QQ等待重新连接").apply();
             NotificationManager manager=getSystemService(NotificationManager.class);manager.notify(17,notification(s.optBoolean("connected")?"QQ在线 · 后台检查正常":"后台运行 · QQ正在连接"));
         }catch(Exception ignored){healthFailures++;if(healthFailures==3){record("连续三次本机健康检查未响应；保留仍运行的进程，避免重复启动QQ");getSharedPreferences("runtime",0).edit().putString("healthStatus","本机检查未响应，请检查省电限制或诊断").apply();}}
     }
@@ -107,5 +122,5 @@ public final class RuntimeService extends Service {
     public void onTaskRemoved(Intent rootIntent){record("界面已离开最近任务，后台服务继续运行；系统强行停止仍会终止它");super.onTaskRemoved(rootIntent);}
     public void onDestroy(){stopped=true;java.lang.Process p=process;stopping=p!=null||adopted;
         if(stopping){state="正在停止本地服务…";new Thread(()->{try{requestShutdown();if(p!=null&&!p.waitFor(7,TimeUnit.SECONDS)){p.destroy();if(!p.waitFor(3,TimeUnit.SECONDS))p.destroyForcibly();}}catch(Exception ignored){}finally{stopping=false;state="已停止";}}).start();}
-        health.shutdownNow();worker.shutdownNow();if(wake!=null&&wake.isHeld())wake.release();running=false;super.onDestroy();}
+        if(background!=null)background.close();health.shutdownNow();worker.shutdownNow();if(wake!=null&&wake.isHeld())wake.release();running=false;super.onDestroy();}
 }

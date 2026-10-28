@@ -10,7 +10,7 @@ import {visionTarget,imageParts,contextText,trimImageHistory,limitContextImages}
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import {SnowLumaBridge,validUin} from './snowluma-bridge.mjs';
+import {SnowLumaBridge,validUin,socketDeadline} from './snowluma-bridge.mjs';
 import {androidFetch} from './native-network.mjs';
 import {callModel,completionUrl as modelEndpoint} from './model-client.mjs';
 import {GroupModeration,moderationCommand} from './group-moderation.mjs';
@@ -88,7 +88,7 @@ async function main() {
   let apiKey = process.env.DEEPSEEK_API_KEY || '', visionKey = process.env.VISION_API_KEY || '', speechKey=process.env.SPEECH_API_KEY||'';
   delete process.env.DEEPSEEK_API_KEY;delete process.env.VISION_API_KEY;delete process.env.SPEECH_API_KEY;
   let ws=null,connected=false,identity=null,connectionMessage='正在启动兼容 QQ 接入',busy=false,queue=[],summary='本机助手等待新消息';
-  let shuttingDown=false,monitor=null,healthAt=0,connectionEpoch=0,queuedSelection=null;
+  let shuttingDown=false,monitor=null,healthAt=0,connectionEpoch=0,queuedSelection=null,lastMonitor=Date.now(),lastResume=0;
   const bridge=new SnowLumaBridge({onExit:()=>disconnect('QQ 接入进程已停止')});
   const usage={input:0,output:0,cached:0};
   const sessions = new Map(), contexts = new Map(), recent = [], pending = new Map(),ambientActivity=new Map(),groupContext=new Map();
@@ -121,21 +121,31 @@ async function main() {
     for(const entry of pending.values())entry.reject(new Error('连接断开，结果不确定；不自动重发'));
     pending.clear();
   }
+  function retireSocket(message){
+    const socket=ws;ws=null;disconnect(message);try{socket?.close();}catch{}
+  }
+  function resumeConnection(reason){
+    const now=Date.now();if(shuttingDown||now-lastResume<15000)return false;lastResume=now;healthAt=0;
+    record('连接','网络或休眠状态变化，正在重新核验QQ连接');
+    // Only revalidate the existing connection. No cached QQ messages are replayed.
+    void connect();return true;
+  }
   function attachSocket(expectedIdentity) {
     const previous=ws;ws=null;previous?.close();
     const socket=new WebSocket('ws://127.0.0.1:13001/?access_token='+encodeURIComponent(bridge.onebotToken));ws=socket;
+    socketDeadline(socket,()=>{if(ws===socket)retireSocket('OneBot连接握手超时，正在重新连接');});
     socket.addEventListener('open',async()=>{
       if(ws!==socket||shuttingDown)return;
       connected=false;connectionMessage='OneBot 已接通，正在核验 QQ 身份与在线状态';
       try {
-        const [login,status]=await Promise.all([rpc('get_login_info',{}),rpc('get_status',{})]);
+        const [login,status]=await Promise.all([rpc('get_login_info',{},8000),rpc('get_status',{},8000)]);
         if(ws!==socket||shuttingDown)return;
         if(!verifiedConnection(login,status,expectedIdentity))throw new Error('identity mismatch');
         if(identity&&identity!==expectedIdentity){sessions.clear();contexts.clear();}
         identity=expectedIdentity;connected=true;healthAt=Date.now();
         connectionMessage=`已连接 QQ ${identity} · 身份与在线状态核验通过`;
         void bridge.remember(identity).catch(()=>{});void maintainStickers();
-      }catch{if(ws===socket){disconnect('QQ 身份或在线状态尚未核验通过，自动回复未接入');socket.close();}}
+      }catch{if(ws===socket){retireSocket('QQ 身份或在线状态尚未核验通过，自动回复未接入');}}
     });
     socket.addEventListener('message',event=>{
       if(ws!==socket||shuttingDown)return;
@@ -146,8 +156,8 @@ async function main() {
         else if(data.meta_event_type==='heartbeat'&&data.status?.online===false)disconnect('QQ 已离线；暂停接收新消息');
       }catch{}
     });
-    socket.addEventListener('error',()=>{if(ws===socket)disconnect('OneBot 暂时不可用，正在等待恢复');});
-    socket.addEventListener('close',()=>{if(ws===socket){ws=null;disconnect('QQ 连接已断开，正在等待恢复；旧消息不重发');}});
+    socket.addEventListener('error',()=>{if(ws===socket)retireSocket('OneBot 暂时不可用，正在等待恢复');});
+    socket.addEventListener('close',()=>{if(ws===socket)retireSocket('QQ 连接已断开，正在等待恢复；旧消息不重发');});
   }
   async function connect(selectedUin) {
     if(shuttingDown)return {message:'正在停止服务'};
@@ -166,23 +176,23 @@ async function main() {
       if(selectedUin!=null&&String(selectedUin)!==uin)throw new Error('当前运行的是另一个 QQ，请先停止服务再切换登录');
       if(connected&&identity===uin&&Date.now()-healthAt<15000)return {message:connectionMessage};
       if(ws?.readyState===WebSocket.OPEN) {
-        const [login,state]=await Promise.all([rpc('get_login_info',{}),rpc('get_status',{})]);
-        if(!verifiedConnection(login,state,uin)){disconnect('QQ 在线核验未通过，正在等待恢复');ws.close();}
+        const [login,state]=await Promise.all([rpc('get_login_info',{},8000),rpc('get_status',{},8000)]);
+        if(!verifiedConnection(login,state,uin)){retireSocket('QQ 在线核验未通过，正在等待恢复');}
         else {identity=uin;connected=true;healthAt=Date.now();connectionMessage=`已连接 QQ ${uin} · 身份与在线状态核验通过`;}
       } else if(ws?.readyState!==WebSocket.CONNECTING) {
         connectionMessage='已识别 QQ，正在连接 OneBot';attachSocket(uin);
       }
       return {message:connectionMessage};
     } catch {
-      if(connected)disconnect('QQ 接入暂不可用，等待恢复');
+      if(ws||connected)retireSocket('QQ 接入暂不可用，等待恢复');
       connectionMessage=bridge.failure||'QQ 接入正在准备或等待登录，请打开登录页面检查';
       return {message:connectionMessage};
     }finally{busy=false;if(queuedSelection!==null&&!shuttingDown){const next=queuedSelection;queuedSelection=null;void connect(next);}}
   }
-  function rpc(action, params) {
+  function rpc(action, params,timeoutMs=25000) {
     return new Promise((resolve,reject)=>{
       if(ws?.readyState!==WebSocket.OPEN)return reject(new Error('OneBot 未连接'));
-      const echo=crypto.randomUUID();const timeout=setTimeout(()=>{pending.delete(echo);reject(new Error('发送超时，结果不确定；不自动重发'));},25000);
+      const echo=crypto.randomUUID();const timeout=setTimeout(()=>{pending.delete(echo);reject(new Error('发送超时，结果不确定；不自动重发'));},timeoutMs);
       pending.set(echo,{resolve:r=>{clearTimeout(timeout);resolve(r);},reject:e=>{clearTimeout(timeout);reject(e);}});
       try{ws.send(JSON.stringify({action,params,echo}));}catch(e){pending.delete(echo);clearTimeout(timeout);reject(e);}
     });
@@ -398,6 +408,7 @@ async function main() {
     if(Buffer.byteLength(provided)!==Buffer.byteLength(expected)||!crypto.timingSafeEqual(Buffer.from(provided),Buffer.from(expected))){res.writeHead(401);res.end('{}');return;}
     try{
       if(req.method==='GET'&&req.url==='/state')res.end(JSON.stringify({connected,identity,engine:'SnowLuma 1.14.22',modelConfigured:!!apiKey,activeModel:config().model,activeApiUrl:config().apiUrl,activeProtocol:config().apiProtocol||'chat',enabled:config().enabled,usage,summary:`${bridge.failure||connectionMessage}\n${config().enabled?'自动回复开启':'自动回复暂停'} · ${apiKey?'聊天密钥已配置':'请在设置中填写聊天 API Key'} · ${summary}\n本次运行 Token：输入 ${usage.input} · 输出 ${usage.output} · 输入缓存命中 ${usage.cached}`,recentText:recent.join('\n'),queue:queue.length}));
+      else if(req.method==='POST'&&req.url==='/runtime/resume'){const d=await body(req);if(!['network','idle','wake','health'].includes(d.reason))throw new Error('Invalid recovery reason');const scheduled=resumeConnection(d.reason);res.end(JSON.stringify({ok:true,scheduled,message:scheduled?'正在重新核验连接':'已在检查连接'}));}
       else if(req.method==='GET'&&req.url==='/media/state'){stickers.reset(identity);res.end(JSON.stringify({faces:stickers.faces,labelBusy:stickers.labelBusy,labelMessage:stickers.labelMessage,voices:FEMALE_VOICES,speechKeyConfigured:!!speechKey,post:identity?{...posts.state(config().owner,identity),problem:posts.problem}:null}));}
       else if(req.method==='POST'&&req.url==='/stickers/sync'){await body(req);if(!connected)throw new Error('请先连接QQ');const epoch=connectionEpoch,bot=identity;stickers.reset(bot);try{const faces=await stickers.sync(()=>epoch===connectionEpoch&&bot===identity);void maintainStickers();res.end(JSON.stringify({ok:true,faces,message:'已读取 '+faces.length+' 张 QQ 收藏表情'}));}catch(e){res.end(JSON.stringify({ok:false,message:e.message}));}}
       else if(req.method==='POST'&&req.url==='/stickers/annotate'){await body(req);if(!connected)throw new Error('请先连接QQ');void maintainStickers({retry:true});res.end(JSON.stringify({ok:true,message:'已安排后台备注未备注表情；原有备注保留，可稍后刷新查看'}));}
@@ -492,7 +503,7 @@ async function main() {
   });
   bridge.start();
   server.listen(13480,'127.0.0.1',()=>console.log('QQWB:本机助手已启动，QQ 登录完成后会自动核验连接'));
-  let postTick=0;monitor=setInterval(()=>{void connect();if(++postTick>=12){postTick=0;clearSpeech(speechDirectory);void autonomousPost();void maintainStickers();}},5000);void connect();
+  let postTick=0;monitor=setInterval(()=>{const now=Date.now();if(now-lastMonitor>60000)resumeConnection("wake");lastMonitor=now;void connect();if(++postTick>=12){postTick=0;clearSpeech(speechDirectory);void autonomousPost();void maintainStickers();}},5000);void connect();
   const shutdown=async()=>{if(shuttingDown)return;shuttingDown=true;clearInterval(monitor);disconnect('正在停止');ws?.close();server.close();await bridge.stop();process.exit(0);};
   process.on('SIGTERM',shutdown);process.on('SIGINT',shutdown);
 }
