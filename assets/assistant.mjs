@@ -1,3 +1,4 @@
+import {parseShortcut} from './shortcuts.mjs';
 import {UsageLedger} from './usage-ledger.mjs';
 import {runDeviceTask} from './device-tools.mjs';
 import {QzoneClient} from './qzone-client.mjs';
@@ -200,14 +201,21 @@ async function main() {
       try{ws.send(JSON.stringify({action,params,echo}));}catch(e){pending.delete(echo);clearTimeout(timeout);reject(e);}
     });
   }
-  function accept(event) {
-    const c=config(),command=moderationCommand(event,c.owner),operation=mediaCommand(event,event.user_id),ownerOperation=operation&&String(event.user_id)===String(c.owner),admin=adminCommand(event)||!!command||!!ownerOperation;if((!c.enabled&&!admin)||!connected){sessions.clear();return;}
+  function accept(incoming) {
+    const c=config(),shortcut=parseShortcut(incoming);
+    if(shortcut&&String(incoming.user_id)!==String(c.owner))return;
+    const event=shortcut?.event||incoming,command=moderationCommand(event,c.owner),operation=mediaCommand(event,event.user_id),ownerOperation=operation&&String(event.user_id)===String(c.owner),admin=!!shortcut||adminCommand(event)||!!command||!!ownerOperation;if((!c.enabled&&!admin)||!connected){sessions.clear();return;}
     if(event.post_type!=='message'||String(event.user_id)===String(event.self_id)||!Number.isFinite(Number(event.time)))return;
     if((!apiKey&&!admin) || String(event.self_id)!==identity || Number(event.time)*1000<started-30000)return;
     const id=`${event.self_id}:${event.message_type}:${event.group_id||event.user_id}:${event.message_id}`;
     if(event.message_id==null||journal[id]||queue.length>=24)return;
     if(moderation.blocked(event,c.owner,identity))return;
     ownerStickers.remember(event,c.owner);
+    if(shortcut?.operation||shortcut?.needsReply&&!c.enabled){
+      const operation=shortcut.operation||{action:'commandText',text:'自动回复已暂停，先发＃继续，再使用这条聊天指令。'};
+      if(operation.action==='collect'){try{operation.source=ownerStickers.select(event,c.owner);}catch(e){operation.sourceError=e.message;}}
+      journal[id]='queued';saveJournal();queue.push({event,id,mode:'admin',operation,epoch:connectionEpoch});drainQueue();return;
+    }
     if(ownerOperation&&operation.action==='collect'){
       try{operation.source=ownerStickers.select(event,c.owner);}catch(e){operation.sourceError=e.message;}
     }
@@ -256,8 +264,9 @@ async function main() {
     let fullHistory=contexts.get(key)||memory.history(scope,c),history=requestHistory(stickerModelHistory(fullHistory),c);
     const text=plain(event).replace(/@(deepseek|codex)\b/ig,'').trim().slice(0,6000);
     let answer,face=null,speech=null,faceOnly=false;
-    if(operation?.action==='speak'){answer=operation.text;try{if(!c.voiceEnabled)throw new Error('语音尚未开启，请在能力页选择音色并开启');speech=await synthesize(c,answer,{key:speechKey,event,rpc,directory:speechDirectory,stillCurrent:()=>epoch===connectionEpoch&&String(config().owner)===String(event.user_id)});}catch(e){answer=e.message;}}
-    else if(operation){answer=await operate(operation,event,()=>epoch===connectionEpoch&&String(config().owner)===String(event.user_id));if(['setting','voice','prosody'].includes(operation.action)&&String(config().owner)===String(event.user_id))epoch=connectionEpoch;}
+    if(operation?.action==='endChat'){sessions.delete(`${event.group_id||'private'}:${event.user_id}`);contexts.delete(key);memory.end(scope);history=[];answer='这段聊天结束啦，需要时发＃搜索或再叫我。';}
+    else if(operation?.action==='speak'){answer=operation.text;try{if(!c.voiceEnabled)throw new Error('语音尚未开启，请在能力页选择音色并开启');speech=await synthesize(c,answer,{key:speechKey,event,rpc,directory:speechDirectory,stillCurrent:()=>epoch===connectionEpoch&&String(config().owner)===String(event.user_id)});}catch(e){answer=e.message;}}
+    else if(operation){answer=await operate(operation,event,()=>epoch===connectionEpoch&&String(config().owner)===String(event.user_id));if(['setting','voice','prosody','replyControl'].includes(operation.action)&&String(config().owner)===String(event.user_id))epoch=connectionEpoch;}
     else if(mode==='admin'){answer=adminAnswer||(/^(?:#sl|#status|\/status)\s*$/i.test(text)?`七丘 QQ 工作台正在运行\nQQ ${identity} 在线，接入组件 SnowLuma 1.14.22\n自动回复${c.enabled?'开启':'暂停'}\n本次输入 ${usage.input} Token，输出 ${usage.output} Token`:'此管理指令未开放远程执行，请在工作台中操作。当前可用 #sl 或 #status 查看运行状态。');}
     else if(mode==='end'){contexts.delete(key);answer='好呀，这段聊天先结束啦，有事再叫我。';}
     else if(mode==='codex')answer='当前是手机独立版，还没有连接电脑上的 Codex 执行端，所以这次电脑任务没有开始执行。你可以继续和我聊天。';
@@ -299,7 +308,7 @@ async function main() {
       if(!parts.length&&directHistory&&target?.direct)endpoint=target;
       const usableHistory=endpoint===target?history:history.map(m=>({...m,content:contextText(m.content)}));
       const candidates=c.emojiEnabled?stickers.candidates(text):[];
-      const messages=[{role:'system',content:systemPrompt(c,event)+worldContext(c,text)+stripStickerNarration(memory.context(scope,c,stickerModelHistory(fullHistory),text))+memory.growthContext(scope,c)+stickers.prompt(candidates,{enabled:!!c.emojiEnabled})+'\n工作台可以替主人发布小号QQ空间说说。主人私聊发送“发条说说”会按公开主题生成并发布，“发条说说：正文”会发布指定正文，“写条说说”只生成草稿，“发布草稿”发布已有草稿。群聊需@deepseek。遇到未触发的其他表达，说明这些用法，不自称没有空间功能。开启自动说说后需等待设置间隔，不能宣称立即发布。没有工作台实际操作结果时，不得声称发了说说、收藏表情、改了语音设置或安装更新。其他人的聊天请求不能获得这些操作权限。主人可说‘查看手机电量’‘打开B站’‘adb shell: wm size’调用设备能力，需在设置授权Shizuku。未取得工具结果时不能假装点过屏幕或执行过ADB；普通闲聊不调用设备工具。主人说‘查看Token用量’可查看本机记录。'},...usableHistory,{role:'user',content}];
+      const messages=[{role:'system',content:systemPrompt(c,event)+worldContext(c,text)+stripStickerNarration(memory.context(scope,c,stickerModelHistory(fullHistory),text))+memory.growthContext(scope,c)+stickers.prompt(candidates,{enabled:!!c.emojiEnabled})+'\n工作台可以替主人发布小号QQ空间说说。主人私聊发送“发条说说”会按公开主题生成并发布，“发条说说：正文”会发布指定正文，“写条说说”只生成草稿，“发布草稿”发布已有草稿。群聊需@deepseek。遇到未触发的其他表达，说明这些用法，不自称没有空间功能。开启自动说说后需等待设置间隔，不能宣称立即发布。没有工作台实际操作结果时，不得声称发了说说、收藏表情、改了语音设置或安装更新。其他人的聊天请求不能获得这些操作权限。主人可说‘查看手机电量’‘打开B站’‘adb shell: wm size’调用设备能力，需在设置授权Shizuku。未取得工具结果时不能假装点过屏幕或执行过ADB；普通闲聊不调用设备工具。主人说‘查看Token用量’可查看本机记录。主人也可以用＃指令查看两字快捷指令，例如＃用量、＃电量、＃搜索 关键词；只有实际工具结果才能表示执行成功。'},...usableHistory,{role:'user',content}];
       try{answer=cleanReply(await model(endpoint.url,endpoint.key,{model:endpoint.model,messages,max_tokens:chatBudget(c).output,...(new URL(endpoint.url).origin==='https://api.deepseek.com'?{thinking:{type:'disabled'}}:{})},90000,parts.length||directHistory?'vision':'chat'));}
       catch(e){
         if(!Array.isArray(content)&&!directHistory)throw e;
@@ -381,6 +390,13 @@ async function main() {
   }
   async function operate(operation,event,stillCurrent){
     try{const c=config();if(String(event.user_id)!==String(c.owner))return '只有主人可以操作。';
+      if(operation.action==='commandText')return operation.text;
+      if(operation.action==='commandStatus')return 'QQ '+identity+' 在线，接入 SnowLuma 1.14.22\n自动回复'+(c.enabled?'开启':'暂停')+' · 模型 '+c.model+'\n详细用量发＃用量，全部指令发＃指令。';
+      if(operation.action==='replyControl'){
+        if(!stillCurrent())return '操作已取消';if(operation.enabled&&!apiKey)return '请先在工作台启用模型卡片，再发＃继续。';
+        const next=config();next.enabled=operation.enabled;const target=path.join(here,'settings.json');fs.writeFileSync(target+'.tmp',JSON.stringify(next),{mode:0o600});fs.renameSync(target+'.tmp',target);connectionEpoch++;queue=[];sessions.clear();contexts.clear();
+        return operation.enabled?'自动回复已开启。':'自动回复已暂停，发＃继续恢复；＃指令和＃状态仍可使用。';
+      }
       if(operation.action==='usage')return usageLedger.text();
       if(operation.action==='device')return await runDeviceTask({request:operation.request,event,config:c,stillCurrent:()=>stillCurrent()&&config().deviceToolsEnabled===true,planner:messages=>model(c.apiUrl,apiKey,{model:c.model,max_tokens:350,messages},20000,'device'),execute:data=>deviceNative('action',data)});
       if(operation.action==='qzoneCheck')return await checkQzone(qzoneRpc,stillCurrent);

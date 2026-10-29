@@ -53,7 +53,7 @@ Windows类路径分隔符改为分号。实际设备动作仍需安装APK、启�
 3. 提交源码；使用已授权的 GitHub CLI 上传新 Releases。软件更新源默认 PythonBBQ/qq-workbench，仅识别最新正式 Release 中唯一的 APK。
 
 ```sh
-python tools/publish-release.py --notes docs/RELEASE-0.1.27.md --gh /path/to/gh
+python tools/publish-release.py --notes docs/RELEASE-0.1.28.md --gh /path/to/gh
 ```
 
 发布脚本从本地 build/build-receipt.json 读取已校验安装包，上传 APK 和 SHA256SUMS.txt，不上传整个 build 目录。不会代替用户确认安卓系统安装。

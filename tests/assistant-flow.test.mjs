@@ -8,7 +8,7 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const pause=()=>new Promise(r=>setTimeout(r,40));
 test('first-run Key applies without restart; pictures and follow-ups use context in one call, no real QQ or model traffic',async()=>{
   const parent=path.join(root,'build','flow-tests');await fs.mkdir(parent,{recursive:true});const dir=await fs.mkdtemp(path.join(parent,'case-'));
-  for(const name of ['assistant.mjs','qq-media.mjs','qzone-client.mjs','device-tools.mjs','usage-ledger.mjs','voice.mjs','model-client.mjs','personality-growth.mjs','group-moderation.mjs','conversation-memory.mjs','video.mjs','video-decoder.mjs','native-network.mjs','web-learning.mjs','browse-intent.mjs','learning.mjs','snowluma-bridge.mjs','images.mjs','chat-style.mjs'])await fs.copyFile(path.join(root,'assets',name),path.join(dir,name));
+  for(const name of ['assistant.mjs','shortcuts.mjs','qq-media.mjs','qzone-client.mjs','device-tools.mjs','usage-ledger.mjs','voice.mjs','model-client.mjs','personality-growth.mjs','group-moderation.mjs','conversation-memory.mjs','video.mjs','video-decoder.mjs','native-network.mjs','web-learning.mjs','browse-intent.mjs','learning.mjs','snowluma-bridge.mjs','images.mjs','chat-style.mjs'])await fs.copyFile(path.join(root,'assets',name),path.join(dir,name));
   await fs.writeFile(path.join(dir,'settings.json'),JSON.stringify({owner:'123456',enabled:true,others:true,rate:100,apiUrl:'https://api.deepseek.com',model:'deepseek-flash',persona:'温柔，爱吃白饭',maxReplyTokens:400,memoryEnabled:false}));
   await fs.writeFile(path.join(dir,'mock.mjs'),`
 import {SnowLumaBridge} from './snowluma-bridge.mjs';
@@ -270,6 +270,19 @@ globalThis.fetch=async(url,options)=>{
     const recovery=await(await api('/runtime/resume',{reason:'network'})).json();assert.equal(recovery.ok,true);assert.equal(recovery.scheduled,true);
     await until(async()=>(await(await api('/state')).json()).connected);assert.equal(sent.length,n);assert.equal(models.length,beforeRecoveryModels);
     const repeated=await(await api('/runtime/resume',{reason:'wake'})).json();assert.equal(repeated.scheduled,false,'network callbacks are debounced');
+    const sendCommand=(id,text)=>child.send({event:{...event,user_id:123456,message_id:id,message:[{type:'text',data:{text}}]}});
+    // Two-character commands are locally routed; no real QQ or provider traffic.
+    await update({enabled:true});n=sent.length;const commandModels=models.length;
+    sendCommand(290,'＃指令');await until(()=>sent.length===n+1);assert.match(sent.at(-1).message[0].data.text,/＃搜索/);assert.equal(models.length,commandModels);
+    n=sent.length;sendCommand(291,'#暂停');await until(()=>sent.length===n+1);assert.equal((await(await api('/state')).json()).enabled,false);
+    n=sent.length;sendCommand(292,'＃状态');await until(()=>sent.length===n+1);assert.match(sent.at(-1).message[0].data.text,/自动回复暂停/);
+    n=sent.length;sendCommand(293,'#搜索 白饭');await until(()=>sent.length===n+1);assert.match(sent.at(-1).message[0].data.text,/＃继续/);assert.equal(models.length,commandModels);
+    n=sent.length;sendCommand(294,'#继续');await until(()=>sent.length===n+1);assert.equal((await(await api('/state')).json()).enabled,true);
+    n=sent.length;child.send({event:{...event,user_id:888888,message_id:295,message:[{type:'text',data:{text:'＃暂停'}}]}});await new Promise(r=>setTimeout(r,100));assert.equal(sent.length,n);assert.equal((await(await api('/state')).json()).enabled,true);
+    await update({deviceToolsEnabled:true});n=sent.length;child.send({event:groupMessage(296,123456,'＃电量')});await until(()=>sent.length===n+1);assert.equal(devices.length,2);assert.equal(devices.at(-1).operation.action,'battery');assert.equal(models.length,commandModels);
+    n=sent.length;sendCommand(297,'＃用量');await until(()=>sent.length===n+1);assert.match(sent.at(-1).message[0].data.text,/今日模型用量/);assert.equal(models.length,commandModels);
+    n=sent.length;sendCommand(298,'#亮度 101');await until(()=>sent.length===n+1);assert.equal(devices.length,2);assert.match(sent.at(-1).message[0].data.text,/用法/);
+    n=sent.length;sendCommand(299,'＃结束');await until(()=>sent.length===n+1);assert.match(sent.at(-1).message[0].data.text,/聊天结束/);assert.equal(models.length,commandModels);
     await update({enabled:false});await api('/runtime/resume',{reason:'idle'});assert.equal((await(await api('/state')).json()).enabled,false,'manual pause survives network recovery');
   }finally{try{await api('/shutdown',{});}catch{}await until(()=>exited||false).catch(()=>child.kill());if(child.connected)child.disconnect();}
 });
