@@ -28,6 +28,7 @@ public final class RuntimeService extends Service {
     static synchronized String logText(){return String.join("\n",logs);}
     public android.os.IBinder onBind(Intent i){return null;}
     public void onCreate(){super.onCreate();
+        if(!UsageAgreement.accepted(this)){state="请先在应用中阅读并同意个人使用协议";stopSelf();return;}
         NotificationManager nm=getSystemService(NotificationManager.class);nm.createNotificationChannel(new NotificationChannel("runtime","QQ 工作台运行状态",NotificationManager.IMPORTANCE_LOW));
         PendingIntent open=PendingIntent.getActivity(this,0,new Intent(this,MainActivity.class),PendingIntent.FLAG_IMMUTABLE);
         startForeground(17,new Notification.Builder(this,"runtime").setSmallIcon(android.R.drawable.stat_notify_sync).setContentTitle("七丘 QQ 工作台").setContentText("手机本地运行；点击查看状态").setContentIntent(open).setOngoing(true).build());
@@ -35,6 +36,7 @@ public final class RuntimeService extends Service {
         background=new BackgroundGuard(this,health,this::resumeConnection);background.start();
     }
     public int onStartCommand(Intent i,int flags,int id){
+        if(!UsageAgreement.accepted(this)){getSharedPreferences("runtime",0).edit().putBoolean("requested",false).commit();stopSelf();return START_NOT_STICKY;}
         android.content.SharedPreferences preferences=getSharedPreferences("runtime",0);
         if(i==null&&(!preferences.getBoolean("requested",false)||!claimRecovery())){stopSelf();return START_NOT_STICKY;}
         preferences.edit().putBoolean("requested",true).apply();
