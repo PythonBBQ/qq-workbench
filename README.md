@@ -2,9 +2,9 @@
 
 安卓本机运行的 QQ AI 助手。无需让电脑一直开机；适用 Android 11 及以上、ARM64 设备。首次启动会准备容器、Linux QQ 与图形环境，需联网和数 GB 可用空间。不同厂商的后台限制仍需在系统设置放行。
 
-[下载最新 APK](https://github.com/PythonBBQ/qq-workbench/releases/latest) · [0.1.26 更新说明](docs/RELEASE-0.1.26.md) · [构建和发布](BUILDING.md)
+[下载最新 APK](https://github.com/PythonBBQ/qq-workbench/releases/latest) · [0.1.27 更新说明](docs/RELEASE-0.1.27.md) · [构建和发布](BUILDING.md)
 
-当前版本 **0.1.26** 修复 QQ 空间自然发布指令、空列表识别和网络入口选择。加入只读空间检查与发布前检查；不确定的发布仍不自动重发。保留此前熄屏后台、表情发送和AI备注修复。
+当前版本 **0.1.27** 新增主人设备工具、实际Token用量及酒馆自然聊天风格。保留 SnowLuma / QQ 组合、后台恢复、表情与空间功能；已在平板覆盖安装，QQ在线，Shizuku电量读取、重复动作拦截与非大号拒绝通过。
 
 ## 使用
 
@@ -16,6 +16,10 @@
 
 主人身份只按设置的大号 QQ 与实际消息发送者核对，角色卡、昵称和自称不授予权限。普通聊天由所选模型处理；需要电脑执行的 @codex 暂无安卓独立执行端。群聊参与率、兴趣接话、续聊与拉黑仍按原设置工作。
 
+设备工具在设置中启用：安装并启动官方 [Shizuku](https://github.com/RikkaApps/Shizuku)，授予工作台使用权限。仅最新配置的大号可调用电量、存储、应用列表、打开应用、按键、点击、滑动、亮度及音量动作。群聊需 @deepseek；不提供任意Shell脚本、自主读屏或猜坐标。Shizuku管理器不捆绑，手机重启后可能需重新启动。
+
+设置→Token用量可查看今日、本次运行和保留累计、最近调用，以及模型/用途汇总；QQ中可说“查看Token用量”。只统计服务商返回的实际usage，未报告不当作零，费用以平台账单为准。酒馆新增自然接话、口语自然度及情绪表现力，不额外增加模型调用。
+
 语音支持 Azure Speech 中日韩女声（需单独服务密钥）和 QQ 群内置音色。自动动态及语音默认关闭，按需启用。表情只在主人明确要求时收藏，旧自动收藏开关不再生效。动态生成仅用公开主题，不读取私人聊天。详情和主人指令见更新说明。
 
 ## 在线更新
@@ -26,6 +30,7 @@
 
 - 安卓容器与离线运行时基础复用 [DSHA](https://github.com/DSH-APP/DSHA)，并非运行完整 DeepSeek Harness 代理框架。
 - QQ 桥接采用 [SnowLuma](https://github.com/SnowLuma/SnowLuma) 1.14.22，配合官方 Linux QQ；2.2.0 归档仅用于 Node 运行时。保留已验证组合。
+- 设备能力集成 [Shizuku-API](https://github.com/RikkaApps/Shizuku-API) 13.1.5。调研来源及选择见 [方案说明](docs/AI-TOOLS-RESEARCH.md)。
 - 角色卡兼容酒馆基础格式，支持关键词世界书；不捆绑完整 SillyTavern 服务器或执行角色卡脚本。
 - 功能研究参考 [QQ 空间插件](https://github.com/Zhalslar/astrbot_plugin_qzone)、[表情管理插件](https://github.com/anka-afk/astrbot_plugin_meme_manager)、[edge-tts](https://github.com/rany2/edge-tts)。本版未复制这些插件源码；微软语音使用 Azure 官方 REST 接口。
 
@@ -33,4 +38,4 @@
 
 ## 验证范围
 
-111 项 Node 模拟回归通过；安卓设置、角色卡、背景裁剪、导航、更新地址和初始化检查通过。新媒体功能未在真实 QQ 上发消息或发说说验收，语音服务需要用户自己的服务凭据。预览版请先在自己的设备验证。当前测试不会代替长期后台和跨机型稳定性验证。
+119 项 Node 模拟回归通过；全部Android生产源码与框架检查类编译、DEX生成、主机设备参数校验及APK签名/资产校验通过。已在平板同签名覆盖安装，六项安卓框架检查、真实Shizuku电量读取、动作去重、非大号拦截及Token页面展示通过；QQ在线。设备写动作及QQ真实聊天指令尚未外发实测。新媒体功能未在真实 QQ 上发消息或发说说验收，语音服务需要用户自己的服务凭据。预览版请先在自己的设备验证。当前测试不会代替长期后台和跨机型稳定性验证。

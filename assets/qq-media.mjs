@@ -1,3 +1,4 @@
+import {deviceRequest} from './device-tools.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -93,6 +94,8 @@ export function mediaCommand(event,owner) {
   if(/^(?:开启|关闭)自动收藏表情[。！!\s]*$/.test(raw))return {action:'collectionHelp'};
   if(event.message_type==='group'&&!/@deepseek\b/i.test(raw)&&!(event.message||[]).some(s=>s.type==='at'&&String(s.data?.qq)===String(event.self_id)))return null;
   const text=raw.replace(/@deepseek\b/ig,'').trim().replace(/^(?:(?:请|帮我|替我|给我|麻烦你?|你|现在|去|帮忙)\s*)+/,'');
+  const device=deviceRequest(text);if(device)return {action:'device',request:device};
+  if(/^(?:查看|查询|看看|看下)?(?:一下)?(?:今日|今天|本次|最近)?\s*(?:token|令牌|模型)(?:消耗|用量|统计|花费)[。！!\s]*$/i.test(text))return {action:'usage'};
   let m;
   const destination='(?:在|到|去)?(?:QQ\\s*空间|空间)(?:里|上)?';
   const publish='(?:发(?:布|送)?|发表)(?:一)?(?:条|个)?(?:QQ\\s*空间(?:动态)?|空间动态|说说|动态)';

@@ -1,4 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="cn.qqworkbench.assistant" android:versionCode="27" android:versionName="0.1.26-preview">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="cn.qqworkbench.assistant" android:versionCode="28" android:versionName="0.1.27-preview">
   <uses-sdk android:minSdkVersion="30" android:targetSdkVersion="35"/>
   <uses-permission android:name="android.permission.INTERNET"/>
   <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
@@ -10,8 +10,10 @@
   <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
   <uses-permission android:name="android.permission.CHANGE_WIFI_STATE"/>
   <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
-  <queries><package android:name="com.miui.securitycenter"/><intent><action android:name="miui.intent.action.HIDDEN_APPS_CONFIG_ACTIVITY"/></intent></queries>
+  <uses-permission android:name="moe.shizuku.manager.permission.API_V23"/>
+  <queries><package android:name="moe.shizuku.privileged.api"/><package android:name="com.miui.securitycenter"/><intent><action android:name="miui.intent.action.HIDDEN_APPS_CONFIG_ACTIVITY"/></intent></queries>
   <application android:label="七丘 QQ 工作台" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:extractNativeLibs="true" android:allowBackup="false" android:debuggable="true" android:networkSecurityConfig="@xml/network_security">
+    <provider android:name="rikka.shizuku.ShizukuProvider" android:authorities="cn.qqworkbench.assistant.shizuku" android:multiprocess="false" android:enabled="true" android:exported="true" android:permission="android.permission.INTERACT_ACROSS_USERS_FULL"/>
     <provider android:name=".UpdateFileProvider" android:authorities="cn.qqworkbench.assistant.updates" android:exported="false" android:grantUriPermissions="true"/>
     <activity android:name=".MainActivity" android:exported="true" android:windowSoftInputMode="adjustResize">
       <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>

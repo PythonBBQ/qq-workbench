@@ -8,7 +8,7 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const pause=()=>new Promise(r=>setTimeout(r,40));
 test('first-run Key applies without restart; pictures and follow-ups use context in one call, no real QQ or model traffic',async()=>{
   const parent=path.join(root,'build','flow-tests');await fs.mkdir(parent,{recursive:true});const dir=await fs.mkdtemp(path.join(parent,'case-'));
-  for(const name of ['assistant.mjs','qq-media.mjs','qzone-client.mjs','voice.mjs','model-client.mjs','personality-growth.mjs','group-moderation.mjs','conversation-memory.mjs','video.mjs','video-decoder.mjs','native-network.mjs','web-learning.mjs','browse-intent.mjs','learning.mjs','snowluma-bridge.mjs','images.mjs','chat-style.mjs'])await fs.copyFile(path.join(root,'assets',name),path.join(dir,name));
+  for(const name of ['assistant.mjs','qq-media.mjs','qzone-client.mjs','device-tools.mjs','usage-ledger.mjs','voice.mjs','model-client.mjs','personality-growth.mjs','group-moderation.mjs','conversation-memory.mjs','video.mjs','video-decoder.mjs','native-network.mjs','web-learning.mjs','browse-intent.mjs','learning.mjs','snowluma-bridge.mjs','images.mjs','chat-style.mjs'])await fs.copyFile(path.join(root,'assets',name),path.join(dir,name));
   await fs.writeFile(path.join(dir,'settings.json'),JSON.stringify({owner:'123456',enabled:true,others:true,rate:100,apiUrl:'https://api.deepseek.com',model:'deepseek-flash',persona:'温柔，爱吃白饭',maxReplyTokens:400,memoryEnabled:false}));
   await fs.writeFile(path.join(dir,'mock.mjs'),`
 import {SnowLumaBridge} from './snowluma-bridge.mjs';
@@ -44,6 +44,7 @@ globalThis.fetch=async(url,options)=>{
     if(JSON.stringify(body).includes('等待切换'))await new Promise(r=>setTimeout(r,200));
     return Response.json({choices:[{message:{content:'好呀，配一碗白饭！'}}],usage:{prompt_tokens:100,completion_tokens:10,prompt_cache_hit_tokens:20}});
   }
+  if(u.origin==='http://127.0.0.1:13481'&&u.pathname==='/device/action'){const request=JSON.parse(options.body);process.send({device:request});return Response.json({ok:true,output:'synthetic battery: 80%',message:'执行完成'});}
   if(['h5.qzone.qq.com','user.qzone.qq.com'].includes(u.hostname)){
     if(options.method==='POST'){process.send({rpc:'send_qzone_msg',qzoneBody:options.body});return Response.json({code:0,...(globalThis.sendControl==='qzone-accepted'?{tid:'synthetic-post-id'}:{})});}
     return Response.json({code:0,total:0,msglist:null,logininfo:{uin:765432}});
@@ -54,9 +55,9 @@ globalThis.fetch=async(url,options)=>{
   if(u.hostname==='qpic.cn')return new Response(new Uint8Array([1,2,3]),{headers:{'content-type':'image/png'}});
   throw new Error('Unmocked network refused');
 };`);
-  const token='qqwb-isolated-test-token-1234567890';let log='',exited=false;const models=[],sent=[],browses=[],rpcs=[];
+  const token='qqwb-isolated-test-token-1234567890';let log='',exited=false;const models=[],sent=[],browses=[],rpcs=[],devices=[];
   const child=fork(path.join(dir,'assistant.mjs'),[],{execArgv:['--import',pathToFileURL(path.join(dir,'mock.mjs')).href],env:{...process.env,WORKBENCH_TOKEN:token,DEEPSEEK_API_KEY:'',VISION_API_KEY:''},stdio:['ignore','pipe','pipe','ipc']});
-  child.stdout.on('data',v=>log+=v);child.stderr.on('data',v=>log+=v);child.on('exit',()=>exited=true);child.on('message',m=>{if(m.rpc)rpcs.push(m.rpc);if(m.model)models.push(m);if(m.sent)sent.push(m.sent);if(m.browse)browses.push(m.browse);});
+  child.stdout.on('data',v=>log+=v);child.stderr.on('data',v=>log+=v);child.on('exit',()=>exited=true);child.on('message',m=>{if(m.device)devices.push(m.device);if(m.rpc)rpcs.push(m.rpc);if(m.model)models.push(m);if(m.sent)sent.push(m.sent);if(m.browse)browses.push(m.browse);});
   const api=async(route,body,auth=true)=>fetch('http://127.0.0.1:13480'+route,{method:body===undefined?'GET':'POST',headers:{...(auth?{Authorization:'Bearer '+token}:{}),'Content-Type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(1000)});
   const until=async(fn)=>{const end=Date.now()+6000;while(Date.now()<end){if(exited)throw new Error(log||'child exited');try{const r=await fn();if(r)return r;}catch(e){if(e.message.includes('child'))throw e;}await pause();}throw new Error('Flow timeout: '+log);};
   try{
@@ -255,6 +256,13 @@ globalThis.fetch=async(url,options)=>{
     assert.equal(models.at(-1).model.messages.length,2);assert.ok(!JSON.stringify(models.at(-1).model.messages).includes('现在聊聊白饭'));
     n=sent.length;child.send({event:groupMessage(271,888888,'@deepseek 发QQ空间')});await until(()=>sent.length===n+1);assert.match(sent.at(-1).message[0].data.text,/只有主人/);assert.equal(rpcs.filter(x=>x==='send_qzone_msg').length,postsBefore+1);
     const qzoneChecked=await(await api('/qzone/check',{})).json();assert.equal(qzoneChecked.ok,true);assert.match(qzoneChecked.message,/未发布/);assert.equal(rpcs.filter(x=>x==='send_qzone_msg').length,postsBefore+1);
+    // Device tools trust the real event owner only, not the model, persona or a former owner.
+    await update({deviceToolsEnabled:true});n=sent.length;const deviceModels=models.length;
+    child.send({event:{...event,message_id:280,message:[{type:'text',data:{text:'查看手机电量'}}]}});await until(()=>sent.length===n+1);assert.equal(devices.length,1);assert.equal(devices[0].sender,'123456');assert.equal(devices[0].operation.action,'battery');assert.equal(models.length,deviceModels);assert.match(sent.at(-1).message[0].data.text,/synthetic battery/);
+    n=sent.length;child.send({event:groupMessage(281,888888,'@deepseek 查看手机电量')});await until(()=>sent.length===n+1);assert.equal(devices.length,1);assert.match(sent.at(-1).message[0].data.text,/只有主人/);
+    await update({deviceToolsEnabled:false});n=sent.length;child.send({event:{...event,message_id:282,message:[{type:'text',data:{text:'打开B站'}}]}});await until(()=>sent.length===n+1);assert.equal(devices.length,1);assert.match(sent.at(-1).message[0].data.text,/尚未开启/);
+    const stats=await(await api('/usage')).json();assert.ok(stats.today.calls>0);assert.ok(stats.today.unreported>0);assert.ok(stats.groups.some(x=>x.category==='qzone'));assert.equal((await api('/usage',undefined,false)).status,401);
+    n=sent.length;const countBeforeUsage=models.length;child.send({event:{...event,message_id:283,message:[{type:'text',data:{text:'查看Token用量'}}]}});await until(()=>sent.length===n+1);assert.match(sent.at(-1).message[0].data.text,/今日模型用量/);assert.equal(models.length,countBeforeUsage);
     // Authenticated Android network/idle events recover the existing session, without re-enabling or replaying.
     assert.equal((await api('/runtime/resume',{reason:'network'},false)).status,401);
     child.send({socketClose:true});await until(async()=>!(await(await api('/state')).json()).connected);

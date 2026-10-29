@@ -33,6 +33,19 @@ python build.py
 
 首次构建会生成本地签名。维护已有应用必须保留原 build/development-signing.p12 与密码文件；生成新签名不能覆盖已安装版本。这两个文件不得提交到 GitHub。
 
+## Shizuku SDK
+
+构建通过tools/shizuku_deps.py获取固定的Shizuku API 13.1.5（api/provider/shared/aidl）及AndroidX annotation 1.3.0。下载和解包的classes.jar都按tools/shizuku-sdk.json校验SHA-256，保存在build/shizuku-sdk；首次构建需可访问固定Maven地址。Javac和D8均使用这组依赖，相关许可放入APK的assets/licenses。应用不捆绑Shizuku管理器或绕过系统授权。
+
+设备参数策略的主机检查需要org.json 20240303，可用下列命令（设置JSON_JAR为该依赖路径）运行；只校验参数，不操作设备：
+
+```sh
+javac -encoding UTF-8 -cp "$JSON_JAR" -d build/device-policy src/cn/qqworkbench/assistant/DeviceCommand.java tests/DeviceCommandCheck.java
+java -cp "build/device-policy:$JSON_JAR" cn.qqworkbench.assistant.DeviceCommandCheck
+```
+
+Windows类路径分隔符改为分号。实际设备动作仍需安装APK、启动并授权Shizuku后验证。设备工具只读集成检查可运行 `python tests/run-native-settings.py --device-tools`，需已开启设备工具和系统授权；读取电量、检查去重及非大号拒绝，不发QQ或调用模型。
+
 ## 后续更新
 
 1. 修改源码和 AndroidManifest.xml 的 versionCode / versionName。
@@ -40,7 +53,7 @@ python build.py
 3. 提交源码；使用已授权的 GitHub CLI 上传新 Releases。软件更新源默认 PythonBBQ/qq-workbench，仅识别最新正式 Release 中唯一的 APK。
 
 ```sh
-python tools/publish-release.py --notes docs/RELEASE-0.1.20.md --gh /path/to/gh
+python tools/publish-release.py --notes docs/RELEASE-0.1.27.md --gh /path/to/gh
 ```
 
 发布脚本从本地 build/build-receipt.json 读取已校验安装包，上传 APK 和 SHA256SUMS.txt，不上传整个 build 目录。不会代替用户确认安卓系统安装。

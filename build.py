@@ -77,14 +77,16 @@ receipt['sources']['SnowLumaBridge']={'version':'1.14.22','url':'https://github.
 classes=BUILD/'classes'
 classes.mkdir(exist_ok=True)
 sources=sorted((ROOT/'src').rglob('*.java'))
+from tools.shizuku_deps import sdk_jars
+shizuku_jars=sdk_jars(ROOT)
 # Compile Java library calls against Android, not the host JDK (e.g. Files.writeString is absent even on API 35).
-run(JAVA/'javac.exe','-encoding','UTF-8','-source','8','-target','8','-Xlint:-options','-bootclasspath',str(TOOLS/'core-lambda-stubs.jar')+os.pathsep+str(ANDROID),'-d',classes,*sources)
+run(JAVA/'javac.exe','-encoding','UTF-8','-source','8','-target','8','-Xlint:-options','-bootclasspath',str(TOOLS/'core-lambda-stubs.jar')+os.pathsep+str(ANDROID),'-classpath',os.pathsep.join(map(str,shizuku_jars)),'-d',classes,*sources)
 jar=BUILD/'classes.jar'
 with zipfile.ZipFile(jar,'w',zipfile.ZIP_DEFLATED) as z:
     for p in classes.rglob('*.class'):z.write(p,p.relative_to(classes).as_posix())
 dex=BUILD/'dex'
 dex.mkdir(exist_ok=True)
-run(JAVA/'java.exe','-Xmx1024m','-cp',TOOLS/'lib/d8.jar','com.android.tools.r8.D8','--min-api','30','--lib',ANDROID,'--output',dex,jar)
+run(JAVA/'java.exe','-Xmx1024m','-cp',TOOLS/'lib/d8.jar','com.android.tools.r8.D8','--min-api','30','--lib',ANDROID,'--output',dex,jar,*shizuku_jars)
 unsigned=BUILD/'unsigned.apk'
 run(TOOLS/'aapt.exe','package','-f','-M',ROOT/'AndroidManifest.xml','-S',ROOT/'res','-I',ANDROID,'-F',unsigned)
 with zipfile.ZipFile(unsigned,'a') as z:

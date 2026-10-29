@@ -59,14 +59,14 @@ final class NativeNetwork implements AutoCloseable {
     private void handle(Socket socket){
         try(Socket s=socket){s.setSoTimeout(100000);InputStream in=new BufferedInputStream(s.getInputStream());
             String route=line(in);boolean video=route.equals("POST /video-frames HTTP/1.1"),updates=route.equals("POST /app-update HTTP/1.1");
-            if(!route.equals("POST /fetch HTTP/1.1")&&!video&&!updates){response(s,404,new JSONObject());return;}
+            if(!route.equals("POST /fetch HTTP/1.1")&&!video&&!updates&&!route.equals("POST /device/state HTTP/1.1")&&!route.equals("POST /device/action HTTP/1.1")){response(s,404,new JSONObject());return;}
             Map<String,String> headers=new HashMap<>();String row;int total=0;
             while(!(row=line(in)).isEmpty()){total+=row.length();if(total>16384)throw new IOException("Headers too large");int colon=row.indexOf(':');if(colon<1)throw new IOException("Invalid header");headers.put(row.substring(0,colon).toLowerCase(Locale.ROOT),row.substring(colon+1).trim());}
             if(headers.containsKey("origin")||!MessageDigest.isEqual(authorization,headers.getOrDefault("authorization","").getBytes(StandardCharsets.UTF_8))){response(s,401,new JSONObject());return;}
             int length=Integer.parseInt(headers.getOrDefault("content-length","0"));if(length<2||length>24*1024*1024)throw new IOException("Invalid body size");
             byte[] body=new byte[length];int offset=0;while(offset<length){int n=in.read(body,offset,length-offset);if(n<0)throw new EOFException();offset+=n;}
             JSONObject request=new JSONObject(new String(body,StandardCharsets.UTF_8));
-            try{if(updates){if(context==null)throw new IOException("Update service unavailable");response(s,200,AppUpdates.check(context));}else if(video){if(context==null)throw new IOException("Video service unavailable");response(s,200,VideoFrames.remote(context,request.getString("url")));}else response(s,200,fetch(request));}catch(Exception e){String type=e instanceof java.net.SocketTimeoutException?"timeout":e instanceof java.net.UnknownHostException?"dns":e instanceof javax.net.ssl.SSLException?"tls":"network";response(s,502,new JSONObject().put("error",type));}
+            try{if(route.equals("POST /device/state HTTP/1.1")){if(context==null)throw new IOException("No app context");response(s,200,DeviceTools.get(context).state());}else if(route.equals("POST /device/action HTTP/1.1")){if(context==null)throw new IOException("No app context");response(s,200,DeviceTools.get(context).run(request));}else if(updates){if(context==null)throw new IOException("Update service unavailable");response(s,200,AppUpdates.check(context));}else if(video){if(context==null)throw new IOException("Video service unavailable");response(s,200,VideoFrames.remote(context,request.getString("url")));}else response(s,200,fetch(request));}catch(Exception e){String type=e instanceof java.net.SocketTimeoutException?"timeout":e instanceof java.net.UnknownHostException?"dns":e instanceof javax.net.ssl.SSLException?"tls":"network";response(s,502,new JSONObject().put("error",type));}
         }catch(Exception ignored){}
     }
     static boolean qzoneCredentials(URL url,String method){

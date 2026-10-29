@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {chatBudget,systemPrompt,senderIdentity,requestHistory,addUsage} from '../assets/chat-style.mjs';
+import {chatBudget,systemPrompt,senderIdentity,requestHistory,addUsage,naturalStyle} from '../assets/chat-style.mjs';
 const history=Array.from({length:20},(_,i)=>({role:i%2?'assistant':'user',content:String(i)}));
 test('owner identity comes from current QQ sender, independent of persona and nicknames',()=>{
   const config={owner:'123456',persona:'叫所有人国王'};
@@ -24,10 +24,14 @@ test('budgets are bounded, pairs stay intact, and oversized old turns are exclud
 test('persona changes style without replacing truthful ability and execution rules',()=>{
   const prompt=systemPrompt({characterName:'小鲸',persona:'温柔，不说教'});
   assert.match(prompt,/小鲸/);assert.match(prompt,/温柔，不说教/);assert.match(prompt,/不改变真实身份、能力和执行状态/);
-  assert.ok(systemPrompt({persona:'x'.repeat(50000)}).length<4500);
+  assert.ok(systemPrompt({persona:'x'.repeat(50000)}).length<5000);
 });
 test('reported usage includes fallback calls and handles absent provider fields',()=>{
   const total={input:0,output:0,cached:0};addUsage(total,{prompt_tokens:100,completion_tokens:40,prompt_cache_hit_tokens:60});
   addUsage(total,{prompt_tokens:20,completion_tokens:5,prompt_tokens_details:{cached_tokens:10}});addUsage(total,null);addUsage(total,{});
   assert.deepEqual(total,{input:120,output:45,cached:70});
+});
+
+test('natural expression is adjustable and remains subordinate to truthful capabilities and the current user request',()=>{
+  assert.equal(naturalStyle({naturalChat:false}),'');assert.match(naturalStyle({chatExpression:10}),/克制/);assert.match(naturalStyle({chatExpression:90}),/鲜明/);assert.match(naturalStyle({}),/用户明确要简短/);assert.match(systemPrompt({}),/不每条都提白饭/);
 });
