@@ -2,9 +2,9 @@
 
 安卓本机运行的 QQ AI 助手。无需让电脑一直开机；适用 Android 11 及以上、ARM64 设备。首次启动会准备容器、Linux QQ 与图形环境，需联网和数 GB 可用空间。不同厂商的后台限制仍需在系统设置放行。
 
-[下载最新 APK](https://github.com/PythonBBQ/qq-workbench/releases/latest) · [0.1.36 更新说明](docs/RELEASE-0.1.36.md) · [构建和发布](BUILDING.md)
+[下载最新 APK](https://github.com/PythonBBQ/qq-workbench/releases/latest) · [0.1.37 更新说明](docs/RELEASE-0.1.37.md) · [构建和发布](BUILDING.md)
 
-当前版本 **0.1.36** 按当前问题决定是否讨论声音：默认只结合画面和识别出的对白文字回复，不主动介绍或发送BGM；明确问“这声音怎么样”“这音乐好听吗”“BGM咋样”才复用本轮音轨证据。158项Node与7项Android框架检查通过。空转写不再误判静音，原始媒体流不加载播放器弹幕；覆盖更新保留原账号与设置。
+当前版本 **0.1.37** 将中文专用音轨转写替换为本机多语种SenseVoice，支持英文和中英混说；可疑中文重复会尝试英文重听并保留不确定候选，不做固定谐音替换。159项Node与7项Android框架检查通过。平板已验证英文、中文、混说及合成短句“Man, man, man, what can I say?”；真实变速梗音频仍可能误识别。默认不主动介绍或发送BGM，明确问声音或音乐才分析。覆盖更新保留账号和配置。
 
 ## 使用
 

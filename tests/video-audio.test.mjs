@@ -1,5 +1,5 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
-import {transcriptObjects,compactTranscript,audioContext,withAudio,AUDIO_POLICY,pcmSignal,audioEvents,audioEvidence,asksAudio,audioReplyPolicy,audioFocusContext} from '../assets/video-audio.mjs';
+import {transcriptObjects,compactTranscript,audioContext,withAudio,AUDIO_POLICY,pcmSignal,audioEvents,audioEvidence,asksAudio,audioReplyPolicy,audioFocusContext,suspectRepetition} from '../assets/video-audio.mjs';
 import {sampledVideo,videoBatches} from '../assets/video.mjs';
 test('speech output parsing ignores diagnostics, braces in strings and non-transcript JSON',()=>{
  const output='Started\n'+JSON.stringify({text:'视频说了 {这是例子} 和 "引用"',tokens:['x']})+'\nDone!\n'+JSON.stringify({debug:true});
@@ -43,4 +43,13 @@ test('music evidence is opt-in for current questions while dialogue remains avai
  assert.match(normal,/这是识别出的对白/);assert.ok(!normal.includes('Music 98%'));assert.match(normal,/不主动提及/);
  assert.match(focused,/Music 98%/);assert.match(focused,/不发送BGM或音乐文件/);assert.equal(video.audio.tags.length,1);
  assert.match(audioReplyPolicy('说说剧情'),/没有对白也不必说明/);
+});
+
+test('English and mixed speech are preserved; suspicious Chinese repetition keeps its uncertain original and bounded English candidate',()=>{
+ const audio=compactTranscript([{text:'Man, what can I say? 这是一段中英混说。'},{text:'美美美',englishAlternative:'Man, man, man.'},{text:'普通中文，不应该被替换。'},{text:'文'.repeat(800),englishAlternative:'English candidate '.repeat(100)}],120);
+ assert.match(audio.segments[0].text,/Man, what can I say/);assert.equal(audio.segments[0].uncertain,false);
+ assert.equal(audio.segments[1].text,'美美美');assert.equal(audio.segments[1].uncertain,true);assert.equal(audio.segments[1].englishAlternative,'Man, man, man.');
+ assert.equal(audio.segments[2].englishAlternative,undefined);assert.equal(suspectRepetition('美，美，美'),true);assert.equal(suspectRepetition('哈哈哈'),false);
+ assert.ok(audio.characters<=1200);assert.ok(audio.segments[3].text.length+audio.segments[3].englishAlternative.length<=300);
+ const context=audioContext(audio);assert.match(context,/疑似重复或谐音误识别/);assert.match(context,/英文重听候选（不确定）/);assert.match(context,/不得强行替换正常中文/);
 });

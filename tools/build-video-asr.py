@@ -27,8 +27,11 @@ with tarfile.open(obtain(lock['runtime'])) as archive:
         if member.isfile() and (relative in ['bin/sherpa-onnx-offline','bin/sherpa-onnx-offline-audio-tagging'] or relative.startswith('lib/')):
             files[relative]=(archive.extractfile(member).read(),0o700 if relative.startswith('bin/') else 0o600)
 assert 'bin/sherpa-onnx-offline' in files and 'lib/libonnxruntime.so' in files
-for item in lock['model']['files']:
-    files['model/'+item['filename']]=(obtain(item,cache/'model').read_bytes(),0o600)
+with tarfile.open(obtain(lock['model']['archive'])) as archive:
+    for filename in lock['model']['files']:
+        member=archive.getmember(lock['model']['name']+'/'+filename)
+        assert member.isfile() and member.size<260000000
+        files['model/'+filename]=(archive.extractfile(member).read(),0o600)
 for item in lock['tagger']['files']:
     files['tagger/'+item['filename']]=(obtain(item,cache/'tagger').read_bytes(),0o600)
 for item in lock['licenses']:

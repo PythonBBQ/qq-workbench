@@ -6,32 +6,29 @@
     "sha256": "a8fc9fb3940d1aa3f83136767742b05068f00253f560d53c4f5aeb75ab4cb350"
   },
   "model": {
-    "name": "sherpa-onnx-zipformer-ctc-small-zh-int8-2025-07-16",
-    "publisher": "csukuangfj / Fangjun Kuang",
-    "revision": "1d97c1cb21860909b5f74b4c28698f872fb81c42",
-    "license": "Apache-2.0, as declared in the publisher ModelScope model card",
+    "name": "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17",
+    "publisher": "FunAudioLLM / Alibaba Group; ONNX conversion by k2-fsa / csukuangfj",
+    "kind": "sense-voice",
+    "languages": [
+      "zh",
+      "en",
+      "ja",
+      "ko",
+      "yue"
+    ],
+    "license": "FunASR Model Open Source License Agreement 1.1; retain source, author, model name and license",
     "github": "https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models",
+    "upstream": "https://huggingface.co/FunAudioLLM/SenseVoiceSmall",
+    "archive": {
+      "filename": "sensevoice-base-2024.tar.bz2",
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2",
+      "sha256": "7d1efa2138a65b0b488df37f8b89e3d91a60676e416f515b952358d83dfd347e"
+    },
     "files": [
-      {
-        "filename": "bbpe.model",
-        "url": "https://modelscope.cn/api/v1/models/csukuangfj/sherpa-onnx-zipformer-ctc-small-zh-int8-2025-07-16/repo?Revision=1d97c1cb21860909b5f74b4c28698f872fb81c42&FilePath=bbpe.model",
-        "sha256": "503204e0690eff065e30d0e01898c9ab06d0e6dc376a741eb6846198f95b2f82"
-      },
-      {
-        "filename": "model.int8.onnx",
-        "url": "https://modelscope.cn/api/v1/models/csukuangfj/sherpa-onnx-zipformer-ctc-small-zh-int8-2025-07-16/repo?Revision=1d97c1cb21860909b5f74b4c28698f872fb81c42&FilePath=model.int8.onnx",
-        "sha256": "32e5f17cc9a77d480f8d94bda97b7cc7a40965b6651b35385813f561a74129c8"
-      },
-      {
-        "filename": "tokens.txt",
-        "url": "https://modelscope.cn/api/v1/models/csukuangfj/sherpa-onnx-zipformer-ctc-small-zh-int8-2025-07-16/repo?Revision=1d97c1cb21860909b5f74b4c28698f872fb81c42&FilePath=tokens.txt",
-        "sha256": "6fed8c6c248516f38e7faa19404b57413e8ce259f1cbc1fa4aebc86eac32fdfd"
-      },
-      {
-        "filename": "README.md",
-        "url": "https://modelscope.cn/api/v1/models/csukuangfj/sherpa-onnx-zipformer-ctc-small-zh-int8-2025-07-16/repo?Revision=1d97c1cb21860909b5f74b4c28698f872fb81c42&FilePath=README.md",
-        "sha256": "14ff23481402330f88cae7bff68eaf84b527bebf9b6036b09c73ad8230f08739"
-      }
+      "model.int8.onnx",
+      "tokens.txt",
+      "README.md",
+      "LICENSE"
     ]
   },
   "licenses": [
@@ -44,6 +41,11 @@
       "filename": "OnnxRuntime-MIT.txt",
       "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.23.2/LICENSE",
       "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c"
+    },
+    {
+      "filename": "SenseVoice-MODEL-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/modelscope/FunASR/dd00b0e42261b628466037f3a522d713399360b6/MODEL_LICENSE",
+      "sha256": "7dba975a2069691db4992b0592d70828b330d2f8a30a71450f4e152a554e84f8"
     }
   ],
   "tagger": {

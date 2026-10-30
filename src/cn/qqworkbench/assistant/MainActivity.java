@@ -271,7 +271,7 @@ public final class MainActivity extends Activity {
         primary("读取B站视频画面",()->{String value=bili.getText().toString().trim();if(value.isEmpty()){toast("先填写视频链接或BV号");return;}String q=question.getText().toString();toast("正在获取B站视频画面…");io.submit(()->{try{JSONObject r=api("/video/analyze",new JSONObject().put("bili",value).put("question",q));runOnUiThread(()->{if(!destroyed)new AlertDialog.Builder(this).setTitle(r.optBoolean("ok")?"B站视频分析":"视频读取未完成").setMessage(r.optString("message")+"\n\n"+r.optString("answer")).setPositiveButton("完成",null).show();});}catch(Exception e){runOnUiThread(()->toast("读取未完成，请检查本地服务和B站登录"));}});});
         button("登录 / 更新B站登录",this::biliLogin);
         button("打开哔哩哔哩App",this::openBiliApp);
-        button("选择视觉模型",()->go("api"));help("图片与视频说明","图片会结合聊天上下文回复。视频每秒1帧，每帧缩至256×144以内，8帧拼图；每两分钟以10万Token为规划上限，10分钟分5段后汇总，总用量随时长增加，实际以服务商用量为准。内置离线中文音轨识别和声音检测；本机抽样分类可辅助判断音乐/人声等，概率不是精确识曲，也不能凭它编造旋律。没有对白文字不等于静音。每30秒最多保留300字转写，每两分钟最多1200字，语音转写本身不调用模型。转写可能有错漏，外语、歌声或背景音乐不保证准确；小字与快速动作也可能遗漏。后续聊天保留分析文字，不重复发送视频画面。视觉能力在模型卡片中设置；DeepSeek文字模型需单独配置视觉服务。");
+        button("选择视觉模型",()->go("api"));help("图片与视频说明","图片会结合聊天上下文回复。视频每秒1帧，每帧缩至256×144以内，8帧拼图；每两分钟以10万Token为规划上限，10分钟分5段后汇总，总用量随时长增加，实际以服务商用量为准。内置离线中英等多语种音轨识别和声音检测；本机抽样分类可辅助判断音乐/人声等，概率不是精确识曲，也不能凭它编造旋律。没有对白文字不等于静音。每30秒最多保留300字转写，每两分钟最多1200字，语音转写本身不调用模型。默认只结合画面和对白文字回复，明确问声音或BGM才讨论音乐。中英混说自动识别，可疑重复转写会尝试英文重听并标记不确定；短促梗音频、变速、歌声或重混仍可能识别不准；小字与快速动作也可能遗漏。后续聊天保留分析文字，不重复发送视频画面。视觉能力在模型卡片中设置；DeepSeek文字模型需单独配置视觉服务。");
     }
     void analyzeVideo(android.net.Uri uri){
         toast("正在本机抽取视频画面…");String question=prefs().getString("videoQuestion","概括视频画面");
