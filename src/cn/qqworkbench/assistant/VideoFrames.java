@@ -49,10 +49,13 @@ final class VideoFrames {
         return new JSONObject().put("sampling","1fps-contact-sheet-v1").put("durationSeconds",duration/1000.0).put("sampledSeconds",duration/1000.0).put("frameCount",stamps.length).put("frames",frames);
     }
     static JSONObject local(Context context,Uri uri)throws Exception{
-        File copy=new File(context.getCacheDir(),"video-sample-"+java.util.UUID.randomUUID()+".tmp");
+        File directory=new File(context.getFilesDir(),"linux/rootfs/opt/qq-workbench/video-imports");
+        if(!directory.isDirectory()&&!directory.mkdirs())throw new IOException("视频暂存目录不可用");
+        File temporary=new File(directory,"clip-"+java.util.UUID.randomUUID().toString().replace("-","")+".bin");boolean handedOff=false;
         try(InputStream in=context.getContentResolver().openInputStream(uri)){
-            if(in==null)throw new IOException("无法打开视频");copy(in,copy);return file(copy);
-        }finally{copy.delete();}
+            if(in==null)throw new IOException("无法打开视频");copy(in,temporary);if(temporary.length()==0)throw new IOException("视频为空");handedOff=true;
+            return new JSONObject().put("clip",temporary.getName()).put("bytes",temporary.length());
+        }finally{if(!handedOff)temporary.delete();}
     }
     static void copy(InputStream in,File file)throws Exception{
         try(OutputStream out=new FileOutputStream(file)){long total=0;byte[] b=new byte[32768];int n;while((n=in.read(b))!=-1){total+=n;if(total>MAX_BYTES)throw new IOException("视频超过32MB，请先裁剪短片段");out.write(b,0,n);}}
@@ -73,9 +76,9 @@ final class VideoFrames {
     static JSONObject remote(Context context,String value,boolean bili)throws Exception{
         URL url=NativeNetwork.publicUrl(value);String host=url.getHost().toLowerCase(java.util.Locale.ROOT);
         if(!mediaHost(url,bili))throw new IOException("视频媒体地址不受支持");
-        File directory=bili?new File(context.getFilesDir(),"linux/rootfs/opt/qq-workbench/video-imports"):context.getCacheDir();
+        File directory=new File(context.getFilesDir(),"linux/rootfs/opt/qq-workbench/video-imports");
         if(!directory.isDirectory()&&!directory.mkdirs())throw new IOException("视频暂存目录不可用");
-        File temporary=new File(directory,bili?"clip-"+java.util.UUID.randomUUID().toString().replace("-","")+".bin":"qq-video-"+java.util.UUID.randomUUID()+".tmp");boolean handedOff=false;
+        File temporary=new File(directory,"clip-"+java.util.UUID.randomUUID().toString().replace("-","")+".bin");boolean handedOff=false;
         HttpURLConnection c=(HttpURLConnection)url.openConnection();
         try{c.setInstanceFollowRedirects(false);c.setConnectTimeout(12000);c.setReadTimeout(25000);c.setRequestProperty("Accept","video/*,application/octet-stream");
             if(bili){c.setRequestProperty("Referer","https://www.bilibili.com/");c.setRequestProperty("User-Agent","Mozilla/5.0");}
@@ -83,8 +86,7 @@ final class VideoFrames {
             if(c.getContentLengthLong()>MAX_BYTES)throw new IOException("视频超过32MB，请导入裁剪后的片段");
             String type=c.getContentType();if(type!=null&&!type.startsWith("video/")&&!type.startsWith("audio/")&&!type.startsWith("application/octet-stream"))throw new IOException("链接不是可读取的视频文件");
             try(InputStream in=c.getInputStream()){copy(in,temporary);}
-            if(bili){if(temporary.length()==0)throw new IOException("B站返回空视频");temporary.setReadable(false,false);temporary.setReadable(true,true);temporary.setWritable(false,false);temporary.setWritable(true,true);handedOff=true;return new JSONObject().put("clip",temporary.getName()).put("bytes",temporary.length());}
-            return file(temporary);
+            {if(temporary.length()==0)throw new IOException("B站返回空视频");temporary.setReadable(false,false);temporary.setReadable(true,true);temporary.setWritable(false,false);temporary.setWritable(true,true);handedOff=true;return new JSONObject().put("clip",temporary.getName()).put("bytes",temporary.length());}
         }finally{c.disconnect();if(!handedOff)temporary.delete();}
     }
 }

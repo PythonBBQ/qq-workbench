@@ -1,0 +1,49 @@
+{
+  "runtime": {
+    "version": "2.0.1",
+    "filename": "runtime.tar.bz2",
+    "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/v2.0.1/sherpa-onnx-v2.0.1-linux-aarch64-shared-cpu.tar.bz2",
+    "sha256": "a8fc9fb3940d1aa3f83136767742b05068f00253f560d53c4f5aeb75ab4cb350"
+  },
+  "model": {
+    "name": "sherpa-onnx-zipformer-ctc-small-zh-int8-2025-07-16",
+    "publisher": "csukuangfj / Fangjun Kuang",
+    "revision": "1d97c1cb21860909b5f74b4c28698f872fb81c42",
+    "license": "Apache-2.0, as declared in the publisher ModelScope model card",
+    "github": "https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models",
+    "files": [
+      {
+        "filename": "bbpe.model",
+        "url": "https://modelscope.cn/api/v1/models/csukuangfj/sherpa-onnx-zipformer-ctc-small-zh-int8-2025-07-16/repo?Revision=1d97c1cb21860909b5f74b4c28698f872fb81c42&FilePath=bbpe.model",
+        "sha256": "503204e0690eff065e30d0e01898c9ab06d0e6dc376a741eb6846198f95b2f82"
+      },
+      {
+        "filename": "model.int8.onnx",
+        "url": "https://modelscope.cn/api/v1/models/csukuangfj/sherpa-onnx-zipformer-ctc-small-zh-int8-2025-07-16/repo?Revision=1d97c1cb21860909b5f74b4c28698f872fb81c42&FilePath=model.int8.onnx",
+        "sha256": "32e5f17cc9a77d480f8d94bda97b7cc7a40965b6651b35385813f561a74129c8"
+      },
+      {
+        "filename": "tokens.txt",
+        "url": "https://modelscope.cn/api/v1/models/csukuangfj/sherpa-onnx-zipformer-ctc-small-zh-int8-2025-07-16/repo?Revision=1d97c1cb21860909b5f74b4c28698f872fb81c42&FilePath=tokens.txt",
+        "sha256": "6fed8c6c248516f38e7faa19404b57413e8ce259f1cbc1fa4aebc86eac32fdfd"
+      },
+      {
+        "filename": "README.md",
+        "url": "https://modelscope.cn/api/v1/models/csukuangfj/sherpa-onnx-zipformer-ctc-small-zh-int8-2025-07-16/repo?Revision=1d97c1cb21860909b5f74b4c28698f872fb81c42&FilePath=README.md",
+        "sha256": "14ff23481402330f88cae7bff68eaf84b527bebf9b6036b09c73ad8230f08739"
+      }
+    ]
+  },
+  "licenses": [
+    {
+      "filename": "SherpaOnnx-Apache-2.0.txt",
+      "url": "https://raw.githubusercontent.com/k2-fsa/sherpa-onnx/v2.0.1/LICENSE",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "filename": "OnnxRuntime-MIT.txt",
+      "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.23.2/LICENSE",
+      "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c"
+    }
+  ]
+}

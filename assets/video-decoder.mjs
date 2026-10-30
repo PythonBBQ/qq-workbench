@@ -1,3 +1,4 @@
+import {transcribeClip} from './video-audio.mjs';
 import fs from 'node:fs';import path from 'node:path';import crypto from 'node:crypto';
 import {execFile} from 'node:child_process';import {promisify} from 'node:util';
 const exec=promisify(execFile);
@@ -28,7 +29,8 @@ export async function decodeClip(file,work='/opt/qq-workbench'){
       if(!image.length||bytes>15000000)throw new Error('视频压缩画面超过上限');
       frames.push({seconds:i*8,timestamps:Array.from({length:Math.min(8,count-i*8)},(_,j)=>i*8+j),url:'data:image/jpeg;base64,'+image.toString('base64')});
     }
-    return {sampling:'1fps-contact-sheet-v1',durationSeconds:duration,sampledSeconds:span,frameCount:count,frames};
+    const audio=await transcribeClip(real,work);
+    return {sampling:'1fps-contact-sheet-v1',durationSeconds:duration,sampledSeconds:span,frameCount:count,frames,audio};
   }finally{fs.rmSync(outputDir,{recursive:true,force:true});}
 }
 export async function downloadClip(url,fetcher,work='/opt/qq-workbench'){

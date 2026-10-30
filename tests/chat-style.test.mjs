@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {chatBudget,systemPrompt,senderIdentity,requestHistory,addUsage,naturalStyle} from '../assets/chat-style.mjs';
+import {chatBudget,systemPrompt,senderIdentity,requestHistory,addUsage,naturalStyle,sourceReply,withoutSourceFooter} from '../assets/chat-style.mjs';
 const history=Array.from({length:20},(_,i)=>({role:i%2?'assistant':'user',content:String(i)}));
 test('owner identity comes from current QQ sender, independent of persona and nicknames',()=>{
   const config={owner:'123456',persona:'叫所有人国王'};
@@ -34,4 +34,16 @@ test('reported usage includes fallback calls and handles absent provider fields'
 
 test('natural expression is adjustable and remains subordinate to truthful capabilities and the current user request',()=>{
   assert.equal(naturalStyle({naturalChat:false}),'');assert.match(naturalStyle({chatExpression:10}),/克制/);assert.match(naturalStyle({chatExpression:90}),/鲜明/);assert.match(naturalStyle({}),/用户明确要简短/);assert.match(systemPrompt({}),/不每条都提白饭/);
+});
+
+test('a long latest answer keeps the question and conclusion for conversational followups without increasing the budget',()=>{
+ const recent=[{role:'user',content:'为什么没找到这个作者？'},{role:'assistant',content:'找到了同名作者。'+ '中间资料'.repeat(4000)+'最后：尚未取得公开视频。'}];
+ const bounded=requestHistory(recent,{historyChars:2000});assert.equal(bounded.length,2);assert.match(bounded[0].content,/这个作者/);assert.match(bounded[1].content,/同名作者/);assert.match(bounded[1].content,/尚未取得公开视频/);assert.ok(bounded.reduce((n,m)=>n+m.content.length,0)<=2000);assert.equal(recent[1].content.length>16000,true);
+});
+
+test('normal replies hide video receipts while the explicit source command can show real records',()=>{
+ const items=[{title:'作品',url:'https://www.bilibili.com/video/BV1Umxc6JEdD',author:'作者',frames:120}];
+ const raw='拼图里有人挥手。\n\n实际读取：作品 · BV1Umxc6JEdD\nhttps://www.bilibili.com/video/BV1Umxc6JEdD\n每秒1帧，共120帧；未听音轨。';
+ assert.equal(withoutSourceFooter(raw,items),'视频里有人挥手。');assert.match(sourceReply({items}),/BV1Umxc6JEdD/);assert.match(sourceReply({items}),/120 帧/);assert.match(sourceReply({error:'接口受限',items:[]}),/接口受限/);assert.match(sourceReply(),/没有可查询/);
+ assert.equal(withoutSourceFooter('根据[参考](https://example.com/a)的介绍[1]，可以这么做。'),'根据参考的介绍，可以这么做。');
 });

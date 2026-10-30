@@ -24,6 +24,7 @@ def run(*args):
 BUILD.mkdir(exist_ok=True)
 import sys
 run(sys.executable, ROOT/'tools/build-multi-parser.py')
+run(sys.executable, ROOT/'tools/build-video-asr.py')
 OUT.parent.mkdir(exist_ok=True)
 # A Windows checkout must not ship CRLF shell scripts into the Linux container.
 for script in ASSETS.glob('*.sh'):

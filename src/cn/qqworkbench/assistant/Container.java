@@ -38,7 +38,12 @@ final class Container {
             progress.update("导入已验证的 SnowLuma 1.14.22 接入组件…");bridgeRuntime.mkdirs();extract("snowluma-bridge.tar.gz",bridgeRuntime);Files.write(new File(bridgeRuntime,".bundle-1.14.22").toPath(),new byte[]{1});
         }
         File qq=new File(root,"opt/qq-workbench/linuxqq.deb");if(!qq.isFile())copyAsset("linuxqq.deb",qq);
-          for(String name:new String[]{"install.sh","session.sh","assistant.mjs","shortcuts.mjs","qq-media.mjs","qzone-client.mjs","device-tools.mjs","usage-ledger.mjs","voice.mjs","model-client.mjs","personality-growth.mjs","group-moderation.mjs","conversation-memory.mjs","video.mjs","video-decoder.mjs","native-network.mjs","web-learning.mjs","browse-intent.mjs","learning.mjs","images.mjs","chat-style.mjs","proc-locks-compat.mjs","snow-setup.py","snowluma-bridge.mjs","login.html","login.js"})copyAsset(name,new File(root,"opt/qq-workbench/"+name));
+          for(String name:new String[]{"install.sh","session.sh","assistant.mjs","shortcuts.mjs","qq-media.mjs","qzone-client.mjs","device-tools.mjs","usage-ledger.mjs","voice.mjs","model-client.mjs","personality-growth.mjs","group-moderation.mjs","conversation-memory.mjs","video.mjs","video-audio.mjs","video-decoder.mjs","native-network.mjs","web-learning.mjs","browse-intent.mjs","learning.mjs","images.mjs","chat-style.mjs","proc-locks-compat.mjs","snow-setup.py","snowluma-bridge.mjs","login.html","login.js"})copyAsset(name,new File(root,"opt/qq-workbench/"+name));
+        File asr=new File(root,"opt/qq-workbench/asr");
+        if(!new File(asr,".bundle-zipformer-ctc-small-zh-v1").isFile()){
+            progress.update("准备离线中文音轨识别，视频声音不上传转写…");asr.mkdirs();extract("video-asr.tar.gz",asr);
+            Files.write(new File(asr,".bundle-zipformer-ctc-small-zh-v1").toPath(),new byte[]{1});
+        }
         copyAsset("bili-video.mjs",new File(root,"opt/qq-workbench/bili-video.mjs"));
         copyAsset("multi-parser.mjs",new File(root,"opt/qq-workbench/multi-parser.mjs"));
         File parser=new File(root,"opt/qq-workbench/parser");parser.mkdirs();
