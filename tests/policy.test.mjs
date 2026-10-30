@@ -13,6 +13,12 @@ test('messages directed at other humans do not interrupt',()=>{const e=message('
 test('own messages cannot create loops',()=>assert.equal(decide(message('@deepseek',{user_id:765432}),cfg,new Map()),'ignore'));
 test('private chat does not require a mention',()=>assert.equal(decide(message('你好',{message_type:'private',group_id:undefined}),cfg,new Map()),'reply'));
 test('codex invocation is distinct from chat',()=>assert.equal(decide(message('@codex 做任务'),cfg,new Map()),'codex'));
+test('codex routing supports Chinese adjacency and respects first addressee without promoting non-owners',()=>{
+ assert.equal(decide(message('@codex做任务'),cfg,new Map()),'codex');
+ assert.equal(decide(message('hello@codex.com',{message_type:'private'}),cfg,new Map()),'reply');
+ assert.equal(decide(message('@deepseek 解释 @codex'),cfg,new Map()),'reply');
+ assert.equal(decide(message('@codex做任务',{user_id:999999}),cfg,new Map()),'ignore');
+});
 test('image event remains structured, text comes from text segments',()=>assert.equal(plain(message('结合这个图',{message:[{type:'image',data:{url:'https://example.com/a.png'}},{type:'text',data:{text:'结合这个图'}}]})),'结合这个图'));
 test('success requires message evidence, transport-only success is insufficient',()=>{assert.equal(confirmed({status:'ok',retcode:0,data:{message_id:3}}),true);for(const r of [{},{status:'ok',retcode:0},{status:'failed',retcode:0,data:{message_id:3}},{status:'ok',retcode:1200,data:{message_id:3}}])assert.equal(confirmed(r),false);});
 test('QQ formatting keeps meaningful path punctuation',()=>assert.equal(cleanReply('# 结果\n**做好了**\n- 路径 E:/项目/a-b.txt'),'结果\n做好了\n路径 E:/项目/a-b.txt'));

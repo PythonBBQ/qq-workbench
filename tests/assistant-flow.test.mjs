@@ -8,7 +8,7 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const pause=()=>new Promise(r=>setTimeout(r,40));
 test('first-run Key applies without restart; pictures and follow-ups use context in one call, no real QQ or model traffic',async()=>{
   const parent=path.join(root,'build','flow-tests');await fs.mkdir(parent,{recursive:true});const dir=await fs.mkdtemp(path.join(parent,'case-'));
-  for(const name of ['assistant.mjs','shortcuts.mjs','qq-media.mjs','qzone-client.mjs','device-tools.mjs','usage-ledger.mjs','voice.mjs','model-client.mjs','personality-growth.mjs','group-moderation.mjs','conversation-memory.mjs','video.mjs','video-audio.mjs','bili-video.mjs','video-decoder.mjs','native-network.mjs','web-learning.mjs','browse-intent.mjs','learning.mjs','multi-parser.mjs','snowluma-bridge.mjs','images.mjs','chat-style.mjs'])await fs.copyFile(path.join(root,'assets',name),path.join(dir,name));
+  for(const name of ['assistant.mjs','codex-jobs.mjs','shortcuts.mjs','qq-media.mjs','qzone-client.mjs','device-tools.mjs','usage-ledger.mjs','voice.mjs','model-client.mjs','personality-growth.mjs','group-moderation.mjs','conversation-memory.mjs','video.mjs','video-audio.mjs','bili-video.mjs','video-decoder.mjs','native-network.mjs','web-learning.mjs','browse-intent.mjs','learning.mjs','multi-parser.mjs','snowluma-bridge.mjs','images.mjs','chat-style.mjs'])await fs.copyFile(path.join(root,'assets',name),path.join(dir,name));
   await fs.writeFile(path.join(dir,'settings.json'),JSON.stringify({owner:'123456',enabled:true,others:true,rate:100,apiUrl:'https://api.deepseek.com',model:'deepseek-flash',persona:'温柔，爱吃白饭',maxReplyTokens:400,memoryEnabled:false}));
   await fs.writeFile(path.join(dir,'mock.mjs'),`
 import {SnowLumaBridge} from './snowluma-bridge.mjs';
@@ -127,7 +127,10 @@ globalThis.fetch=async(url,options)=>{
     let exported=await(await api('/memory/export',{})).json();assert.equal(JSON.parse(exported.jsonl).messages[0].content,'记住：我喜欢白饭');
     const memoryId=memories[0].id;
     assert.equal((await api('/memory/note',{id:memoryId,content:'回答简短'})).status,200);
-    sendOwner(115,'你好');await until(()=>sent.length===11);assert.match(models.at(-1).model.messages[0].content,/回答简短/);
+    sendOwner(115,'我明天去医院复查');await until(()=>sent.length===11);assert.match(models.at(-1).model.messages[0].content,/回答简短/);
+    const dated=await until(async()=>{const list=await(await api('/memory/list')).json();return list.sessions.find(r=>r.id===memoryId)?.events?.[0]||null;});
+    assert.equal(dated.content,'我明天去医院复查');assert.equal((await api('/memory/delete',{id:memoryId,eventId:dated.id},false)).status,401);
+    assert.equal((await api('/memory/delete',{id:memoryId,eventId:dated.id})).status,200);const kept=(await(await api('/memory/list')).json()).sessions.find(r=>r.id===memoryId);assert.equal(kept.events.length,0);assert.ok(kept.notes.some(n=>n.content==='回答简短'));
     // An analysis is local-only and must not send to QQ.
     await update({visionMode:'chat'});
     const video=await(await api('/video/analyze',{durationSeconds:3,frames:[{seconds:1,url:'data:image/jpeg;base64,AQID'}],question:'概括画面'})).json();
@@ -337,6 +340,20 @@ globalThis.fetch=async(url,options)=>{
     n=sent.length;beforeVideo=models.length;sendCommand(347,'#来源');await until(()=>sent.length===n+1);assert.equal(models.length,beforeVideo);assert.match(sent.at(-1).message[0].data.text,/UP主：愚鸟渡渡/);assert.match(sent.at(-1).message[0].data.text,/BV1ycx76dEjW/);
     n=sent.length;child.send({event:groupMessage(348,123456,'＃来源')});await until(()=>sent.length===n+1);assert.match(sent.at(-1).message[0].data.text,/mp.weixin.qq.com/);assert.ok(!sent.at(-1).message[0].data.text.includes('BV1ycx76dEjW'),'group sources cannot reveal private video records');assert.equal(models.length,beforeVideo);
     n=sent.length;beforeVideo=models.length;child.send({event:{...event,message_id:344,message:[{type:'text',data:{text:'看完视频'}},{type:'video',data:{url:'https://gchat.qpic.cn/full-video.mp4'}}]}});await until(()=>sent.length===n+1);assert.equal(models.length,beforeVideo+6,'an attached QQ video wins over a historical Bili reference');assert.match(JSON.stringify(models.at(-1).model.messages.at(-1)),/600/);
+    // Android owner -> persistent job -> computer claim -> final text -> original QQ target.
+    await update({learningEnabled:false,memoryEnabled:true,emojiEnabled:false});
+    n=sent.length;beforeVideo=models.length;sendCommand(350,'@codex做个隔离测试');await until(()=>sent.length===n+1);assert.match(sent.at(-1).message[0].data.text,/未连接/);assert.equal(models.length,beforeVideo);
+    const worker='1234567890abcdef1234567890abcdef';
+    assert.equal((await api('/codex/claim',{worker},false)).status,401);
+    await api('/codex/heartbeat',{worker});assert.equal((await(await api('/state')).json()).codex.online,true);
+    n=sent.length;child.send({event:groupMessage(351,123456,'@codex做个隔离测试')});await until(()=>sent.length===n+1);assert.match(sent.at(-1).message[0].data.text,/排队执行/);assert.equal(models.length,beforeVideo);
+    const task=(await(await api('/codex/claim',{worker})).json()).job;assert.equal(task.prompt,'做个隔离测试');assert.equal(task.event.group_id,54321);assert.equal((await(await api('/codex/claim',{worker})).json()).job,null);
+    n=sent.length;sendCommand(352,'聊聊白饭');await until(()=>sent.length===n+1);assert.equal(models.length,beforeVideo+1,'chat remains responsive while Codex runs');
+    n=sent.length;const completion={id:task.id,lease:task.lease,status:'completed',text:'隔离任务完成，已验证。',usage:{prompt_tokens:20,completion_tokens:5}};
+    await api('/codex/result',completion);await until(()=>sent.length===n+1);assert.equal(sent.at(-1).group_id,54321);assert.match(sent.at(-1).message[0].data.text,/@deepseek/);assert.match(sent.at(-1).message[0].data.text,/隔离任务完成/);
+    await api('/codex/result',completion);child.send({event:groupMessage(351,123456,'@codex做个隔离测试')});await new Promise(r=>setTimeout(r,150));assert.equal(sent.length,n+1,'duplicate result and QQ event are never replayed');
+    assert.equal((await(await api('/usage')).json()).groups.filter(g=>g.category==='codex').length,1);
+    n=sent.length;child.send({event:groupMessage(353,888888,'@codex做个隔离测试')});await new Promise(r=>setTimeout(r,100));assert.equal(sent.length,n);assert.equal((await(await api('/codex/claim',{worker})).json()).job,null);
     await update({enabled:false});await api('/runtime/resume',{reason:'idle'});assert.equal((await(await api('/state')).json()).enabled,false,'manual pause survives network recovery');
   }finally{try{await api('/shutdown',{});}catch{}await until(()=>exited||false).catch(()=>child.kill());if(child.connected)child.disconnect();}
 });

@@ -1,7 +1,14 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {chatBudget,systemPrompt,senderIdentity,requestHistory,addUsage,naturalStyle,sourceReply,withoutSourceFooter} from '../assets/chat-style.mjs';
+import {chatBudget,systemPrompt,senderIdentity,requestHistory,addUsage,naturalStyle,sourceReply,withoutSourceFooter,capabilityPrompt} from '../assets/chat-style.mjs';
 const history=Array.from({length:20},(_,i)=>({role:i%2?'assistant':'user',content:String(i)}));
+test('idle chat avoids unrelated capability instructions; topic-specific instructions remain available',()=>{
+ assert.equal(capabilityPrompt({},'今天开心吗'), '');
+ assert.match(capabilityPrompt({},'帮我写条说说'),/仅草稿/);
+ assert.match(capabilityPrompt({},'这段视频讲什么',{video:true}),/空转写不证明静音/);
+ assert.match(capabilityPrompt({},'查看手机电量'),/Shizuku/);
+ assert.match(capabilityPrompt({},'解释@codex'),/独立Codex任务/);
+});
 test('owner identity comes from current QQ sender, independent of persona and nicknames',()=>{
   const config={owner:'123456',persona:'叫所有人国王'};
   const event={user_id:123456,message_type:'group',sender:{nickname:'路人'}};

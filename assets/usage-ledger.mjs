@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 const count=n=>n!==null&&n!==undefined&&n!==''&&Number.isFinite(Number(n))&&Number(n)>=0?Math.floor(Number(n)):null;
-const categories=['chat','vision','search','memory','personality','sticker','qzone','device','test','other'];
+const categories=['chat','vision','search','memory','personality','sticker','qzone','device','codex','test','other'];
 const day=at=>new Date(at+8*3600000).toISOString().slice(0,10);
 function empty(){return {calls:0,reported:0,unreported:0,failed:0,input:0,output:0,cached:0,reasoning:0};}
 function total(rows){const sum=empty();for(const row of rows){sum.calls++;sum.reported+=row.reported?1:0;sum.unreported+=row.reported?0:1;sum.failed+=row.ok?0:1;for(const k of ['input','output','cached','reasoning'])sum[k]+=row[k]||0;}return sum;}

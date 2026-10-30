@@ -1,6 +1,6 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
 import fs from 'node:fs';import os from 'node:os';import path from 'node:path';
-import {ConversationMemory,conversationScope,preference,memoryTerms,reinforceTopics,topicStrength,localDigest} from '../assets/conversation-memory.mjs';
+import {ConversationMemory,conversationScope,preference,memoryTerms,reinforceTopics,topicStrength,localDigest,eventCandidate} from '../assets/conversation-memory.mjs';
 import {worldContext,requestHistory} from '../assets/chat-style.mjs';
 const base=path.resolve(import.meta.dirname,'../build/memory-tests');fs.mkdirSync(base,{recursive:true});
 const directory=()=>fs.mkdtempSync(path.join(base,'case-'));
@@ -13,7 +13,7 @@ test('long conversation persists across restarts with bounded recent context and
  store.commit(s,'记住：我爱吃白饭','记住啦',c);
  const loaded=new ConversationMemory(dir);assert.equal(loaded.history(s,c).length,102);
  const full=loaded.history(s,c);assert.equal(requestHistory(full,c).length,4);
- assert.match(loaded.context(s,c,full),/第4[0-9]次/);assert.match(loaded.context(s,c,full),/我爱吃白饭/);
+ assert.match(loaded.context(s,c,full),/第4[0-9]次/);assert.ok(!loaded.context(s,c,full).includes('我爱吃白饭'),'recent preference already exists in the sent history');assert.match(JSON.stringify(requestHistory(full,c)),/我爱吃白饭/);
  assert.equal(loaded.history(s,{...c,memoryEnabled:false}).length,0);
  assert.ok(!fs.readFileSync(store.file,'utf8').includes('image_url'));
 });
@@ -67,7 +67,7 @@ test('retrieval finds old relevant facts even after the smaller media cache and 
  await store.compress(s,{...c,compressionMode:'model'},async()=> '火星行程安排在下周三');
  for(let i=0;i<14;i++)store.commit(s,'之后新增话题'+i,'回复',c);
  const context=store.context(s,c,store.history(s,c).slice(-120),'新增话题13');
- assert.match(context,/下周三/);assert.match(context,/新增话题1[01]/);
+ assert.ok(!context.includes('下周三'),'unrelated summary is not injected into a specific new topic');assert.match(context,/新增话题1[01]/);
 });
 
 test('local overflow keeps bounded older excerpts across restart and clears them on chat end',()=>{
@@ -141,4 +141,41 @@ test('specific recall does not fill the prompt with unrelated or duplicate excer
  const turns=[duplicate,{user:'篮球比赛明天开始',assistant:'知道了'},duplicate];
  const digest=localDigest(turns,1800,'白饭搭配');assert.equal((digest.match(/清淡一点/g)||[]).length,1);assert.ok(!digest.includes('篮球'));
  assert.equal(localDigest(turns,1800,'火星旅行'),'');assert.match(localDigest(turns,1800,''),/篮球/);
+});
+
+test('event capture separates clear user plans from preferences, quotes, instructions, secrets and questions',()=>{
+ for(const value of ['我明天去医院复查','记住：医院复查改到周五','我已经完成考试报名','@deepseek 我下周去超市','记住：下周三考试'])assert.ok(eventCandidate(value),value);
+ for(const value of ['我喜欢周末吃白饭','记住：我喜欢周末吃白饭','记住：以后回复简短一点','他说我明天去医院复查','“我明天去医院复查”','如果我明天去医院复查','你明天去医院复查','我明天去医院复查吗？','提醒我明天去医院','我明天去医院，密码是synthetic','#指令'])assert.equal(eventCandidate(value),'',value);
+});
+
+test('dated events survive recent-history overflow and encrypted restarts and recall only when relevant',()=>{
+ const dir=directory(),store=new ConversationMemory(dir,'event-test-key'),s=scope(),before=process.env.QQWB_TIME_ZONE;
+ try{process.env.QQWB_TIME_ZONE='Asia/Tokyo';store.commit(s,'记住：我明天去医院复查','知道了',c);}finally{if(before===undefined)delete process.env.QQWB_TIME_ZONE;else process.env.QQWB_TIME_ZONE=before;}
+ for(let i=0;i<150;i++)store.commit(s,'其他聊天'+i,'回复',c);
+ const loaded=new ConversationMemory(dir,'event-test-key'),r=loaded.record(s);assert.equal(r.events.length,1);assert.equal(r.events[0].zone,'Asia/Tokyo');assert.equal(r.notes.length,0);
+ assert.ok(!fs.readFileSync(loaded.file,'utf8').includes('医院'));const context=loaded.context(s,c,loaded.history(s,c),'医院复查');assert.match(context,/事件时间线/);assert.match(context,/Asia\/Tokyo/);assert.match(context,/明天.*相对当时日期/);assert.match(context,/我明天去医院复查/);
+ assert.ok(!loaded.context(s,{...c,compressionEnabled:false},[],'晚饭吃什么').includes('医院'));assert.equal(loaded.context(s,{...c,eventMemory:false,compressionEnabled:false},[],'医院复查'),'');
+ const other=conversationScope(c,{...event,user_id:555555},'765432');assert.equal(loaded.record(other).events.length,0);
+});
+
+test('event correction is chronological user evidence, bounded, inspectable and individually deletable',()=>{
+ const store=new ConversationMemory(directory()),s=scope();store.commit(s,'记住：医院复查安排在周三','好',c);store.commit(s,'记住：医院复查改到周五','好',c);
+ const context=store.context(s,{...c,compressionEnabled:false},[],'医院复查');assert.ok(context.indexOf('安排在周三')<context.indexOf('改到周五'));assert.match(context,/最新纠正优先/);assert.match(context,/不是提醒任务或助手已执行凭据/);
+ const first=store.list(c.owner,'765432')[0].events[0];assert.throws(()=>store.removeEvent(s.id,first.id,'wrong-owner','765432'));assert.equal(store.record(s).events.length,2);
+ store.removeEvent(s.id,first.id,c.owner,'765432');assert.equal(store.record(s).events.length,1);
+ store.commit(s,'记住：医院复查改到周五','好',c);assert.equal(store.record(s).events.length,1);assert.equal(store.record(s).events[0].mentions,2);
+ for(let i=0;i<100;i++)store.commit(s,'记住：周三出差计划'+i,'好',c);assert.equal(store.record(s).events.length,64);
+ const many=store.context(s,{...c,compressionEnabled:false},[],'出差计划');assert.ok(many.length<1100);
+});
+
+test('events have explicit disable and clearing behavior and do not consume the preference or old-excerpt budgets',()=>{
+ const store=new ConversationMemory(directory()),s=scope();store.commit(s,'我明天去医院复查','好',{...c,eventMemory:false});assert.equal(store.record(s).events.length,0);
+ store.commit(s,'记住：我喜欢白饭','好',c);store.commit(s,'我明天去医院复查','好',c);store.end(s);
+ assert.equal(store.record(s).notes.length,1);assert.equal(store.record(s).events.length,1);assert.equal(store.history(s,c).length,0);
+ store.clearHistory(c.owner,'765432');assert.equal(store.record(s).events.length,0);assert.equal(store.record(s).notes.length,1);
+});
+
+test('pre-layered memory migrates without backfilling inferred events or changing prior preferences',()=>{
+ const dir=directory(),store=new ConversationMemory(dir),s=scope();store.note(s,'我喜欢白饭');delete store.records[s.id].events;store.save();
+ const loaded=new ConversationMemory(dir);assert.equal(loaded.problem,'');assert.deepEqual(loaded.record(s).events,[]);assert.equal(loaded.record(s).notes[0].content,'我喜欢白饭');
 });

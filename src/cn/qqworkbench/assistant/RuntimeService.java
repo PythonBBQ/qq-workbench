@@ -102,7 +102,7 @@ public final class RuntimeService extends Service {
         File configFile=new File(getFilesDir(),"linux/rootfs/opt/qq-workbench/settings.json");JSONObject current=configFile.isFile()?new JSONObject(new String(java.nio.file.Files.readAllBytes(configFile.toPath()),java.nio.charset.StandardCharsets.UTF_8)):new JSONObject();JSONObject apiSettings=ApiProfiles.settings(selected);for(java.util.Iterator<String> it=apiSettings.keys();it.hasNext();){String k=it.next();current.put(k,apiSettings.get(k));}Container.writePrivate(configFile,current.toString());
         Map<String,String> env=new HashMap<>();env.put("WORKBENCH_TOKEN",vault.ensure("internal"));env.put("DEEPSEEK_API_KEY",selected.optString("apiKey"));env.put("VISION_API_KEY",selected.optString("visionKey"));env.put("SPEECH_API_KEY",vault.get("speech"));
         env.put("QQWB_ANDROID_NETWORK","1");env.put("QQWB_SITE_COOKIES",vault.get("site-cookies"));
-        env.put("WORKBENCH_MEMORY_KEY",vault.ensure("conversation-memory"));
+        env.put("WORKBENCH_MEMORY_KEY",vault.ensure("conversation-memory"));env.put("QQWB_TIME_ZONE",java.util.TimeZone.getDefault().getID());
         env.put("VNC_PASSWORD",vault.ensure("vnc").substring(0,8));
         env.put("QQWB_APT_PROXY",getSharedPreferences("settings",0).getString("setupProxy",""));
         update("检查 Linux QQ 与图形组件…");
