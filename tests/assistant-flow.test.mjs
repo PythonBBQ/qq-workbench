@@ -8,7 +8,7 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const pause=()=>new Promise(r=>setTimeout(r,40));
 test('first-run Key applies without restart; pictures and follow-ups use context in one call, no real QQ or model traffic',async()=>{
   const parent=path.join(root,'build','flow-tests');await fs.mkdir(parent,{recursive:true});const dir=await fs.mkdtemp(path.join(parent,'case-'));
-  for(const name of ['assistant.mjs','shortcuts.mjs','qq-media.mjs','qzone-client.mjs','device-tools.mjs','usage-ledger.mjs','voice.mjs','model-client.mjs','personality-growth.mjs','group-moderation.mjs','conversation-memory.mjs','video.mjs','video-decoder.mjs','native-network.mjs','web-learning.mjs','browse-intent.mjs','learning.mjs','multi-parser.mjs','snowluma-bridge.mjs','images.mjs','chat-style.mjs'])await fs.copyFile(path.join(root,'assets',name),path.join(dir,name));
+  for(const name of ['assistant.mjs','shortcuts.mjs','qq-media.mjs','qzone-client.mjs','device-tools.mjs','usage-ledger.mjs','voice.mjs','model-client.mjs','personality-growth.mjs','group-moderation.mjs','conversation-memory.mjs','video.mjs','bili-video.mjs','video-decoder.mjs','native-network.mjs','web-learning.mjs','browse-intent.mjs','learning.mjs','multi-parser.mjs','snowluma-bridge.mjs','images.mjs','chat-style.mjs'])await fs.copyFile(path.join(root,'assets',name),path.join(dir,name));
   await fs.writeFile(path.join(dir,'settings.json'),JSON.stringify({owner:'123456',enabled:true,others:true,rate:100,apiUrl:'https://api.deepseek.com',model:'deepseek-flash',persona:'温柔，爱吃白饭',maxReplyTokens:400,memoryEnabled:false}));
   await fs.writeFile(path.join(dir,'mock.mjs'),`
 import {SnowLumaBridge} from './snowluma-bridge.mjs';
@@ -45,11 +45,14 @@ globalThis.fetch=async(url,options)=>{
     return Response.json({choices:[{message:{content:'好呀，配一碗白饭！'}}],usage:{prompt_tokens:100,completion_tokens:10,prompt_cache_hit_tokens:20}});
   }
   if(u.origin==='http://127.0.0.1:13481'&&u.pathname==='/device/action'){const request=JSON.parse(options.body);process.send({device:request});return Response.json({ok:true,output:'synthetic battery: 80%',message:'执行完成'});}
+  if(u.origin==='http://127.0.0.1:13481'&&u.pathname==='/video-frames'&&JSON.parse(options.body).source==='bilibili')return Response.json({sampling:'1fps-contact-sheet-v1',durationSeconds:120,sampledSeconds:120,frameCount:120,frames:Array.from({length:15},(_,i)=>({seconds:i*8,timestamps:Array.from({length:8},(_,j)=>i*8+j),url:'data:image/jpeg;base64,AQID'}))});
   if(u.origin==='http://127.0.0.1:13481'&&u.pathname==='/video-frames')return Response.json({sampling:'1fps-contact-sheet-v1',durationSeconds:600,sampledSeconds:600,frameCount:600,frames:Array.from({length:75},(_,i)=>({seconds:i*8,timestamps:Array.from({length:8},(_,j)=>i*8+j),url:'data:image/jpeg;base64,AQID'}))});
   if(['h5.qzone.qq.com','user.qzone.qq.com'].includes(u.hostname)){
     if(options.method==='POST'){process.send({rpc:'send_qzone_msg',qzoneBody:options.body});return Response.json({code:0,...(globalThis.sendControl==='qzone-accepted'?{tid:'synthetic-post-id'}:{})});}
     return Response.json({code:0,total:0,msglist:null,logininfo:{uin:765432}});
   }
+  if(u.hostname==='api.bilibili.com'&&u.pathname.includes('playurl'))return Response.json({code:0,data:{dash:{video:[{baseUrl:'https://video.bilivideo.com/low.mp4?token=SIGNED-MEDIA-SECRET',bandwidth:100000}]}}});
+  if(u.hostname==='api.bilibili.com'&&u.searchParams.get('bvid')==='BV1Umxc6JEdD')return Response.json({code:0,data:{bvid:'BV1Umxc6JEdD',title:'Synthetic full video',duration:120,cid:1234,pages:[{page:1,cid:1234,duration:120}]}});
   if(u.hostname==='api.bilibili.com')return Response.json({code:0,data:{bvid:'BV1GJ411x7h7',title:'做饭与白饭',owner:{name:'测试作者'},desc:'仅供隔离测试的公开简介'}});
   if(u.hostname==='cn.bing.com'){process.send({browse:{url:u.href,auth:options.headers?.Authorization}});return new Response('<li class="b_algo"><h2><a href="https://example.com/deepseek">DeepSeek 官方资料</a></h2><p>公开搜索摘要</p></li>',{headers:{'content-type':'text/html'}});}
   if(u.hostname==='example.com'){process.send({browse:{url:u.href,auth:options.headers?.Authorization}});return new Response('<title>公开版本资料</title><main>'+('测试版本更新信息，仅供隔离验证。'.repeat(10))+'</main>',{headers:{'content-type':'text/html'}});}
@@ -88,7 +91,7 @@ globalThis.fetch=async(url,options)=>{
     assert.equal((await api('/learning/notes',undefined,false)).status,401);
     assert.equal((await api('/learning/read',{kind:'read',value:'https://www.bilibili.com/video/BV1GJ411x7h7',save:true},false)).status,401);
     const read=await(await api('/learning/read',{kind:'read',value:'https://www.bilibili.com/video/BV1GJ411x7h7',save:true})).json();assert.equal(read.items.length,1);assert.equal((await(await api('/learning/notes')).json()).notes.length,1);
-    child.send({event:{...event,message_id:108,message:[{type:'text',data:{text:'https://www.bilibili.com/video/BV1GJ411x7h7 你学到了什么'}}]}});await until(()=>sent.length===6);assert.match(models[4].model.messages.at(-1).content,/未观看视频/);
+    child.send({event:{...event,message_id:108,message:[{type:'text',data:{text:'只查简介 https://www.bilibili.com/video/BV1GJ411x7h7 你学到了什么'}}]}});await until(()=>sent.length===6);assert.match(models[4].model.messages.at(-1).content,/未观看视频/);
     assert.equal((await api('/learning/delete',{id:'all'})).status,200);assert.equal((await(await api('/learning/notes')).json()).notes.length,0);
     const profile={settings:{apiUrl:'https://relay.example/v1',model:'relay-model',visionMode:'auto',visionUrl:'',visionModel:''},apiKey:'relay-test-key',visionKey:''};
     assert.equal((await api('/model/apply',profile,false)).status,401);
@@ -310,6 +313,12 @@ globalThis.fetch=async(url,options)=>{
     beforeVideo=models.length;n=sent.length;
     child.send({event:{...event,message_id:320,message:[{type:'video',data:{url:'https://gchat.qpic.cn/full-video.mp4'}}]}});await until(()=>sent.length===n+1);assert.equal(models.length,beforeVideo+6);
     n=sent.length;sendCommand(321,'最后发生了什么');await until(()=>sent.length===n+1);assert.ok(!JSON.stringify(models.at(-1).model).includes('data:image/jpeg'));
+    // BV-only reading and the screenshot's follow-up now include actual frames, without leaking site cookies or playback signatures.
+    n=sent.length;beforeVideo=models.length;sendCommand(330,'BV1Umxc6JEdD看看这个哔站视频');await until(()=>sent.length===n+1);assert.equal(models.length,beforeVideo+1);assert.equal(models.at(-1).model.messages.at(-1).content.filter(p=>p.type==='image_url').length,15);assert.match(JSON.stringify(models.at(-1).model.messages.at(-1)),/每秒抽取1帧/);assert.ok(!JSON.stringify(models.at(-1)).includes('未观看视频'));
+    n=sent.length;beforeVideo=models.length;sendCommand(331,'看完视频');await until(()=>sent.length===n+1);assert.equal(models.length,beforeVideo+1);assert.equal(models.at(-1).model.messages.at(-1).content.filter(p=>p.type==='image_url').length,15);
+    n=sent.length;sendCommand(332,'最后发生了什么');await until(()=>sent.length===n+1);assert.ok(!JSON.stringify(models.at(-1).model).includes('data:image/jpeg'));
+    const biliLocal=await(await api('/video/analyze',{bili:'BV1Umxc6JEdD',question:'概括画面'})).json();assert.equal(biliLocal.ok,true);assert.match(biliLocal.message,/来源：https:\/\/www.bilibili.com/);assert.equal(biliLocal.budget.images,15);
+    assert.ok(!JSON.stringify(models).includes('SIGNED-MEDIA-SECRET'));assert.ok(!JSON.stringify(models).includes('synthetic-private-cookie'));
     await update({enabled:false});await api('/runtime/resume',{reason:'idle'});assert.equal((await(await api('/state')).json()).enabled,false,'manual pause survives network recovery');
   }finally{try{await api('/shutdown',{});}catch{}await until(()=>exited||false).catch(()=>child.kill());if(child.connected)child.disconnect();}
 });

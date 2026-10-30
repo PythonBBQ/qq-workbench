@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import {webUrl,readWeb,searchWeb,browseWeb} from './web-learning.mjs';
 import {browseCandidate,naturalBrowseIntent,browsingDeclined} from './browse-intent.mjs';
 import {readShare,sharedLinks} from './multi-parser.mjs';
+import {biliReference} from './bili-video.mjs';
 
 const hosts=new Set(['bilibili.com','www.bilibili.com','m.bilibili.com','b23.tv','www.b23.tv','api.bilibili.com']);
 const clean=(s,n=1400)=>String(s??'').replace(/<[^>]*>/g,'').replace(/&(?:nbsp|amp|lt|gt|quot);/g,' ').replace(/[\u0000-\u0008\u000b-\u001f]/g,'').trim().slice(0,n);
@@ -53,7 +54,7 @@ export async function searchBili(query,fetcher=fetch){
 }
 export function learningIntent(text){
   if(browsingDeclined(text))return null;
-  const link=sharedLinks(text)[0];
+  const link=sharedLinks(text)[0]||biliReference(text);
   if(link)return {kind:'share-read',value:link};
   const search=String(text).match(/(?:去|在|从)?(?:B站|哔哩哔哩)\s*(?:搜索|搜一下|学习|查一下|查找)\s*[:：]?\s*(.{1,80})/i);
   if(search)return {kind:'search',value:search[1].trim()};

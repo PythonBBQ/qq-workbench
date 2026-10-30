@@ -53,7 +53,7 @@ Windows类路径分隔符改为分号。实际设备动作仍需安装APK、启�
 3. 提交源码；使用已授权的 GitHub CLI 上传新 Releases。软件更新源默认 PythonBBQ/qq-workbench，仅识别最新正式 Release 中唯一的 APK。
 
 ```sh
-python tools/publish-release.py --notes docs/RELEASE-0.1.31.md --gh /path/to/gh
+python tools/publish-release.py --notes docs/RELEASE-0.1.32.md --gh /path/to/gh
 ```
 
 发布脚本从本地 build/build-receipt.json 读取已校验安装包，上传 APK 和 SHA256SUMS.txt，不上传整个 build 目录。不会代替用户确认安卓系统安装。
@@ -63,3 +63,5 @@ python tools/publish-release.py --notes docs/RELEASE-0.1.31.md --gh /path/to/gh
 视频最多32MB、10分钟，每秒1帧，256×144画面按4×2拼成1024×288 JPEG。每段最多15张低清拼图，完整长视频顺序分析后汇总。预算估算不保证任意中转站的实际图像Token账单；用量页保存服务商实际返回的值。没有音轨与完整字幕转录。
 
 `python tests/run-device-video-budget.py` 可在连接的测试设备容器中生成并解码2/10分钟合成片段，验证帧时间、尺寸、分段预算与临时文件清理；需本机FFmpeg路径适配，默认脚本使用工作站工具目录。不发送QQ消息或调用付费模型。默认安卓框架测试不含shell媒体解码，厂商系统可能将无真实应用上下文的媒体进程终止。
+
+B站视频路径通过固定官方API选择最低码率视频轨，安卓受限流式下载后交给FFmpeg；Cookie只用于B站API，不注入媒体请求、模型和历史。可使用`tests/device-bili-video.mjs`在已启动的测试容器内做公开BV视频下载/抽帧验证，不调用模型或发送QQ。登录页在独立非导出的Activity中打开官方WebView，真实账号登录需用户自行完成；不能从官方App提取登录状态。

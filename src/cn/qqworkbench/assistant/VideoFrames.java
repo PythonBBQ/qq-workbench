@@ -62,16 +62,29 @@ final class VideoFrames {
         try(MediaMetadataRetriever reader=new MediaMetadataRetriever()){reader.setDataSource(file.getAbsolutePath());return extract(reader);}
     }
     static JSONObject remote(Context context,String value)throws Exception{
+        return remote(context,value,false);
+    }
+    static boolean mediaHost(URL url,boolean bili){
+        if(!url.getProtocol().equals("https")||url.getUserInfo()!=null||(url.getPort()!=-1&&url.getPort()!=443))return false;
+        String host=url.getHost().toLowerCase(java.util.Locale.ROOT);
+        for(String domain:bili?new String[]{"bilivideo.com","bilivideo.cn","bilivideo.net"}:new String[]{"qq.com","qq.com.cn","qpic.cn","gtimg.cn"})if(host.equals(domain)||host.endsWith("."+domain))return true;
+        return false;
+    }
+    static JSONObject remote(Context context,String value,boolean bili)throws Exception{
         URL url=NativeNetwork.publicUrl(value);String host=url.getHost().toLowerCase(java.util.Locale.ROOT);
-        boolean allowed=false;for(String domain:new String[]{"qq.com","qq.com.cn","qpic.cn","gtimg.cn"})if(host.equals(domain)||host.endsWith("."+domain))allowed=true;
-        if(!allowed)throw new IOException("QQ视频仅下载腾讯媒体域名；其他视频请在本机选择文件");
-        File temporary=new File(context.getCacheDir(),"qq-video-"+java.util.UUID.randomUUID()+".tmp");
+        if(!mediaHost(url,bili))throw new IOException("视频媒体地址不受支持");
+        File directory=bili?new File(context.getFilesDir(),"linux/rootfs/opt/qq-workbench/video-imports"):context.getCacheDir();
+        if(!directory.isDirectory()&&!directory.mkdirs())throw new IOException("视频暂存目录不可用");
+        File temporary=new File(directory,bili?"clip-"+java.util.UUID.randomUUID().toString().replace("-","")+".bin":"qq-video-"+java.util.UUID.randomUUID()+".tmp");boolean handedOff=false;
         HttpURLConnection c=(HttpURLConnection)url.openConnection();
         try{c.setInstanceFollowRedirects(false);c.setConnectTimeout(12000);c.setReadTimeout(25000);c.setRequestProperty("Accept","video/*,application/octet-stream");
-            if(c.getResponseCode()!=200)throw new IOException("QQ视频暂不可下载");
-            if(c.getContentLengthLong()>MAX_BYTES)throw new IOException("QQ视频超过32MB，请发送短片段");
-            String type=c.getContentType();if(type!=null&&!type.startsWith("video/")&&!type.startsWith("application/octet-stream"))throw new IOException("链接不是可读取的视频文件");
-            try(InputStream in=c.getInputStream()){copy(in,temporary);}return file(temporary);
-        }finally{c.disconnect();temporary.delete();}
+            if(bili){c.setRequestProperty("Referer","https://www.bilibili.com/");c.setRequestProperty("User-Agent","Mozilla/5.0");}
+            if(c.getResponseCode()!=200)throw new IOException(bili?"B站视频下载受限，请重新登录B站或稍后重试":"QQ视频暂不可下载");
+            if(c.getContentLengthLong()>MAX_BYTES)throw new IOException("视频超过32MB，请导入裁剪后的片段");
+            String type=c.getContentType();if(type!=null&&!type.startsWith("video/")&&!type.startsWith("audio/")&&!type.startsWith("application/octet-stream"))throw new IOException("链接不是可读取的视频文件");
+            try(InputStream in=c.getInputStream()){copy(in,temporary);}
+            if(bili){if(temporary.length()==0)throw new IOException("B站返回空视频");temporary.setReadable(false,false);temporary.setReadable(true,true);temporary.setWritable(false,false);temporary.setWritable(true,true);handedOff=true;return new JSONObject().put("clip",temporary.getName()).put("bytes",temporary.length());}
+            return file(temporary);
+        }finally{c.disconnect();if(!handedOff)temporary.delete();}
     }
 }

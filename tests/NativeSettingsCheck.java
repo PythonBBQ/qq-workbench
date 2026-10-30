@@ -6,6 +6,13 @@ import org.json.JSONObject;
 public final class NativeSettingsCheck {
     static void check(boolean value){if(!value)throw new AssertionError();}
     public static void main(String[] args)throws Exception{
+        check(BiliLoginActivity.allowed("https://passport.bilibili.com/h5-app/passport/login"));
+        for(String u:new String[]{"https://passport.bilibili.com.evil.test/login","http://passport.bilibili.com/","https://user:pass@passport.bilibili.com/","https://passport.bilibili.com:8443/","intent://test","file:///test"})check(!BiliLoginActivity.allowed(u));
+        check(BiliLoginActivity.usableCookie("a=1; SESSDATA=synthetic").contains("SESSDATA"));
+        for(String value:new String[]{"bili_jct=synthetic","SESSDATA=","SESSDATA=x\r\na=1"})check(BiliLoginActivity.usableCookie(value).isEmpty());
+        check(VideoFrames.mediaHost(new java.net.URL("https://video.bilivideo.com/test"),true));
+        check(!VideoFrames.mediaHost(new java.net.URL("https://video.bilivideo.com/test"),false));
+        for(String u:new String[]{"https://bilivideo.com.evil.test/test","https://video.bilivideo.com:8443/test","http://video.bilivideo.com/test","https://user:pass@video.bilivideo.com/test"})check(!VideoFrames.mediaHost(new java.net.URL(u),true));
         check(NativeNetwork.parserCredentials(new java.net.URL("https://api.bilibili.com/x/web-interface/view"),"GET"));
         check(NativeNetwork.parserCredentials(new java.net.URL("https://mp.weixin.qq.com/s/example"),"GET"));
         for(String u:new String[]{"https://api.deepseek.com/v1","https://api.bilibili.com.evil.example/","http://api.bilibili.com/","https://api.bilibili.com:8443/"})check(!NativeNetwork.parserCredentials(new java.net.URL(u),"GET"));
