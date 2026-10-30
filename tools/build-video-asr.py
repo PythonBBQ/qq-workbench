@@ -24,11 +24,13 @@ files={}
 with tarfile.open(obtain(lock['runtime'])) as archive:
     for member in archive.getmembers():
         relative=member.name.split('/',1)[-1]
-        if member.isfile() and (relative=='bin/sherpa-onnx-offline' or relative.startswith('lib/')):
+        if member.isfile() and (relative in ['bin/sherpa-onnx-offline','bin/sherpa-onnx-offline-audio-tagging'] or relative.startswith('lib/')):
             files[relative]=(archive.extractfile(member).read(),0o700 if relative.startswith('bin/') else 0o600)
 assert 'bin/sherpa-onnx-offline' in files and 'lib/libonnxruntime.so' in files
 for item in lock['model']['files']:
     files['model/'+item['filename']]=(obtain(item,cache/'model').read_bytes(),0o600)
+for item in lock['tagger']['files']:
+    files['tagger/'+item['filename']]=(obtain(item,cache/'tagger').read_bytes(),0o600)
 for item in lock['licenses']:
     data=obtain(item).read_bytes()
     (root/'assets/licenses'/item['filename']).write_bytes(data)

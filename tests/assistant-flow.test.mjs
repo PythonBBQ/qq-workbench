@@ -45,7 +45,7 @@ globalThis.fetch=async(url,options)=>{
     return Response.json({choices:[{message:{content:'好呀，配一碗白饭！'}}],usage:{prompt_tokens:100,completion_tokens:10,prompt_cache_hit_tokens:20}});
   }
   if(u.origin==='http://127.0.0.1:13481'&&u.pathname==='/device/action'){const request=JSON.parse(options.body);process.send({device:request});return Response.json({ok:true,output:'synthetic battery: 80%',message:'执行完成'});}
-  if(u.origin==='http://127.0.0.1:13481'&&u.pathname==='/video-frames'&&JSON.parse(options.body).source==='bilibili')return Response.json({sampling:'1fps-contact-sheet-v1',durationSeconds:120,sampledSeconds:120,frameCount:120,frames:Array.from({length:15},(_,i)=>({seconds:i*8,timestamps:Array.from({length:8},(_,j)=>i*8+j),url:'data:image/jpeg;base64,AQID'}))});
+  if(u.origin==='http://127.0.0.1:13481'&&u.pathname==='/video-frames'&&JSON.parse(options.body).source==='bilibili'){process.send({videoRead:true});return Response.json({audio:{status:'unintelligible',signal:'present',tags:[{name:'Music',confidence:.98}],tagWindows:3,segments:[]},sampling:'1fps-contact-sheet-v1',durationSeconds:120,sampledSeconds:120,frameCount:120,frames:Array.from({length:15},(_,i)=>({seconds:i*8,timestamps:Array.from({length:8},(_,j)=>i*8+j),url:'data:image/jpeg;base64,AQID'}))});}
   if(u.origin==='http://127.0.0.1:13481'&&u.pathname==='/video-frames')return Response.json({sampling:'1fps-contact-sheet-v1',durationSeconds:600,sampledSeconds:600,frameCount:600,frames:Array.from({length:75},(_,i)=>({seconds:i*8,timestamps:Array.from({length:8},(_,j)=>i*8+j),url:'data:image/jpeg;base64,AQID'}))});
   if(['h5.qzone.qq.com','user.qzone.qq.com'].includes(u.hostname)){
     if(options.method==='POST'){process.send({rpc:'send_qzone_msg',qzoneBody:options.body});return Response.json({code:0,...(globalThis.sendControl==='qzone-accepted'?{tid:'synthetic-post-id'}:{})});}
@@ -63,9 +63,9 @@ globalThis.fetch=async(url,options)=>{
   if(u.hostname==='mp.weixin.qq.com')return new Response('<h1 id="activity-name">分享文章</h1><a id="js_name">公开作者</a><div id="js_content"><p>只存在于本次分享中的公开正文。</p><img data-src="https://qpic.cn/shared-article.png"/></div>',{headers:{'content-type':'text/html'}});
   throw new Error('Unmocked network refused');
 };`);
-  const token='qqwb-isolated-test-token-1234567890';let log='',exited=false;const models=[],sent=[],browses=[],rpcs=[],devices=[];
+  const token='qqwb-isolated-test-token-1234567890';let log='',exited=false;const models=[],sent=[],browses=[],rpcs=[],devices=[],videoReads=[];
   const child=fork(path.join(dir,'assistant.mjs'),[],{execArgv:['--import',pathToFileURL(path.join(dir,'mock.mjs')).href],env:{...process.env,WORKBENCH_TOKEN:token,DEEPSEEK_API_KEY:'',VISION_API_KEY:''},stdio:['ignore','pipe','pipe','ipc']});
-  child.stdout.on('data',v=>log+=v);child.stderr.on('data',v=>log+=v);child.on('exit',()=>exited=true);child.on('message',m=>{if(m.device)devices.push(m.device);if(m.rpc)rpcs.push(m.rpc);if(m.model)models.push(m);if(m.sent)sent.push(m.sent);if(m.browse)browses.push(m.browse);});
+  child.stdout.on('data',v=>log+=v);child.stderr.on('data',v=>log+=v);child.on('exit',()=>exited=true);child.on('message',m=>{if(m.videoRead)videoReads.push(1);if(m.device)devices.push(m.device);if(m.rpc)rpcs.push(m.rpc);if(m.model)models.push(m);if(m.sent)sent.push(m.sent);if(m.browse)browses.push(m.browse);});
   const api=async(route,body,auth=true)=>fetch('http://127.0.0.1:13480'+route,{method:body===undefined?'GET':'POST',headers:{...(auth?{Authorization:'Bearer '+token}:{}),'Content-Type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(1000)});
   const until=async(fn)=>{const end=Date.now()+6000;while(Date.now()<end){if(exited)throw new Error(log||'child exited');try{const r=await fn();if(r)return r;}catch(e){if(e.message.includes('child'))throw e;}await pause();}throw new Error('Flow timeout: '+log);};
   try{
@@ -318,6 +318,7 @@ globalThis.fetch=async(url,options)=>{
     n=sent.length;sendCommand(321,'最后发生了什么');await until(()=>sent.length===n+1);assert.ok(!JSON.stringify(models.at(-1).model).includes('data:image/jpeg'));
     // BV-only reading and the screenshot's follow-up now include actual frames, without leaking site cookies or playback signatures.
     n=sent.length;beforeVideo=models.length;sendCommand(330,'BV1Umxc6JEdD看看这个哔站视频');await until(()=>sent.length===n+1);assert.equal(models.length,beforeVideo+1);assert.equal(models.at(-1).model.messages.at(-1).content.filter(p=>p.type==='image_url').length,15);assert.match(JSON.stringify(models.at(-1).model.messages.at(-1)),/每秒抽取1帧/);assert.ok(!JSON.stringify(models.at(-1)).includes('未观看视频'));
+    n=sent.length;beforeVideo=models.length;const readsBeforeMusic=videoReads.length;sendCommand(349,'听听这个视频BGM');await until(()=>sent.length===n+1);assert.equal(models.length,beforeVideo+1);assert.equal(videoReads.length,readsBeforeMusic,'cached audio followup performs no new download');assert.match(JSON.stringify(models.at(-1).model.messages.at(-1)),/Music 98%/);assert.match(JSON.stringify(models.at(-1).model.messages.at(-1)),/不能说没声音/);
     n=sent.length;beforeVideo=models.length;sendCommand(331,'看完视频');await until(()=>sent.length===n+1);assert.equal(models.length,beforeVideo+1);assert.equal(models.at(-1).model.messages.at(-1).content.filter(p=>p.type==='image_url').length,15);
     n=sent.length;sendCommand(332,'最后发生了什么');await until(()=>sent.length===n+1);assert.ok(!JSON.stringify(models.at(-1).model).includes('data:image/jpeg'));
     const biliLocal=await(await api('/video/analyze',{bili:'BV1Umxc6JEdD',question:'概括画面'})).json();assert.equal(biliLocal.ok,true);assert.match(biliLocal.message,/来源：https:\/\/www.bilibili.com/);assert.equal(biliLocal.budget.images,15);

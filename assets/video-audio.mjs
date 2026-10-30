@@ -2,6 +2,38 @@ import fs from 'node:fs';import path from 'node:path';
 import {execFile} from 'node:child_process';import {promisify} from 'node:util';
 const exec=promisify(execFile);
 export const AUDIO_POLICY=Object.freeze({seconds:600,chunkSeconds:30,chunkChars:300,maxChars:6000,threads:2});
+export function pcmSignal(waves){
+  let count=0,energy=0,peak=0;
+  for(const wave of waves){
+    if(!Buffer.isBuffer(wave)||wave.toString('ascii',0,4)!=='RIFF'||wave.toString('ascii',8,12)!=='WAVE')throw new Error('音轨PCM格式无效');
+    let pcm=false;
+    for(let i=12;i+8<=wave.length;){
+      const type=wave.toString('ascii',i,i+4),size=wave.readUInt32LE(i+4),start=i+8,end=Math.min(wave.length,start+size);
+      if(type==='fmt '){if(size<16||end-start<16||wave.readUInt16LE(start)!==1||wave.readUInt16LE(start+2)!==1||wave.readUInt16LE(start+14)!==16)throw new Error('音轨PCM格式无效');pcm=true;}
+      if(type==='data'){if(!pcm)throw new Error('音轨PCM格式无效');for(let j=start;j+1<end;j+=2){const value=wave.readInt16LE(j);peak=Math.max(peak,Math.abs(value));energy+=value*value;count++;}}
+      i=start+size+(size%2);
+    }
+  }
+  if(!count)throw new Error('音轨没有PCM采样');
+  return {signal:peak<=1?'silent':'present',peakDb:peak?Math.round(20*Math.log10(peak/32768)):-120,rmsDb:energy?Math.round(10*Math.log10(energy/count/32768**2)):-120};
+}
+export function audioEvents(output){
+  const results=[];
+  for(const m of String(output).matchAll(/AudioEvent\(name="([^"\r\n]{1,80})", index=(\d+), prob=([\d.eE+-]+)\)/g)){
+    const confidence=Number(m[3]);if(!Number.isFinite(confidence)||confidence<.6||confidence>1)continue;
+    const previous=results.find(v=>v.name===m[1]);if(previous)previous.confidence=Math.max(previous.confidence,confidence);else results.push({name:m[1],confidence});
+  }
+  return results.sort((a,b)=>b.confidence-a.confidence).slice(0,6).map(v=>({...v,confidence:Math.round(v.confidence*100)/100}));
+}
+export function audioEvidence(audio){
+  if(!audio)return '本次未取得音轨检测结果；不能判断静音或无声音。';
+  const status=audio.status;
+  if(status==='no-audio')return '已检查此媒体文件，文件内没有音频流。仅表示本次文件没有音轨，不能推断网站上的原作品静音。';
+  if(audio.signal==='silent')return '本次解码音轨的PCM采样接近数字零值，检测到近乎静音；不推断其他版本或站点原作品。';
+  const sound=audio.signal==='present'?'本机已解码并测到非静音声音，不能说没声音、静音或音轨为空。':'未确认声音是否存在，不能声称静音。';
+  const tags=audio.tags?.length?' 本机声音分类在'+audio.tagWindows+'个抽样片段中提示：'+audio.tags.map(v=>v.name+' '+Math.round(v.confidence*100)+'%').join('、')+'。这些是分类概率，不是曲名识别或完整音乐理解，不能据此编造旋律、歌词、作者或逐秒变化。':'';
+  return sound+tags+(status==='ok'?' 已取得人声自动转写，可能有错漏。':status==='unintelligible'?' 未识别出清晰人声文字；纯音乐、器乐或识别不准都可能没有转写，这不表示没有声音。':' 人声转写未完成，不能据此判断没有声音。');
+}
 export function transcriptObjects(output){
   const rows=[];let start=-1,depth=0,quoted=false,escape=false;
   for(let i=0;i<String(output).length;i++){
@@ -28,9 +60,21 @@ export function audioContext(audio,start=0,end=600){
 }
 export function withAudio(video,audio){
   if(!audio)return video;
-  const heard=audio.status==='ok';
   const scope=video.scope.replace(/未听取音轨、未读取完整字幕，?/g,'').replace(/未听取音轨、未读取字幕，?/g,'');
-  return {...video,audio,audioText:audioContext(audio),scope:scope+'\n'+(heard?'本次已在手机本地转写音轨，结合对应时段画面理解；自动转写可能有漏字或错字，不把转写当成可靠逐字字幕。':'本次音轨'+({ 'no-audio':'没有可用声音',unavailable:'识别组件未就绪',unintelligible:'未识别到清晰对白',failed:'转写未完成'}[audio.status]||'未取得转写')+'，只根据画面回答，不编造对白。')};
+  return {...video,audio,audioText:audioContext(audio),scope:scope+(audio.status==='ok'?'\n本次已在手机本地转写音轨。':'')+'\n本次音轨证据：'+audioEvidence(audio)+' 人声转写和声音分类是独立结果；没有转写不得当作静音，不把自动转写当作可靠逐字字幕。'};
+}
+async function tagAudio(names,temporary,runtime,env){
+  const binary=path.join(runtime,'bin/sherpa-onnx-offline-audio-tagging'),model=path.join(runtime,'tagger/model.int8.onnx');
+  if(!fs.existsSync(binary)||!fs.existsSync(model))return {tags:[],tagWindows:0};
+  const selected=[...new Set([0,Math.floor(names.length/2),names.length-1])],events=[];
+  for(const index of selected){
+    const snippet=path.join(temporary,'tag-'+index+'.wav');
+    await exec('/usr/bin/ffmpeg',['-v','error','-nostdin','-threads','1','-protocol_whitelist','file,pipe','-i',path.join(temporary,names[index]),'-t','10','-ac','1','-ar','16000',snippet],{env,timeout:12000,maxBuffer:65536});
+    const result=await exec(binary,['--zipformer-model='+model,'--labels='+path.join(runtime,'tagger/class_labels_indices.csv'),'--num-threads=2','--debug=0',snippet],{env,timeout:20000,maxBuffer:65536});
+    events.push(...audioEvents(result.stdout));
+  }
+  const tags=audioEvents(events.map(v=>'AudioEvent(name="'+v.name+'", index=0, prob='+v.confidence+')').join('\n'));
+  return {tags,tagWindows:selected.length};
 }
 export async function transcribeClip(file,work='/opt/qq-workbench'){
   const real=fs.realpathSync(file),directory=fs.realpathSync(path.join(work,'video-imports'));
@@ -39,7 +83,7 @@ export async function transcribeClip(file,work='/opt/qq-workbench'){
   const runtime=path.join(work,'asr'),binary=path.join(runtime,'bin/sherpa-onnx-offline'),model=path.join(runtime,'model/model.int8.onnx');
   if(!fs.existsSync(binary)||!fs.existsSync(model))return {status:'unavailable'};
   const env={PATH:'/usr/bin:/bin',HOME:'/tmp',LANG:'C.UTF-8',LD_LIBRARY_PATH:path.join(runtime,'lib')};
-  let temporary;
+  let temporary,evidence={};
   try{
     const probe=await exec('/usr/bin/ffprobe',['-v','error','-protocol_whitelist','file,pipe','-show_entries','format=duration:stream=codec_type','-of','json',real],{env,timeout:12000,maxBuffer:65536});
     const info=JSON.parse(probe.stdout),duration=Number(info.format?.duration);
@@ -49,10 +93,13 @@ export async function transcribeClip(file,work='/opt/qq-workbench'){
     await exec('/usr/bin/ffmpeg',['-v','error','-nostdin','-threads','1','-protocol_whitelist','file,pipe','-i',real,'-map','0:a:0','-vn','-sn','-t',String(duration),'-ac','1','-ar','16000','-c:a','pcm_s16le','-f','segment','-segment_time','30','-reset_timestamps','1',path.join(temporary,'audio-%02d.wav')],{env,timeout:45000,maxBuffer:65536});
     const names=fs.readdirSync(temporary).filter(v=>/^audio-\d{2}\.wav$/.test(v)).sort();
     if(!names.length||names.length>20||names.reduce((n,v)=>n+fs.statSync(path.join(temporary,v)).size,0)>20000000)throw new Error('音轨分段超过上限');
+    evidence=pcmSignal(names.map(v=>fs.readFileSync(path.join(temporary,v))));
+    if(evidence.signal==='silent')return {status:'silent',...evidence};
+    try{evidence={...evidence,...await tagAudio(names,temporary,runtime,env)};}catch{evidence={...evidence,tags:[],tagWindows:0};}
     const result=await exec(binary,['--tokens='+path.join(runtime,'model/tokens.txt'),'--zipformer-ctc-model='+model,'--num-threads=2','--debug=0','--decoding-method=greedy_search',...names.map(v=>path.join(temporary,v))],{env,timeout:240000,maxBuffer:4*1024*1024});
     const rows=transcriptObjects(result.stdout);
     if(rows.length!==names.length)throw new Error('音轨转写分段未完成');
-    return compactTranscript(rows,duration);
-  }catch{return {status:'failed'};}
+    return {...compactTranscript(rows,duration),...evidence};
+  }catch{return {status:'failed',...evidence};}
   finally{if(temporary)fs.rmSync(temporary,{recursive:true,force:true});}
 }

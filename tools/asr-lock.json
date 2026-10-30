@@ -45,5 +45,28 @@
       "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.23.2/LICENSE",
       "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c"
     }
-  ]
+  ],
+  "tagger": {
+    "name": "sherpa-onnx-zipformer-small-audio-tagging-2024-04-15",
+    "publisher": "csukuangfj / Fangjun Kuang",
+    "revision": "674c10faf4d1017cbf86b75316c68795d80a793b",
+    "license": "Apache-2.0, as declared in publisher model card",
+    "files": [
+      {
+        "filename": "README.md",
+        "url": "https://modelscope.cn/api/v1/models/csukuangfj/sherpa-onnx-zipformer-small-audio-tagging-2024-04-15/repo?Revision=674c10faf4d1017cbf86b75316c68795d80a793b&FilePath=README.md",
+        "sha256": "43fe34d44e5ed94bdd33c7e017514750c725ee1b102b8e464d77695b47c01a92"
+      },
+      {
+        "filename": "class_labels_indices.csv",
+        "url": "https://modelscope.cn/api/v1/models/csukuangfj/sherpa-onnx-zipformer-small-audio-tagging-2024-04-15/repo?Revision=674c10faf4d1017cbf86b75316c68795d80a793b&FilePath=class_labels_indices.csv",
+        "sha256": "cdd1049833c4b86127c2773ac0d14a2754b6a6d0d1798002ed5c66e699708429"
+      },
+      {
+        "filename": "model.int8.onnx",
+        "url": "https://modelscope.cn/api/v1/models/csukuangfj/sherpa-onnx-zipformer-small-audio-tagging-2024-04-15/repo?Revision=674c10faf4d1017cbf86b75316c68795d80a793b&FilePath=model.int8.onnx",
+        "sha256": "69304b8a1b96bbe6b7d16c24079f0732c65faf3568a14cb82a8238c709afe76c"
+      }
+    ]
+  }
 }
