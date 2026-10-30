@@ -31,7 +31,7 @@ test('public web reading strips scripts, caps text and refuses private redirects
 test('search learns bounded public snippets with sources and explicit chat intent',async()=>{
  const source='<ol>'+Array.from({length:5},(_,i)=>'<li class="b_algo"><h2><a href="https://example.com/'+i+'">白饭做法'+i+'</a></h2><p>这里是搜索摘要。</p></li>').join('')+'</ol>';
  const items=await searchWeb('白饭',async()=>new Response(source,{headers:{'content-type':'text/html'}}),resolve);assert.equal(items.length,3);assert.match(items[0].content,/未读取目标网页全文/);
- assert.deepEqual(learningIntent('浏览器搜索 白饭的做法'),{kind:'web-search',value:'白饭的做法'});assert.deepEqual(learningIntent('看看 https://example.com/article'),{kind:'web-read',value:'https://example.com/article'});
+ assert.deepEqual(learningIntent('浏览器搜索 白饭的做法'),{kind:'web-search',value:'白饭的做法'});assert.deepEqual(learningIntent('看看 https://example.com/article'),{kind:'share-read',value:'https://example.com/article'});
 });
 
 test('slow primary search is hedged, first valid result wins and pending requests are aborted',async()=>{

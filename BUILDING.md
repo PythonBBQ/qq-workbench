@@ -4,10 +4,10 @@
 
 ## 助手回归
 
-需要 Node.js 24：
+需要 Node.js 24、Python 3.11+。测试入口先校验并打包固定的离线解析器及8个纯Python依赖，首次需要网络下载锁定的wheel，之后复用本机哈希校验缓存：
 
 ```sh
-node --test tests/*.test.mjs
+python tools/test-assistant.py --node /path/to/node
 ```
 
 模拟测试不调用真实 QQ 或付费模型。源码助手需要原生安卓服务和 Linux QQ 桥接，不是运行 assistant.mjs 就能单独登录 QQ。
@@ -53,7 +53,13 @@ Windows类路径分隔符改为分号。实际设备动作仍需安装APK、启�
 3. 提交源码；使用已授权的 GitHub CLI 上传新 Releases。软件更新源默认 PythonBBQ/qq-workbench，仅识别最新正式 Release 中唯一的 APK。
 
 ```sh
-python tools/publish-release.py --notes docs/RELEASE-0.1.30.md --gh /path/to/gh
+python tools/publish-release.py --notes docs/RELEASE-0.1.31.md --gh /path/to/gh
 ```
 
 发布脚本从本地 build/build-receipt.json 读取已校验安装包，上传 APK 和 SHA256SUMS.txt，不上传整个 build 目录。不会代替用户确认安卓系统安装。
+
+## 视频验证
+
+视频最多32MB、10分钟，每秒1帧，256×144画面按4×2拼成1024×288 JPEG。每段最多15张低清拼图，完整长视频顺序分析后汇总。预算估算不保证任意中转站的实际图像Token账单；用量页保存服务商实际返回的值。没有音轨与完整字幕转录。
+
+`python tests/run-device-video-budget.py` 可在连接的测试设备容器中生成并解码2/10分钟合成片段，验证帧时间、尺寸、分段预算与临时文件清理；需本机FFmpeg路径适配，默认脚本使用工作站工具目录。不发送QQ消息或调用付费模型。默认安卓框架测试不含shell媒体解码，厂商系统可能将无真实应用上下文的媒体进程终止。

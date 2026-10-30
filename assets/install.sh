@@ -23,7 +23,7 @@ if [ -n "${QQWB_APT_PROXY:-}" ]; then
 fi
 if [ "${1:-}" = '--video-only' ]; then video_dependencies; exit 0; fi
 prepare_video_later() {
-  env -u DEEPSEEK_API_KEY -u VISION_API_KEY -u SPEECH_API_KEY -u WORKBENCH_TOKEN -u WORKBENCH_MEMORY_KEY -u VNC_PASSWORD bash /opt/qq-workbench/install.sh --video-only &
+  env -u QQWB_SITE_COOKIES -u DEEPSEEK_API_KEY -u VISION_API_KEY -u SPEECH_API_KEY -u WORKBENCH_TOKEN -u WORKBENCH_MEMORY_KEY -u VNC_PASSWORD bash /opt/qq-workbench/install.sh --video-only &
 }
 if [ -f .deps-v1 ]; then prepare_video_later; exit 0; fi
 echo 'QQWB:准备 Linux QQ 图形依赖（仅首次需要联网下载）…'

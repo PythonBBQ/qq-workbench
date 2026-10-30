@@ -6,6 +6,10 @@ import org.json.JSONObject;
 public final class NativeSettingsCheck {
     static void check(boolean value){if(!value)throw new AssertionError();}
     public static void main(String[] args)throws Exception{
+        check(NativeNetwork.parserCredentials(new java.net.URL("https://api.bilibili.com/x/web-interface/view"),"GET"));
+        check(NativeNetwork.parserCredentials(new java.net.URL("https://mp.weixin.qq.com/s/example"),"GET"));
+        for(String u:new String[]{"https://api.deepseek.com/v1","https://api.bilibili.com.evil.example/","http://api.bilibili.com/","https://api.bilibili.com:8443/"})check(!NativeNetwork.parserCredentials(new java.net.URL(u),"GET"));
+        check(!NativeNetwork.parserCredentials(new java.net.URL("https://api.bilibili.com/"),"POST"));
         String endpoint="https://h5.qzone.qq.com/proxy/domain/taotao.qzone.qq.com/cgi-bin/emotion_cgi_publish_v6";
         check(NativeNetwork.qzoneCredentials(new java.net.URL(endpoint),"POST"));
         check(!NativeNetwork.qzoneCredentials(new java.net.URL(endpoint),"GET"));

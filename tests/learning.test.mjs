@@ -18,7 +18,7 @@ test('site restrictions, invalid pages and response size fail honestly',async()=
 });
 test('search results have bounded titles and scope; intents are explicit',async()=>{
   const items=await searchBili('红烧肉',async(u)=>{assert.equal(new URL(u).searchParams.get('keyword'),'红烧肉');return Response.json({code:0,data:{result:Array(8).fill({...data,title:'<em>红烧肉</em>',author:'厨师',description:'简介'})}});});assert.equal(items.length,3);assert.equal(items[0].title,'红烧肉');
-  assert.deepEqual(learningIntent('去B站学习 红烧肉'),{kind:'search',value:'红烧肉'});assert.equal(learningIntent('今天做红烧肉'),null);assert.deepEqual(learningIntent('看看 https://b23.tv/abc。'),{kind:'read',value:'https://b23.tv/abc'});
+  assert.deepEqual(learningIntent('去B站学习 红烧肉'),{kind:'search',value:'红烧肉'});assert.equal(learningIntent('今天做红烧肉'),null);assert.deepEqual(learningIntent('看看 https://b23.tv/abc。'),{kind:'share-read',value:'https://b23.tv/abc'});
 });
 test('only owner can remember from chat; bounded persisted notes, related retrieval and cache',async()=>{
   const root=path.resolve(import.meta.dirname,'../build/learning-tests');fs.mkdirSync(root,{recursive:true});const dir=fs.mkdtempSync(path.join(root,'case-'));let calls=0;
@@ -46,8 +46,8 @@ test('failed fresh search cannot masquerade as an old note and cancellation neve
 test('simultaneous identical public reads share one request and later calls reuse the cache',async()=>{
  const root=path.resolve(import.meta.dirname,'../build/learning-tests');fs.mkdirSync(root,{recursive:true});let calls=0,release;
  const store=new LearningStore(fs.mkdtempSync(path.join(root,'case-')),async()=>{calls++;await new Promise(r=>release=r);return Response.json({code:0,data});});
- const intent={kind:'read',value:'https://www.bilibili.com/video/BV1GJ411x7h7'};
- const first=store.lookup(intent),second=store.lookup(intent);assert.equal(calls,1);release();assert.deepEqual(await first,await second);
+ const intent={kind:'share-read',value:'https://www.bilibili.com/video/BV1GJ411x7h7'};
+ const first=store.lookup(intent),second=store.lookup(intent);for(let i=0;i<150&&!release;i++)await new Promise(r=>setTimeout(r,20));assert.equal(calls,1);release();assert.deepEqual(await first,await second);
  await store.lookup(intent);assert.equal(calls,1);assert.equal(store.inFlight.size,0);
  const cached=store.cache.get(intent.kind+':'+intent.value);cached.at=Date.now()-10000;
  const context=await store.context(intent.value);assert.match(context,/复用短时缓存，未重新请求网站/);assert.ok(context.includes(new Date(cached.at).toISOString()));assert.equal(calls,1);

@@ -81,13 +81,20 @@ final class NativeNetwork implements AutoCloseable {
         HttpURLConnection c=(HttpURLConnection)url.openConnection();active.add(c);
         int timeout=Math.max(500,Math.min(90000,request.optInt("timeoutMs",90000)));
         try{c.setInstanceFollowRedirects(false);c.setConnectTimeout(Math.min(15000,timeout));c.setReadTimeout(timeout);c.setRequestMethod(method);
-            JSONObject h=request.optJSONObject("headers");if(h!=null)for(Iterator<String> keys=h.keys();keys.hasNext();){String key=keys.next();if((qzoneCredentials(url,method)&&Arrays.asList("cookie","referer").contains(key.toLowerCase(Locale.ROOT)))||Arrays.asList("authorization","content-type","accept","user-agent","ocp-apim-subscription-key","x-microsoft-outputformat").contains(key.toLowerCase(Locale.ROOT)))c.setRequestProperty(key,h.getString(key));}
+            JSONObject h=request.optJSONObject("headers");if(h!=null)for(Iterator<String> keys=h.keys();keys.hasNext();){String key=keys.next();if((qzoneCredentials(url,method)&&Arrays.asList("cookie","referer").contains(key.toLowerCase(Locale.ROOT)))||(parserCredentials(url,method)&&Arrays.asList("cookie","referer","origin","accept-language","x-requested-with","x-oidb","x-qq-client-appid").contains(key.toLowerCase(Locale.ROOT)))||Arrays.asList("authorization","content-type","accept","user-agent","ocp-apim-subscription-key","x-microsoft-outputformat").contains(key.toLowerCase(Locale.ROOT)))c.setRequestProperty(key,h.getString(key));}
             if(method.equals("POST")){byte[] bytes=request.optString("body","").getBytes(StandardCharsets.UTF_8);c.setDoOutput(true);c.setFixedLengthStreamingMode(bytes.length);try(OutputStream out=c.getOutputStream()){out.write(bytes);}}
-            int status=c.getResponseCode();JSONObject resultHeaders=new JSONObject();for(String key:new String[]{"Content-Type","Location","Retry-After"}){String value=c.getHeaderField(key);if(value!=null)resultHeaders.put(key,value);}
+            int status=c.getResponseCode();JSONObject resultHeaders=new JSONObject();for(String key:new String[]{"Content-Type","Location","Retry-After","Set-Cookie"}){String value=c.getHeaderField(key);if(value!=null)resultHeaders.put(key,value);}
             try(InputStream stream=status>=400?c.getErrorStream():c.getInputStream()){
                 return new JSONObject().put("status",status).put("headers",resultHeaders).put("body",Base64.encodeToString(read(stream,8*1024*1024),Base64.NO_WRAP));
             }
         }finally{active.remove(c);c.disconnect();}
+    }
+    static boolean parserCredentials(URL url,String method){
+        if(!url.getProtocol().equals("https")||url.getPort()!=-1&&url.getPort()!=443)return false;
+        String host=url.getHost().toLowerCase(Locale.ROOT);
+        if(!method.equals("GET")&&!host.equals("pd.qq.com"))return false;
+        for(String suffix:new String[]{"bilibili.com","b23.tv","bili2233.cn","douyin.com","iesdouyin.com","xiaohongshu.com","xiaohongshu.cn","xhslink.com","xhslink.cn","tieba.baidu.com","tiebac.baidu.com","weibo.com","weibo.cn","sina.com.cn","sina.cn","zhihu.com","zhihu.com.cn","xiaoheihe.cn","heybox.com","heybox.cn","weixin.qq.com","yuanbao.tencent.com","hdslb.com","xhscdn.com","sinaimg.cn","zhimg.com","qpic.cn","qlogo.cn","pximg.net","pd.qq.com"})if(host.equals(suffix)||host.endsWith("."+suffix))return true;
+        return false;
     }
     public void close(){closed=true;try{listener.close();}catch(IOException ignored){}synchronized(active){for(HttpURLConnection c:active)c.disconnect();}workers.shutdownNow();}
 }

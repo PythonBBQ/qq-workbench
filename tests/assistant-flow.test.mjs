@@ -8,7 +8,7 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const pause=()=>new Promise(r=>setTimeout(r,40));
 test('first-run Key applies without restart; pictures and follow-ups use context in one call, no real QQ or model traffic',async()=>{
   const parent=path.join(root,'build','flow-tests');await fs.mkdir(parent,{recursive:true});const dir=await fs.mkdtemp(path.join(parent,'case-'));
-  for(const name of ['assistant.mjs','shortcuts.mjs','qq-media.mjs','qzone-client.mjs','device-tools.mjs','usage-ledger.mjs','voice.mjs','model-client.mjs','personality-growth.mjs','group-moderation.mjs','conversation-memory.mjs','video.mjs','video-decoder.mjs','native-network.mjs','web-learning.mjs','browse-intent.mjs','learning.mjs','snowluma-bridge.mjs','images.mjs','chat-style.mjs'])await fs.copyFile(path.join(root,'assets',name),path.join(dir,name));
+  for(const name of ['assistant.mjs','shortcuts.mjs','qq-media.mjs','qzone-client.mjs','device-tools.mjs','usage-ledger.mjs','voice.mjs','model-client.mjs','personality-growth.mjs','group-moderation.mjs','conversation-memory.mjs','video.mjs','video-decoder.mjs','native-network.mjs','web-learning.mjs','browse-intent.mjs','learning.mjs','multi-parser.mjs','snowluma-bridge.mjs','images.mjs','chat-style.mjs'])await fs.copyFile(path.join(root,'assets',name),path.join(dir,name));
   await fs.writeFile(path.join(dir,'settings.json'),JSON.stringify({owner:'123456',enabled:true,others:true,rate:100,apiUrl:'https://api.deepseek.com',model:'deepseek-flash',persona:'温柔，爱吃白饭',maxReplyTokens:400,memoryEnabled:false}));
   await fs.writeFile(path.join(dir,'mock.mjs'),`
 import {SnowLumaBridge} from './snowluma-bridge.mjs';
@@ -45,6 +45,7 @@ globalThis.fetch=async(url,options)=>{
     return Response.json({choices:[{message:{content:'好呀，配一碗白饭！'}}],usage:{prompt_tokens:100,completion_tokens:10,prompt_cache_hit_tokens:20}});
   }
   if(u.origin==='http://127.0.0.1:13481'&&u.pathname==='/device/action'){const request=JSON.parse(options.body);process.send({device:request});return Response.json({ok:true,output:'synthetic battery: 80%',message:'执行完成'});}
+  if(u.origin==='http://127.0.0.1:13481'&&u.pathname==='/video-frames')return Response.json({sampling:'1fps-contact-sheet-v1',durationSeconds:600,sampledSeconds:600,frameCount:600,frames:Array.from({length:75},(_,i)=>({seconds:i*8,timestamps:Array.from({length:8},(_,j)=>i*8+j),url:'data:image/jpeg;base64,AQID'}))});
   if(['h5.qzone.qq.com','user.qzone.qq.com'].includes(u.hostname)){
     if(options.method==='POST'){process.send({rpc:'send_qzone_msg',qzoneBody:options.body});return Response.json({code:0,...(globalThis.sendControl==='qzone-accepted'?{tid:'synthetic-post-id'}:{})});}
     return Response.json({code:0,total:0,msglist:null,logininfo:{uin:765432}});
@@ -53,6 +54,7 @@ globalThis.fetch=async(url,options)=>{
   if(u.hostname==='cn.bing.com'){process.send({browse:{url:u.href,auth:options.headers?.Authorization}});return new Response('<li class="b_algo"><h2><a href="https://example.com/deepseek">DeepSeek 官方资料</a></h2><p>公开搜索摘要</p></li>',{headers:{'content-type':'text/html'}});}
   if(u.hostname==='example.com'){process.send({browse:{url:u.href,auth:options.headers?.Authorization}});return new Response('<title>公开版本资料</title><main>'+('测试版本更新信息，仅供隔离验证。'.repeat(10))+'</main>',{headers:{'content-type':'text/html'}});}
   if(u.hostname==='qpic.cn')return new Response(new Uint8Array([1,2,3]),{headers:{'content-type':'image/png'}});
+  if(u.hostname==='mp.weixin.qq.com')return new Response('<h1 id="activity-name">分享文章</h1><a id="js_name">公开作者</a><div id="js_content"><p>只存在于本次分享中的公开正文。</p><img data-src="https://qpic.cn/shared-article.png"/></div>',{headers:{'content-type':'text/html'}});
   throw new Error('Unmocked network refused');
 };`);
   const token='qqwb-isolated-test-token-1234567890';let log='',exited=false;const models=[],sent=[],browses=[],rpcs=[],devices=[];
@@ -86,7 +88,7 @@ globalThis.fetch=async(url,options)=>{
     assert.equal((await api('/learning/notes',undefined,false)).status,401);
     assert.equal((await api('/learning/read',{kind:'read',value:'https://www.bilibili.com/video/BV1GJ411x7h7',save:true},false)).status,401);
     const read=await(await api('/learning/read',{kind:'read',value:'https://www.bilibili.com/video/BV1GJ411x7h7',save:true})).json();assert.equal(read.items.length,1);assert.equal((await(await api('/learning/notes')).json()).notes.length,1);
-    child.send({event:{...event,message_id:108,message:[{type:'text',data:{text:'https://www.bilibili.com/video/BV1GJ411x7h7 你学到了什么'}}]}});await until(()=>sent.length===6);assert.match(models[4].model.messages.at(-1).content,/未读取视频画面/);
+    child.send({event:{...event,message_id:108,message:[{type:'text',data:{text:'https://www.bilibili.com/video/BV1GJ411x7h7 你学到了什么'}}]}});await until(()=>sent.length===6);assert.match(models[4].model.messages.at(-1).content,/未观看视频/);
     assert.equal((await api('/learning/delete',{id:'all'})).status,200);assert.equal((await(await api('/learning/notes')).json()).notes.length,0);
     const profile={settings:{apiUrl:'https://relay.example/v1',model:'relay-model',visionMode:'auto',visionUrl:'',visionModel:''},apiKey:'relay-test-key',visionKey:''};
     assert.equal((await api('/model/apply',profile,false)).status,401);
@@ -283,6 +285,31 @@ globalThis.fetch=async(url,options)=>{
     n=sent.length;sendCommand(297,'＃用量');await until(()=>sent.length===n+1);assert.match(sent.at(-1).message[0].data.text,/今日模型用量/);assert.equal(models.length,commandModels);
     n=sent.length;sendCommand(298,'#亮度 101');await until(()=>sent.length===n+1);assert.equal(devices.length,2);assert.match(sent.at(-1).message[0].data.text,/用法/);
     n=sent.length;sendCommand(299,'＃结束');await until(()=>sent.length===n+1);assert.match(sent.at(-1).message[0].data.text,/聊天结束/);assert.equal(models.length,commandModels);
+    // A JSON share-only group message reaches the parser and vision model through the normal QQ route.
+    await update({emojiEnabled:false,memoryEnabled:false,visionMode:'chat',learningEnabled:true});
+    n=sent.length;const beforeShare=models.length;
+    const share=JSON.stringify({meta:{news:{title:'分享文章',jumpUrl:'https://mp.weixin.qq.com/s/synthetic',token:'DO-NOT-LEAK'}},token:'CARD-SECRET'});
+    child.send({event:groupMessage(310,123456,'',[{type:'at',data:{qq:765432}},{type:'json',data:{data:share}}])});
+    await until(()=>sent.length===n+1);assert.equal(models.length,beforeShare+1);
+    assert.equal(models.at(-1).model.messages.at(-1).content[1].type,'image_url');
+    assert.match(models.at(-1).model.messages.at(-1).content[0].text,/只存在于本次分享/);
+    assert.ok(!JSON.stringify(models.at(-1)).includes('DO-NOT-LEAK'));assert.ok(!JSON.stringify(models.at(-1)).includes('CARD-SECRET'));
+    n=sent.length;sendCommand(311,'你觉得呢');await until(()=>sent.length===n+1);assert.ok(!JSON.stringify(models.at(-1).model.messages.slice(1,-1)).includes('只存在于本次分享'),'retrieved article text is not repeatedly billed as history');
+    assert.equal((await api('/learning/platforms',undefined,false)).status,401);
+    assert.equal((await api('/learning/cookies',{cookies:{}},false)).status,401);
+    const platforms=await(await api('/learning/platforms')).json();assert.equal(platforms.platforms.length,13);
+    await api('/learning/cookies',{cookies:{bilibili_cookies:'SESSDATA=synthetic-private-cookie'}});
+    assert.ok(!(await(await api('/learning/platforms')).text()).includes('synthetic-private-cookie'));
+    assert.ok(!JSON.stringify(models).includes('synthetic-private-cookie'));
+    // The full ten minutes are read sequentially; each request stays below the two-minute image budget.
+    const longVideo={sampling:'1fps-contact-sheet-v1',durationSeconds:600,sampledSeconds:600,frameCount:600,frames:Array.from({length:75},(_,i)=>({seconds:i*8,timestamps:Array.from({length:8},(_,j)=>i*8+j),url:'data:image/jpeg;base64,AQID'}))};
+    let beforeVideo=models.length;
+    const completeVideo=await(await api('/video/analyze',{...longVideo,question:'概括整段视频'})).json();assert.equal(completeVideo.ok,true);assert.equal(models.length,beforeVideo+6);assert.equal(completeVideo.budget.batches,5);assert.equal(completeVideo.usage.prompt_tokens,600);assert.equal(completeVideo.usage.completion_tokens,60);
+    for(const request of models.slice(beforeVideo,beforeVideo+5))assert.equal(request.model.messages.at(-1).content.filter(p=>p.type==='image_url').length,15);
+    assert.match(JSON.stringify(models.at(-1).model),/480—600秒/);assert.ok(!JSON.stringify(models.at(-1).model).includes('data:image'));
+    beforeVideo=models.length;n=sent.length;
+    child.send({event:{...event,message_id:320,message:[{type:'video',data:{url:'https://gchat.qpic.cn/full-video.mp4'}}]}});await until(()=>sent.length===n+1);assert.equal(models.length,beforeVideo+6);
+    n=sent.length;sendCommand(321,'最后发生了什么');await until(()=>sent.length===n+1);assert.ok(!JSON.stringify(models.at(-1).model).includes('data:image/jpeg'));
     await update({enabled:false});await api('/runtime/resume',{reason:'idle'});assert.equal((await(await api('/state')).json()).enabled,false,'manual pause survives network recovery');
   }finally{try{await api('/shutdown',{});}catch{}await until(()=>exited||false).catch(()=>child.kill());if(child.connected)child.disconnect();}
 });

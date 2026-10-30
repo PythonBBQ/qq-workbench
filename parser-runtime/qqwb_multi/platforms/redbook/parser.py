@@ -1,0 +1,158 @@
+"""识别小红书链接并获取图集或视频笔记。"""
+
+import json
+import re
+from urllib.parse import urlparse, urlsplit, urlunsplit
+
+import httpx
+
+from ...core.contracts import ParseContext, ParseResult
+from ...core.http import build_cookies, cookie_config_value
+from ...core.media import mark_invalid_image_slots
+from ...core.parser import BaseParser
+from .client import resolve_short_link
+from .gallery import RedBookGalleryContent
+from .note import RedBookNoteContent
+from .video import RedBookVideoContent
+
+
+class RedBookParser(
+    RedBookNoteContent,
+    RedBookGalleryContent,
+    RedBookVideoContent,
+    BaseParser,
+):
+    """路由小红书笔记并维持受控的页面回退流程。"""
+
+    name = "redbook"
+    display_name = "小红书"
+    cookie_config_key = "redbook_cookies"
+    image_host_suffixes = ("xhscdn.com", "xiaohongshu.com")
+    OFFICIAL_HOSTS = frozenset({"www.xiaohongshu.com", "www.xiaohongshu.cn"})
+    SHORT_LINK_HOSTS = frozenset({"xhslink.com", "xhslink.cn"})
+    COOKIE_DOMAINS = (".xiaohongshu.com", ".xiaohongshu.cn")
+    INVALID_IMAGE_URL = "unsafe-image-url"
+    PATTERN = (
+        r"https?://(?:"
+        r"www\.xiaohongshu\.(?:com|cn)/(?:explore|discovery/item)/[^/?\s]+"
+        r"|xhslink\.(?:com|cn)(?:/[^/?\s]+)+"
+        r")(?:\?[^\s#]*)?"
+    )
+    NOTE_PATH_PATTERN = r"/(?:explore|discovery/item)/(?P<note_id>[^/?]+)"
+    AUTH_PATH_MARKERS = ("/404/security-check", "/login", "/website-login")
+    EXPLORE_HEADERS = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/55.0.2883.87 "
+            "UBrowser/6.2.4098.3 Safari/537.36"
+        )
+    }
+    HEADERS = {
+        "User-Agent": (
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
+            "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 "
+            "Mobile/15E148 Safari/604.1"
+        ),
+        "Accept": (
+            "text/html,application/xhtml+xml,application/xml;q=0.9,"
+            "image/avif,image/webp,*/*;q=0.8"
+        ),
+        "Origin": "https://www.xiaohongshu.com",
+    }
+
+    async def match(self, context: ParseContext) -> bool:
+        return bool(re.search(self.PATTERN, context.combined_text))
+
+    async def parse(self, context: ParseContext) -> ParseResult:
+        match = re.search(self.PATTERN, context.combined_text)
+        if not match:
+            result = ParseResult(platform=self.name)
+            result.diagnostics.error = "未找到小红书链接。"
+            return result
+
+        cookies = build_cookies(
+            cookie_config_value(self.config, "redbook_cookies"),
+            self.COOKIE_DOMAINS,
+        )
+        async with httpx.AsyncClient(
+            timeout=self.request_timeout,
+            follow_redirects=True,
+            headers=self.HEADERS,
+            cookies=cookies,
+            **self.http_client_options,
+        ) as client:
+            url = match.group(0)
+            if (urlparse(url).hostname or "").lower() in self.SHORT_LINK_HOSTS:
+                url = await resolve_short_link(
+                    client,
+                    url,
+                    supported_hosts=self.OFFICIAL_HOSTS,
+                    raise_for_response=self.raise_for_response_status,
+                    auth_url=self._is_auth_url,
+                )
+
+            parsed_url = urlparse(url)
+            site_host = (parsed_url.hostname or "").lower()
+            if site_host not in self.OFFICIAL_HOSTS:
+                raise ValueError("小红书链接指向不受支持的地址")
+            client.headers["Origin"] = f"https://{site_host}"
+            note_match = re.search(self.NOTE_PATH_PATTERN, parsed_url.path)
+            if not note_match:
+                raise ValueError("无法从小红书链接中提取笔记 ID")
+            note_id = note_match.group("note_id")
+            query = f"?{parsed_url.query}" if parsed_url.query else ""
+            site_origin = f"https://{site_host}"
+            explore_url = f"{site_origin}/explore/{note_id}{query}"
+            discovery_url = f"{site_origin}/discovery/item/{note_id}{query}"
+
+            try:
+                original_headers = client.headers.copy()
+                client.headers.clear()
+                client.headers.update(self.EXPLORE_HEADERS)
+                try:
+                    response = await client.get(explore_url)
+                finally:
+                    client.headers.clear()
+                    client.headers.update(original_headers)
+                self.raise_for_response_status(response)
+                self._raise_for_auth_page(response)
+                result = self._parse_explore_state(
+                    self._extract_initial_state(response.text), note_id
+                )
+                content_url = explore_url
+            except (httpx.HTTPError, ValueError, KeyError):
+                response = await client.get(discovery_url)
+                self.raise_for_response_status(response)
+                self._raise_for_auth_page(response)
+                result = self._parse_discovery_state(
+                    self._extract_initial_state(response.text)
+                )
+                content_url = discovery_url
+            parsed_content_url = urlsplit(content_url)
+            image_referer = urlunsplit(
+                parsed_content_url._replace(query="", fragment="")
+            )
+            mark_invalid_image_slots(result, self.INVALID_IMAGE_URL)
+            client.cookies.clear()
+            return await self.materialize_images(result, client, image_referer)
+
+    def _raise_for_auth_page(self, response: httpx.Response) -> None:
+        """识别小红书跳转后的安全验证或登录页面。"""
+        if self._is_auth_url(str(response.url)):
+            raise self.cookie_access_error()
+
+    @classmethod
+    def _is_auth_url(cls, url: str) -> bool:
+        path = urlparse(url).path.lower()
+        return any(marker in path for marker in cls.AUTH_PATH_MARKERS)
+
+    @staticmethod
+    def _extract_initial_state(html: str) -> dict:
+        matched = re.search(
+            r"window\.__INITIAL_STATE__\s*=\s*(.*?)</script>",
+            html,
+            flags=re.DOTALL,
+        )
+        if not matched:
+            raise ValueError("小红书分享链接失效或内容已删除")
+        return json.loads(matched.group(1).strip().replace("undefined", "null"))

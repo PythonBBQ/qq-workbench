@@ -1,0 +1,254 @@
+import json
+from html.parser import HTMLParser
+
+import httpx
+
+from ...core.contracts import OrderedContent, ParseResult
+from .common import clean_text, normalize_image_url, normalize_media_url
+
+
+class PostHTMLParser(HTMLParser):
+    """按帖子正文片段的可见顺序提取文本和图片候选。"""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.contents: list[OrderedContent] = []
+        self._text_parts: list[str] = []
+        self._ignored_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in {"script", "style", "noscript"}:
+            self._ignored_depth += 1
+            return
+        if self._ignored_depth:
+            return
+        if tag in {"p", "div", "li", "blockquote", "br"}:
+            self._flush_text()
+        if tag == "img":
+            self._flush_text()
+            attributes = dict(attrs)
+            image_url = str(
+                attributes.get("data-original")
+                or attributes.get("data-src")
+                or attributes.get("src")
+                or ""
+            )
+            if image_url:
+                self.contents.append(OrderedContent(kind="image", value=image_url))
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in {"script", "style", "noscript"}:
+            if self._ignored_depth:
+                self._ignored_depth -= 1
+            return
+        if not self._ignored_depth and tag in {"p", "div", "li", "blockquote"}:
+            self._flush_text()
+
+    def handle_data(self, data: str) -> None:
+        if not self._ignored_depth and (text := data.strip()):
+            self._text_parts.append(text)
+
+    def close(self) -> None:
+        super().close()
+        self._flush_text()
+
+    def _flush_text(self) -> None:
+        text = " ".join(self._text_parts).strip()
+        self._text_parts.clear()
+        if text:
+            self.contents.append(OrderedContent(kind="text", value=text))
+
+
+def parse_post_payload(payload: object) -> ParseResult:
+    link = payload.get("link") if isinstance(payload, dict) else None
+    if not isinstance(link, dict):
+        raise ValueError("小黑盒 link/tree 缺少 link 节点")
+    user = link.get("user")
+    author = "未知作者"
+    if isinstance(user, dict):
+        author = (
+            clean_text(str(user.get("username") or user.get("nickname") or ""))
+            or author
+        )
+    contents = parse_post_contents(link.get("text"))
+    video_url = normalize_media_url(link.get("video_url"))
+    if not link.get("has_video"):
+        video_url = ""
+    description = clean_text(str(link.get("description") or "")) if video_url else ""
+    result = ParseResult(platform="xiaoheihe")
+    result.content.title = clean_text(str(link.get("title") or "")) or "小黑盒帖子"
+    result.content.author = author
+    result.content.description = description
+    result.content.ordered_contents.extend(contents)
+    result.media.video_url = video_url
+    if not (contents or video_url):
+        result.content.extra_lines.append("未找到可发送的媒体。")
+    return result
+
+
+def parse_post_contents(raw_text: object) -> list[OrderedContent]:
+    if not isinstance(raw_text, str) or not raw_text.strip():
+        return []
+    try:
+        blocks = json.loads(raw_text)
+    except json.JSONDecodeError:
+        text = clean_text(raw_text)
+        return [OrderedContent(kind="text", value=text)] if text else []
+    if not isinstance(blocks, list):
+        text = clean_text(raw_text)
+        return [OrderedContent(kind="text", value=text)] if text else []
+
+    contents: list[OrderedContent] = []
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        if str(block.get("type") or "") == "img":
+            append_image(contents, block.get("url"))
+            continue
+        fragment = str(block.get("text") or "")
+        if not fragment:
+            continue
+        parser = PostHTMLParser()
+        parser.feed(fragment)
+        parser.close()
+        for item in parser.contents:
+            if item.kind == "image":
+                append_image(contents, item.value)
+            elif value := clean_text(item.value):
+                contents.append(OrderedContent(kind="text", value=value))
+    return contents
+
+
+def append_image(
+    contents: list[OrderedContent],
+    candidate: object,
+) -> None:
+    image_url = normalize_image_url(candidate)
+    if image_url:
+        contents.append(OrderedContent(kind="image", value=image_url))
+
+
+class XiaoheihePostContent:
+    """请求并解析小黑盒社区帖子。"""
+
+    async def _parse_post_by_id(self, link_id: str) -> ParseResult:
+        params = {
+            "app": "heybox",
+            "os_type": "web",
+            "x_app": "heybox_website",
+            "x_client_type": "web",
+            "x_os_type": "Windows",
+            "x_client_version": "",
+            "client_type": "web",
+            "web_version": "3.0",
+            "version": "999.0.4",
+            "link_id": link_id,
+            "is_first": "1",
+            "page": "1",
+            "index": "1",
+            "limit": "20",
+            "owner_only": "0",
+            **self._sign_path("/bbs/app/link/tree"),
+        }
+        referer = f"https://www.xiaoheihe.cn/app/bbs/link/{link_id}"
+        async with httpx.AsyncClient(
+            timeout=self._timeout(),
+            follow_redirects=False,
+            headers=self.HEADERS,
+            **self.http_client_options,
+        ) as client:
+            response = await client.get(
+                "https://api.xiaoheihe.cn/bbs/app/link/tree",
+                params=params,
+                headers=self._request_cookie_headers(),
+            )
+            self.raise_for_response_status(response)
+            payload = response.json()
+            if not isinstance(payload, dict) or payload.get("status") != "ok":
+                self._raise_for_payload_error(payload)
+                raise ValueError("小黑盒 link/tree 请求失败")
+            result_root = payload.get("result")
+            if not isinstance(result_root, dict):
+                raise ValueError("小黑盒 link/tree 结果为空")
+            result = parse_post_payload(result_root)
+            await self._replace_post_images_with_originals(result, client)
+            return await self.materialize_images(result, client, referer)
+
+    async def _replace_post_images_with_originals(
+        self,
+        result: ParseResult,
+        client: httpx.AsyncClient,
+    ) -> None:
+        """将正文缩略图换成原图，接口失败时保留可用的缩略图。"""
+        cache: dict[str, str] = {}
+        for item in result.content.ordered_contents:
+            if item.kind != "image" or not item.value:
+                continue
+            thumbnail_url = item.value
+            if thumbnail_url in cache:
+                item.value = cache[thumbnail_url]
+                continue
+            original_url = await self._request_original_image_url(
+                thumbnail_url,
+                client,
+            )
+            cache[thumbnail_url] = original_url or thumbnail_url
+            item.value = cache[thumbnail_url]
+
+    async def _request_original_image_url(
+        self,
+        thumbnail_url: str,
+        client: httpx.AsyncClient,
+    ) -> str:
+        """请求小黑盒原图接口并提取其返回的图片地址。"""
+        params = {
+            "app": "heybox",
+            "os_type": "web",
+            "x_app": "heybox_website",
+            "x_client_type": "web",
+            "x_os_type": "Windows",
+            "x_client_version": "",
+            "client_type": "web",
+            "web_version": "3.0",
+            "version": "999.0.4",
+            "url": thumbnail_url,
+            **self._sign_path("/bbs/app/api/original/image"),
+        }
+        try:
+            response = await client.get(
+                "https://api.xiaoheihe.cn/bbs/app/api/original/image",
+                params=params,
+                headers=self._request_cookie_headers(),
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except (httpx.HTTPError, ValueError, json.JSONDecodeError):
+            return ""
+        if not isinstance(payload, dict) or payload.get("status") != "ok":
+            return ""
+        result = payload.get("result")
+        if not isinstance(result, dict):
+            return ""
+        return _extract_original_image_url(result.get("imgs"))
+
+
+def _extract_original_image_url(value: object) -> str:
+    """兼容原图接口返回单个 URL、JSON 数组或 URL 字段对象。"""
+    if isinstance(value, str):
+        text = value.strip()
+        if text.startswith(("[", "{")):
+            try:
+                return _extract_original_image_url(json.loads(text))
+            except json.JSONDecodeError:
+                return ""
+        return normalize_image_url(text)
+    if isinstance(value, list):
+        for item in value:
+            if image_url := _extract_original_image_url(item):
+                return image_url
+        return ""
+    if isinstance(value, dict):
+        for key in ("url", "original", "src", "image"):
+            if image_url := _extract_original_image_url(value.get(key)):
+                return image_url
+    return ""

@@ -13,13 +13,13 @@ cleanup() { for pid in "${children[@]}"; do kill "$pid" 2>/dev/null || true; don
 children=()
 trap cleanup EXIT
 trap 'exit 0' TERM INT
-env -u DEEPSEEK_API_KEY -u VISION_API_KEY -u SPEECH_API_KEY -u WORKBENCH_TOKEN -u WORKBENCH_MEMORY_KEY -u VNC_PASSWORD Xvfb :17 -screen 0 1100x780x24 -nolock -noreset -nolisten tcp >xvfb.log 2>&1 & children+=("$!")
+env -u QQWB_SITE_COOKIES -u DEEPSEEK_API_KEY -u VISION_API_KEY -u SPEECH_API_KEY -u WORKBENCH_TOKEN -u WORKBENCH_MEMORY_KEY -u VNC_PASSWORD Xvfb :17 -screen 0 1100x780x24 -nolock -noreset -nolisten tcp >xvfb.log 2>&1 & children+=("$!")
 for attempt in {1..40}; do [ -S /tmp/.X11-unix/X17 ] && break; sleep .25; done
-env -u DEEPSEEK_API_KEY -u VISION_API_KEY -u SPEECH_API_KEY -u WORKBENCH_TOKEN -u WORKBENCH_MEMORY_KEY -u VNC_PASSWORD python3 /opt/qq-workbench/snow-setup.py
-env -u DEEPSEEK_API_KEY -u VISION_API_KEY -u SPEECH_API_KEY -u WORKBENCH_TOKEN -u WORKBENCH_MEMORY_KEY x11vnc -storepasswd "$VNC_PASSWORD" /tmp/qqwb-vnc/password >/dev/null 2>&1
+env -u QQWB_SITE_COOKIES -u DEEPSEEK_API_KEY -u VISION_API_KEY -u SPEECH_API_KEY -u WORKBENCH_TOKEN -u WORKBENCH_MEMORY_KEY -u VNC_PASSWORD python3 /opt/qq-workbench/snow-setup.py
+env -u QQWB_SITE_COOKIES -u DEEPSEEK_API_KEY -u VISION_API_KEY -u SPEECH_API_KEY -u WORKBENCH_TOKEN -u WORKBENCH_MEMORY_KEY x11vnc -storepasswd "$VNC_PASSWORD" /tmp/qqwb-vnc/password >/dev/null 2>&1
 unset VNC_PASSWORD
-env -u DEEPSEEK_API_KEY -u VISION_API_KEY -u SPEECH_API_KEY -u WORKBENCH_TOKEN -u WORKBENCH_MEMORY_KEY x11vnc -display :17 -localhost -rfbport 15917 -forever -shared -noshm -rfbauth /tmp/qqwb-vnc/password -quiet >vnc.log 2>&1 & children+=("$!")
-env -u DEEPSEEK_API_KEY -u VISION_API_KEY -u SPEECH_API_KEY -u WORKBENCH_TOKEN -u WORKBENCH_MEMORY_KEY /usr/bin/python3 -m websockify --web=/usr/share/novnc 127.0.0.1:16080 127.0.0.1:15917 >websockify.log 2>&1 & children+=("$!")
+env -u QQWB_SITE_COOKIES -u DEEPSEEK_API_KEY -u VISION_API_KEY -u SPEECH_API_KEY -u WORKBENCH_TOKEN -u WORKBENCH_MEMORY_KEY x11vnc -display :17 -localhost -rfbport 15917 -forever -shared -noshm -rfbauth /tmp/qqwb-vnc/password -quiet >vnc.log 2>&1 & children+=("$!")
+env -u QQWB_SITE_COOKIES -u DEEPSEEK_API_KEY -u VISION_API_KEY -u SPEECH_API_KEY -u WORKBENCH_TOKEN -u WORKBENCH_MEMORY_KEY /usr/bin/python3 -m websockify --web=/usr/share/novnc 127.0.0.1:16080 127.0.0.1:15917 >websockify.log 2>&1 & children+=("$!")
 echo 'QQWB:SnowLuma 1.14.22 正在启动，QQ 登录完成后会自动核验连接'
 /opt/snowluma/node /opt/qq-workbench/assistant.mjs & children+=("$!")
 wait "${children[-1]}"

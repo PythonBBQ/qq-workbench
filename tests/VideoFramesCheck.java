@@ -28,10 +28,11 @@ public final class VideoFramesCheck {
         android.app.Application application=new android.app.Application();
         java.lang.reflect.Method attach=android.app.Application.class.getDeclaredMethod("attach",android.content.Context.class);attach.setAccessible(true);attach.invoke(application,context);
         java.lang.reflect.Field initial=threadClass.getDeclaredField("mInitialApplication");initial.setAccessible(true);initial.set(thread,application);
-        check(VideoFrames.timestamps(1000).length==1);check(VideoFrames.timestamps(600000).length==4);
+        check(VideoFrames.timestamps(1000).length==1);check(VideoFrames.timestamps(600000).length==600);
         try{VideoFrames.timestamps(600001);throw new AssertionError();}catch(IllegalArgumentException expected){}
-        File file=new File("/data/local/tmp/qqwb-video-synthetic.mp4");
-        {check(file.isFile());JSONObject sample=VideoFrames.file(file);check(sample.getDouble("durationSeconds")>1);check(sample.getJSONArray("frames").length()>=1);check(sample.getJSONArray("frames").getJSONObject(0).getString("url").startsWith("data:image/jpeg;base64,"));
+        check(VideoFrames.timestamps(120000).length==120);check(VideoFrames.timestamps(120000)[119]==119000);check(VideoFrames.timestamps(1250).length==2);
+        File file=new File(args.length>1?args[1]:"/data/local/tmp/qqwb-video-synthetic.mp4");
+        {check(file.isFile());JSONObject sample=VideoFrames.file(file);check(sample.getDouble("durationSeconds")>1);check(sample.getJSONArray("frames").length()==(sample.getInt("frameCount")+7)/8);check(sample.getInt("frameCount")==(int)Math.ceil(sample.getDouble("durationSeconds")));check(sample.getJSONArray("frames").getJSONObject(0).getString("url").startsWith("data:image/jpeg;base64,"));
             System.out.println("QQWB_VIDEO_OK: synthetic AVC clip, real Android metadata/frame decode, JPEG sampling and duration bounds");
             if(args.length>0)try(FileOutputStream out=new FileOutputStream(args[0])){out.write(sample.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));}
         }

@@ -3,6 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {webUrl,readWeb,searchWeb,browseWeb} from './web-learning.mjs';
 import {browseCandidate,naturalBrowseIntent,browsingDeclined} from './browse-intent.mjs';
+import {readShare,sharedLinks} from './multi-parser.mjs';
 
 const hosts=new Set(['bilibili.com','www.bilibili.com','m.bilibili.com','b23.tv','www.b23.tv','api.bilibili.com']);
 const clean=(s,n=1400)=>String(s??'').replace(/<[^>]*>/g,'').replace(/&(?:nbsp|amp|lt|gt|quot);/g,' ').replace(/[\u0000-\u0008\u000b-\u001f]/g,'').trim().slice(0,n);
@@ -52,43 +53,44 @@ export async function searchBili(query,fetcher=fetch){
 }
 export function learningIntent(text){
   if(browsingDeclined(text))return null;
-  const link=String(text).match(/https:\/\/(?:www\.|m\.)?(?:bilibili\.com|b23\.tv)\/[^\s<>"，。！？）)]+/i);
-  if(link)return {kind:'read',value:link[0]};
+  const link=sharedLinks(text)[0];
+  if(link)return {kind:'share-read',value:link};
   const search=String(text).match(/(?:去|在|从)?(?:B站|哔哩哔哩)\s*(?:搜索|搜一下|学习|查一下|查找)\s*[:：]?\s*(.{1,80})/i);
   if(search)return {kind:'search',value:search[1].trim()};
-  const page=String(text).match(/https:\/\/[^\s<>"，。！？）)]+/i);
-  if(page)return {kind:'web-read',value:page[0]};
   const candidate=browseCandidate(text,{automatic:false});
   return candidate?.query?{kind:'web-search',value:candidate.query}:null;
 }
 function tokens(text){const s=String(text).toLowerCase();return new Set([...(s.match(/[a-z0-9]{2,}/g)||[]),...(s.match(/[\u3400-\u9fff]{2,}/g)||[]).flatMap(t=>Array.from({length:t.length-1},(_,i)=>t.slice(i,i+2)))]);}
 export class LearningStore{
-  constructor(directory,fetcher=fetch){this.file=path.join(directory,'learning-notes.json');this.fetcher=fetcher;this.notes=[];this.cache=new Map();this.inFlight=new Map();try{const data=JSON.parse(fs.readFileSync(this.file,'utf8'));if(Array.isArray(data))for(const n of data.slice(-30))try{if(typeof n.title==='string'&&typeof n.url==='string'&&typeof n.content==='string')this.notes.push({...n,title:clean(n.title,160),content:clean(n.content),url:webUrl(n.url).href});}catch{}}catch{} }
+  constructor(directory,fetcher=fetch,parserOptions={}){this.file=path.join(directory,'learning-notes.json');this.fetcher=fetcher;this.parserOptions=parserOptions;this.notes=[];this.cache=new Map();this.inFlight=new Map();try{const data=JSON.parse(fs.readFileSync(this.file,'utf8'));if(Array.isArray(data))for(const n of data.slice(-30))try{if(typeof n.title==='string'&&typeof n.url==='string'&&typeof n.content==='string')this.notes.push({...n,title:clean(n.title,160),content:clean(n.content),url:webUrl(n.url).href});}catch{}}catch{} }
   list(){return this.notes.map(n=>({...n})).reverse();}
   persist(){fs.writeFileSync(this.file+'.tmp',JSON.stringify(this.notes),{mode:0o600});fs.renameSync(this.file+'.tmp',this.file);}
   save(items){for(const item of items.slice(0,3)){const url=webUrl(item.url).href;this.notes=this.notes.filter(n=>n.url!==url);this.notes.push({id:crypto.createHash('sha256').update(url).digest('hex').slice(0,16),title:clean(item.title,160),url,content:clean(item.content),updatedAt:new Date().toISOString()});}this.notes=this.notes.slice(-30);this.persist();}
   remove(id){this.notes=id==='all'?[]:this.notes.filter(n=>n.id!==id);this.persist();}
   related(text){const terms=tokens(text);return this.notes.map(n=>({n,score:[...tokens(n.title+' '+n.content)].filter(t=>terms.has(t)).length})).filter(x=>x.score>=2).sort((a,b)=>b.score-a.score).slice(0,2).map(x=>x.n);}
   async lookup(intent){
-    const key=intent.kind+':'+intent.value,cached=this.cache.get(key);
+    const key=this.cacheKey(intent),cached=this.cache.get(key);
     if(cached&&Date.now()-cached.at<(intent.kind==='web-browse'?120000:600000))return cached.items;
     if(this.inFlight.has(key))return this.inFlight.get(key);
-    const actions={read:readBili,search:searchBili,'web-read':readWeb,'web-search':searchWeb,'web-browse':browseWeb};if(!actions[intent.kind])throw new Error('请选择有效的学习方式');
+    const share=value=>readShare(value,this.fetcher,{...(typeof this.parserOptions==='function'?this.parserOptions():this.parserOptions),cards:intent.cards||[]});
+    const actions={read:share,search:searchBili,'web-read':share,'share-read':share,'web-search':searchWeb,'web-browse':browseWeb};if(!actions[intent.kind])throw new Error('请选择有效的学习方式');
     const pending=(async()=>{const items=await actions[intent.kind](intent.value,this.fetcher);this.cache.set(key,{at:Date.now(),items});if(this.cache.size>32)this.cache.delete(this.cache.keys().next().value);return items;})();
     this.inFlight.set(key,pending);try{return await pending;}finally{this.inFlight.delete(key);}
   }
+  cacheKey(intent){const options=typeof this.parserOptions==='function'?this.parserOptions():this.parserOptions;return intent.kind+':'+intent.value+(this.revision?':v'+this.revision:'')+(options.pixiv?':pixiv':'')+(intent.cards?.length?':'+crypto.createHash('sha256').update(JSON.stringify(intent.cards)).digest('hex').slice(0,16):'');}
   async plan(text,options={}){
+    if(options.cards?.length&&!browsingDeclined(text))return {kind:'share-read',value:options.cards[0].url,cards:options.cards};
     const direct=learningIntent(text);
     if(direct&&direct.kind!=='web-search')return direct;
     return naturalBrowseIntent(text,options);
   }
-  async context(text,{enabled=true,remember=false,owner=false,history=[],automatic=true,planner,stillCurrent=()=>true,onStatus=()=>{}}={}){
-    if(!enabled)return '';let notes=this.related(text),status='';const intent=await this.plan(text,{history,automatic,planner});
+  async context(text,{enabled=true,remember=false,owner=false,history=[],automatic=true,planner,cards=[],onSources=()=>{},stillCurrent=()=>true,onStatus=()=>{}}={}){
+    if(!enabled)return '';let notes=this.related(text),status='';const intent=await this.plan(text,{history,automatic,planner,cards});
     if(!stillCurrent())return '';
     if(intent?.kind==='clarify')return '\n[用户要求联网，但当前会话没有可确定的搜索主题；请简短询问要查什么，尚未搜索，不得编造结果。]';
     if(intent)try{
-      const key=intent.kind+':'+intent.value,cached=this.cache.get(key),usingCache=cached&&Date.now()-cached.at<(intent.kind==='web-browse'?120000:600000);
-      onStatus(usingCache?'正在复用近期公开资料缓存':'正在联网检索并读取公开资料');notes=await this.lookup(intent);if(!stillCurrent())return '';if(owner&&remember)this.save(notes);
+      const key=this.cacheKey(intent),cached=this.cache.get(key),usingCache=cached&&Date.now()-cached.at<(intent.kind==='web-browse'?120000:600000);
+      onStatus(usingCache?'正在复用近期公开资料缓存':intent.kind==='share-read'?'正在解析分享内容':'正在联网检索并读取公开资料');notes=await this.lookup(intent);if(!stillCurrent())return '';onSources(notes);if(owner&&remember)this.save(notes);
       const fetchedAt=this.cache.get(key)?.at||Date.now();
       status=(usingCache?'本次复用短时缓存，未重新请求网站。':'本次已读取公开资料。')+(intent.kind==='web-browse'?'已搜索“'+intent.value+'”，最多3条结果、尝试读取其中2个网页；逐条以资料范围为准。':'')+'资料读取时间：'+new Date(fetchedAt).toISOString();onStatus(usingCache?'已复用近期联网资料':'联网资料读取完成');
     }catch(e){notes=[];status=e.message+'；本次联网失败，不得用旧笔记冒充刚查到的结果，不得声称读取成功或已经看完视频。';onStatus('联网暂不可用，已将失败情况交给模型如实回答');}

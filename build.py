@@ -22,6 +22,8 @@ def run(*args):
     subprocess.run([str(a) for a in args], cwd=ROOT, check=True)
 
 BUILD.mkdir(exist_ok=True)
+import sys
+run(sys.executable, ROOT/'tools/build-multi-parser.py')
 OUT.parent.mkdir(exist_ok=True)
 # A Windows checkout must not ship CRLF shell scripts into the Linux container.
 for script in ASSETS.glob('*.sh'):
