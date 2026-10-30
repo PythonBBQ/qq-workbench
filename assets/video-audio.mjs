@@ -25,14 +25,25 @@ export function audioEvents(output){
   }
   return results.sort((a,b)=>b.confidence-a.confidence).slice(0,6).map(v=>({...v,confidence:Math.round(v.confidence*100)/100}));
 }
-export function audioEvidence(audio){
+export function asksAudio(text){
+  const s=String(text||'').slice(0,2000);
+  if(/(?:不要|不用|别|无需).{0,6}(?:听|分析|评价|介绍|说|发|提).{0,8}(?:声音|音乐|BGM|配乐|音轨)/i.test(s))return false;
+  return /(?:声音|音乐|BGM|配乐|音轨|音效|歌声|唱腔|背景乐|静音|没声音|有声音).{0,20}(?:什么|怎么|怎样|如何|咋|吗|呢|不|好听|难听|听|转写|评价|分析)|(?:听听|听一下|听一听|听下|听|辨认|分析|评价|介绍|转写).{0,20}(?:声音|音乐|BGM|配乐|音轨|音效|歌声|唱腔|背景乐)|(?:怎么|为什么|咋).{0,6}(?:没声音|静音|听不到)/i.test(s);
+}
+export function audioReplyPolicy(text){
+  return asksAudio(text)?'本次用户明确询问声音或音乐，才结合实际音轨证据回答；分类概率不能当作精确识曲或完整音乐理解，不编造旋律或歌词。只用文字回答，不发送BGM或音乐文件。':'本次用户没有询问声音或音乐。仅结合画面和识别出的对白文字自然回答，不主动提及、评价或发送BGM、配乐、乐器、音色、声音检测或转写状态；没有对白也不必说明。只用文字回答。';
+}
+export function audioFocusContext(audio,text){
+  return '\n'+audioReplyPolicy(text)+(asksAudio(text)?'\n本次音轨证据：'+audioEvidence(audio,{includeTags:true}):'');
+}
+export function audioEvidence(audio,{includeTags=false}={}){
   if(!audio)return '本次未取得音轨检测结果；不能判断静音或无声音。';
   const status=audio.status;
   if(status==='no-audio')return '已检查此媒体文件，文件内没有音频流。仅表示本次文件没有音轨，不能推断网站上的原作品静音。';
   if(audio.signal==='silent')return '本次解码音轨的PCM采样接近数字零值，检测到近乎静音；不推断其他版本或站点原作品。';
   const sound=audio.signal==='present'?'本机已解码并测到非静音声音，不能说没声音、静音或音轨为空。':'未确认声音是否存在，不能声称静音。';
-  const tags=audio.tags?.length?' 本机声音分类在'+audio.tagWindows+'个抽样片段中提示：'+audio.tags.map(v=>v.name+' '+Math.round(v.confidence*100)+'%').join('、')+'。这些是分类概率，不是曲名识别或完整音乐理解，不能据此编造旋律、歌词、作者或逐秒变化。':'';
-  return sound+tags+(status==='ok'?' 已取得人声自动转写，可能有错漏。':status==='unintelligible'?' 未识别出清晰人声文字；纯音乐、器乐或识别不准都可能没有转写，这不表示没有声音。':' 人声转写未完成，不能据此判断没有声音。');
+  const tags=includeTags&&audio.tags?.length?' 本机声音分类在'+audio.tagWindows+'个抽样片段中提示：'+audio.tags.map(v=>v.name+' '+Math.round(v.confidence*100)+'%').join('、')+'。这些是分类概率，不是曲名识别或完整音乐理解，不能据此编造旋律、歌词、作者或逐秒变化。':'';
+  return sound+tags+(status==='ok'?' 已取得人声自动转写，可能有错漏。':status==='unintelligible'?' 未识别出清晰人声文字，这不表示没有声音。':' 人声转写未完成，不能据此判断没有声音。');
 }
 export function transcriptObjects(output){
   const rows=[];let start=-1,depth=0,quoted=false,escape=false;
@@ -61,7 +72,7 @@ export function audioContext(audio,start=0,end=600){
 export function withAudio(video,audio){
   if(!audio)return video;
   const scope=video.scope.replace(/未听取音轨、未读取完整字幕，?/g,'').replace(/未听取音轨、未读取字幕，?/g,'');
-  return {...video,audio,audioText:audioContext(audio),scope:scope+(audio.status==='ok'?'\n本次已在手机本地转写音轨。':'')+'\n本次音轨证据：'+audioEvidence(audio)+' 人声转写和声音分类是独立结果；没有转写不得当作静音，不把自动转写当作可靠逐字字幕。'};
+  return {...video,audio,audioText:audioContext(audio),scope:scope+(audio.status==='ok'?'\n本次已在手机本地转写音轨。':'')+'\n本次音轨证据：'+audioEvidence(audio)+' 没有转写不得当作静音，不把自动转写当作可靠逐字字幕。'};
 }
 async function tagAudio(names,temporary,runtime,env){
   const binary=path.join(runtime,'bin/sherpa-onnx-offline-audio-tagging'),model=path.join(runtime,'tagger/model.int8.onnx');

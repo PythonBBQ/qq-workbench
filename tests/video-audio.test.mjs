@@ -1,5 +1,5 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
-import {transcriptObjects,compactTranscript,audioContext,withAudio,AUDIO_POLICY,pcmSignal,audioEvents,audioEvidence} from '../assets/video-audio.mjs';
+import {transcriptObjects,compactTranscript,audioContext,withAudio,AUDIO_POLICY,pcmSignal,audioEvents,audioEvidence,asksAudio,audioReplyPolicy,audioFocusContext} from '../assets/video-audio.mjs';
 import {sampledVideo,videoBatches} from '../assets/video.mjs';
 test('speech output parsing ignores diagnostics, braces in strings and non-transcript JSON',()=>{
  const output='Started\n'+JSON.stringify({text:'视频说了 {这是例子} 和 "引用"',tokens:['x']})+'\nDone!\n'+JSON.stringify({debug:true});
@@ -24,11 +24,23 @@ function wave(samples){const data=Buffer.alloc(44+samples.length*2);data.write('
 test('digital silence is measured separately from ASR emptiness and quiet but audible PCM',()=>{
  assert.equal(pcmSignal([wave([0,0,0,0])]).signal,'silent');assert.equal(pcmSignal([wave([12,-12,0,0])]).signal,'present');assert.equal(pcmSignal([wave([12000,-12000,400,-400])]).signal,'present');assert.throws(()=>pcmSignal([Buffer.from('bad')]));assert.throws(()=>pcmSignal([wave([])]));
  for(const status of ['unintelligible','failed','unavailable'])assert.match(audioEvidence({status,signal:'present'}),/测到非静音声音/);
- assert.match(audioEvidence({status:'unintelligible',signal:'present'}),/纯音乐/);assert.match(audioEvidence({status:'failed'}),/不能声称静音/);assert.match(audioEvidence({status:'no-audio'}),/不能推断网站上的原作品静音/);
+ assert.match(audioEvidence({status:'unintelligible',signal:'present'}),/这不表示没有声音/);assert.match(audioEvidence({status:'failed'}),/不能声称静音/);assert.match(audioEvidence({status:'no-audio'}),/不能推断网站上的原作品静音/);
 });
 test('bounded local event probabilities supplement music even when no human words are recognized',()=>{
  const tags=audioEvents('0: AudioEvent(name="Music", index=137, prob=0.98)\nAudioEvent(name="Piano", index=153, prob=0.70)\nAudioEvent(name="Music", index=137, prob=0.91)\nAudioEvent(name="Speech", index=0, prob=0.12)');
  assert.deepEqual(tags,[{name:'Music',confidence:.98},{name:'Piano',confidence:.7}]);
- const result=withAudio({scope:'低清画面；未听取音轨、未读取完整字幕，'}, {...compactTranscript([{text:''}],30),signal:'present',tags,tagWindows:3});assert.match(result.scope,/Music 98%/);assert.match(result.scope,/不能说没声音/);assert.match(result.scope,/没有转写不得当作静音/);assert.equal(result.audioText,'');
+ const result=withAudio({scope:'低清画面；未听取音轨、未读取完整字幕，'}, {...compactTranscript([{text:''}],30),signal:'present',tags,tagWindows:3});assert.ok(!result.scope.includes('Music 98%'));assert.match(audioFocusContext(result.audio,'这音乐怎么样'),/Music 98%/);assert.match(result.scope,/不能说没声音/);assert.match(result.scope,/没有转写不得当作静音/);assert.equal(result.audioText,'');
  assert.match(audioEvidence({status:'silent',signal:'silent'}),/PCM采样接近数字零值/);
+});
+
+
+test('music evidence is opt-in for current questions while dialogue remains available in every batch',()=>{
+ const audio={status:'ok',signal:'present',segments:[{start:0,end:30,text:'这是识别出的对白'}],tags:[{name:'Music',confidence:.98}],tagWindows:3};
+ for(const text of ['这声音怎么样','这音乐好听吗','听听BGM','bgm咋样','分析这个视频的配乐'])assert.equal(asksAudio(text),true,text);
+ for(const text of ['概括视频','最后发生了什么','不用分析音乐，只说剧情','不要评价BGM','视频整体怎么样'])assert.equal(asksAudio(text),false,text);
+ const video=withAudio({scope:'视频画面',parts:[{type:'image_url',image_url:{url:'data:image/jpeg;base64,AQID'}}]},audio);
+ const normal=JSON.stringify(videoBatches(video,'视频讲了什么')),focused=JSON.stringify(videoBatches(video,'这音乐怎么样'));
+ assert.match(normal,/这是识别出的对白/);assert.ok(!normal.includes('Music 98%'));assert.match(normal,/不主动提及/);
+ assert.match(focused,/Music 98%/);assert.match(focused,/不发送BGM或音乐文件/);assert.equal(video.audio.tags.length,1);
+ assert.match(audioReplyPolicy('说说剧情'),/没有对白也不必说明/);
 });

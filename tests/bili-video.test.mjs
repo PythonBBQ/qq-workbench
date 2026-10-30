@@ -145,8 +145,8 @@ test('separate DASH audio is transcribed locally and only text joins the video e
 
 test('BGM followups use the current video audio state and do not trigger a new topic search',()=>{
  const state={query:'音乐',title:'自由之塔',audio:{status:'unintelligible',signal:'present',tags:[{name:'Music',confidence:.98}],tagWindows:3}};
- for(const text of ['听听这个视频BGM','听一下刚才的背景音乐','这段视频有声音吗','怎么没声音']){assert.equal(biliFollowup(text,state).kind,'audio',text);assert.equal(biliVideoIntent(text,{state}),null,text);}
- assert.match(biliStateContext(state),/Music 98%/);assert.match(biliStateContext(state),/优先于旧助手的猜测/);
+ for(const text of ['听听这个视频BGM','听一下刚才的背景音乐','这段视频有声音吗','怎么没声音','这音乐怎么样','bgm咋样','这声音好听吗']){assert.equal(biliFollowup(text,state).kind,'audio',text);assert.equal(biliVideoIntent(text,{state}),null,text);}
+ assert.ok(!biliStateContext(state,'视频讲了什么').includes('Music 98%'));assert.match(biliStateContext(state,'bgm咋样'),/Music 98%/);assert.match(biliStateContext(state),/优先于旧助手的猜测/);
  assert.equal(biliVideoIntent('听听这个视频BGM',{history:[{role:'user',content:link}]}).url,link);assert.equal(biliVideoIntent('听听这个视频BGM',{history:[{role:'assistant',content:link}]}),null);
  assert.equal(biliVideoIntent('B站看看新的主题视频',{state}).mode,'topic');
 });
