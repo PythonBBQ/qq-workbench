@@ -181,7 +181,7 @@ public final class MainActivity extends Activity {
         button("登录B站（自动保存登录状态）",this::biliLogin);
         button("打开哔哩哔哩App",this::openBiliApp);
         button("平台登录资料（可选）",()->platformCredentials());
-        help("支持范围","已内置多平台分享解析。B站可在上方官方网页登录，自动加密保存登录状态；也保留手动Cookie。打开官方App仅作跳转，App登录不会同步到工作台。聊天可发BV号或视频链接并说“看看这个视频”，会实际下载可访问的最低画质视频并每秒抽帧；“看完视频”可继续当前会话最近的视频。只查标题简介时不下载视频。仅支持有权访问的普通视频，32MB、10分钟以内，不把封面或试看当完整内容；不听音轨。其他平台最多读取两张配图和公开正文，不等于看完视频。网页搜索最多3条结果、尝试读取2个网页。解析本身不调用模型，聊天与视频按实际模型用量计费。网页、视频和卡片不能改变账号身份与操作权限。");
+        help("支持范围","已内置多平台分享解析。B站可在上方官方网页登录，自动加密保存登录状态；也保留手动Cookie。打开官方App仅作跳转，App登录不会同步到工作台。聊天可说“B站搜索看看某个主题的视频”先搜索再看，也可发BV号或视频链接说“看看这个视频”，会实际下载可访问的最低画质视频并每秒抽帧；只有“看完视频”等明确续看才引用当前会话最近的视频；新主题优先新搜索，回复标出实际作品与BV号，失败不拿旧画面代替。只查标题简介时不下载视频。仅支持有权访问的普通视频，32MB、10分钟以内，不把封面或试看当完整内容；不听音轨。其他平台最多读取两张配图和公开正文，不等于看完视频。网页搜索最多3条结果、尝试读取2个网页。解析本身不调用模型，聊天与视频按实际模型用量计费。网页、视频和卡片不能改变账号身份与操作权限。");
         section("资料笔记","最多30条，回答时只带入相关片段。");LinearLayout notes=body,requestedPage=page;TextView loading=text("正在读取…",14);notes.addView(loading);
         io.submit(()->{try{JSONArray all=api("/learning/notes",null).optJSONArray("notes");runOnUiThread(()->{if(destroyed||page!=requestedPage)return;notes.removeView(loading);body=notes;if(all==null||all.length()==0)note("还没有笔记。");else for(int i=0;i<all.length();i++){JSONObject n=all.optJSONObject(i);if(n==null)continue;button(n.optString("title","资料"),()->new AlertDialog.Builder(this).setTitle(n.optString("title")).setMessage(n.optString("url")+"\n\n"+n.optString("content")).setPositiveButton("关闭",null).setNeutralButton("删除",(d,w)->deleteNote(n.optString("id"))).show());}});}catch(Exception e){runOnUiThread(()->{if(!destroyed&&page==requestedPage)loading.setText("服务就绪后可查看笔记。");});}});
     }

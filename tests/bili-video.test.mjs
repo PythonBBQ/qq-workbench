@@ -1,5 +1,5 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
-import {biliReference,biliVideoIntent,biliMediaUrl,resolveBiliVideo,readBiliFrames} from '../assets/bili-video.mjs';
+import {biliReference,biliVideoIntent,biliSearchQuery,searchBiliVideo,readBiliSearchFrames,biliMediaUrl,resolveBiliVideo,readBiliFrames} from '../assets/bili-video.mjs';
 const bv='BV1Umxc6JEdD',link='https://www.bilibili.com/video/'+bv;
 const resolve=async()=>[{address:'93.184.216.34'}];
 function sample(seconds=120){return {sampling:'1fps-contact-sheet-v1',durationSeconds:seconds,sampledSeconds:seconds,frameCount:seconds,frames:Array.from({length:Math.ceil(seconds/8)},(_,i)=>({seconds:i*8,timestamps:Array.from({length:Math.min(8,seconds-i*8)},(_,j)=>i*8+j),url:'data:image/jpeg;base64,AQID'}))};}
@@ -21,6 +21,28 @@ test('BV and links trigger real video reading; follow-up references are limited 
  for(const text of ['只查简介 '+bv,'不要看视频 '+bv,'别联网 '+bv])assert.equal(biliVideoIntent(text),null);
  assert.equal(biliVideoIntent(link,{automatic:false}),null);assert.ok(biliVideoIntent('看这个视频 '+link,{automatic:false}));
  assert.equal(biliVideoIntent('',{cards:[{url:link}]}).url,link);
+});
+test('named Bili topics always search afresh before considering any historical video; only referential followups may resume',()=>{
+ const history=[{role:'user',content:link}];
+ for(const s of ['哔站看看愚鸟渡渡视频','哔站搜索看看愚鸟渡渡视频','B站搜索 愚鸟渡渡的视频','在哔哩哔哩搜一下愚鸟渡渡视频看看']){
+  const intent=biliVideoIntent(s,{history});assert.equal(intent.kind,'search',s);assert.equal(intent.query,'愚鸟渡渡',s);assert.equal(intent.url,undefined);assert.equal(intent.fromHistory,false);
+ }
+ assert.equal(biliVideoIntent('看看其他作者的搞笑视频',{history}).kind,'search');
+ assert.equal(biliVideoIntent('搜索看看愚鸟渡渡视频',{history}).query,'愚鸟渡渡');
+ assert.equal(biliVideoIntent('搜索看看这个视频',{history}),null);
+ assert.equal(biliVideoIntent('继续看刚才那个视频',{history}).url,link);
+ assert.equal(biliVideoIntent('B站只查简介 愚鸟渡渡',{history}),null);
+ assert.equal(biliSearchQuery('B站看看这个视频'),'');
+});
+test('fresh search chooses a relevant bounded video and never falls back to a previously supplied BV',async()=>{
+ const m=mock(),requests=[];
+ const fetcher=async(url,options)=>{requests.push({url,options});if(url.includes('/search/type'))return Response.json({code:0,data:{result:[{bvid:'BV1GJ411x7h7',title:'不相关的旧视频',author:'other',duration:'01:22'},{bvid:bv,title:'<em>愚鸟渡渡</em> 的新作品',author:'愚鸟渡渡',duration:'02:00'}]}});return m.fetcher(url,options);};
+ const video=await readBiliSearchFrames('愚鸟渡渡','token',fetcher,{resolve,cookie:'SESSDATA=synthetic'});
+ assert.equal(video.search.bvid,bv);assert.equal(video.search.query,'愚鸟渡渡');assert.match(video.scope,/本次新搜索/);assert.equal(requests.filter(r=>r.url.includes('/search/type')).length,1);assert.ok(!requests.some(r=>r.url.includes('/view')&&r.url.includes('BV1GJ411x7h7')));assert.equal(video.frameCount,120);
+ const next=await searchBiliVideo('愚鸟渡渡',fetcher,{resolve});assert.equal(requests.filter(r=>r.url.includes('/search/type')).length,2,'explicit searches have no stale video/result cache');
+ assert.equal(next.title,'愚鸟渡渡 的新作品');
+ const unavailable=async(url)=>{if(url.includes('/search/type'))return Response.json({code:-412});return new Response('<html>no results</html>',{headers:{'content-type':'text/html'}});};
+ await assert.rejects(()=>searchBiliVideo('不存在的主题',unavailable,{resolve}),/没有选用历史视频/);
 });
 test('Bili low-quality video selection uses only its own cookie, validates public media hosts and keeps signed media URLs out of model scope',async()=>{
  const {fetcher,requests}=mock();const result=await readBiliFrames(link,'internal-token',fetcher,{cookie:'SESSDATA=synthetic',resolve});

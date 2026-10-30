@@ -51,6 +51,8 @@ globalThis.fetch=async(url,options)=>{
     if(options.method==='POST'){process.send({rpc:'send_qzone_msg',qzoneBody:options.body});return Response.json({code:0,...(globalThis.sendControl==='qzone-accepted'?{tid:'synthetic-post-id'}:{})});}
     return Response.json({code:0,total:0,msglist:null,logininfo:{uin:765432}});
   }
+  if(u.hostname==='api.bilibili.com'&&u.pathname.includes('/search/type')){process.send({biliSearch:u.searchParams.get('keyword')});return Response.json(u.searchParams.get('keyword').includes('不存在主题')?{code:-412}:{code:0,data:{result:[{bvid:'BV1ycx76dEjW',title:'愚鸟渡渡的新作品',author:'愚鸟渡渡',duration:'02:00'}]}});}
+  if(u.hostname==='api.bilibili.com'&&u.searchParams.get('bvid')==='BV1ycx76dEjW'&&!u.pathname.includes('playurl'))return Response.json({code:0,data:{bvid:'BV1ycx76dEjW',title:'愚鸟渡渡的新作品',duration:120,cid:5678,pages:[{page:1,cid:5678,duration:120}]}});
   if(u.hostname==='api.bilibili.com'&&u.pathname.includes('playurl'))return Response.json({code:0,data:{dash:{video:[{baseUrl:'https://video.bilivideo.com/low.mp4?token=SIGNED-MEDIA-SECRET',bandwidth:100000}]}}});
   if(u.hostname==='api.bilibili.com'&&u.searchParams.get('bvid')==='BV1Umxc6JEdD')return Response.json({code:0,data:{bvid:'BV1Umxc6JEdD',title:'Synthetic full video',duration:120,cid:1234,pages:[{page:1,cid:1234,duration:120}]}});
   if(u.hostname==='api.bilibili.com')return Response.json({code:0,data:{bvid:'BV1GJ411x7h7',title:'做饭与白饭',owner:{name:'测试作者'},desc:'仅供隔离测试的公开简介'}});
@@ -319,6 +321,15 @@ globalThis.fetch=async(url,options)=>{
     n=sent.length;sendCommand(332,'最后发生了什么');await until(()=>sent.length===n+1);assert.ok(!JSON.stringify(models.at(-1).model).includes('data:image/jpeg'));
     const biliLocal=await(await api('/video/analyze',{bili:'BV1Umxc6JEdD',question:'概括画面'})).json();assert.equal(biliLocal.ok,true);assert.match(biliLocal.message,/来源：https:\/\/www.bilibili.com/);assert.equal(biliLocal.budget.images,15);
     assert.ok(!JSON.stringify(models).includes('SIGNED-MEDIA-SECRET'));assert.ok(!JSON.stringify(models).includes('synthetic-private-cookie'));
+    // Reproduce both screenshot phrases with an unrelated old BV already in the same conversation.
+    for(const [id,text] of [[340,'哔站看看愚鸟渡渡视频'],[341,'哔站搜索看看愚鸟渡渡视频']]){
+      n=sent.length;beforeVideo=models.length;sendCommand(id,text);await until(()=>sent.length===n+1);assert.equal(models.length,beforeVideo+1);
+      const request=JSON.stringify(models.at(-1).model);assert.ok(!request.includes('BV1Umxc6JEdD'),'old video history is excluded from new-video interpretation');assert.match(request,/BV1ycx76dEjW/);assert.match(request,/本次新搜索/);assert.equal(models.at(-1).model.messages.at(-1).content.filter(p=>p.type==='image_url').length,15);
+      assert.match(sent.at(-1).message[0].data.text,/本次搜索：愚鸟渡渡/);assert.match(sent.at(-1).message[0].data.text,/实际读取：愚鸟渡渡的新作品 · BV1ycx76dEjW/);
+    }
+    n=sent.length;beforeVideo=models.length;sendCommand(342,'看完视频');await until(()=>sent.length===n+1);assert.equal(models.length,beforeVideo+1);assert.match(JSON.stringify(models.at(-1).model),/BV1ycx76dEjW/);
+    n=sent.length;beforeVideo=models.length;sendCommand(343,'哔站搜索看看不存在主题视频');await until(()=>sent.length===n+1);assert.equal(models.length,beforeVideo,'failed new search produces a deterministic failure, not a hallucinated replay from the model');assert.match(sent.at(-1).message[0].data.text,/没有选用历史视频/);assert.ok(!sent.at(-1).message[0].data.text.includes('愚鸟渡渡的新作品'));
+    n=sent.length;beforeVideo=models.length;child.send({event:{...event,message_id:344,message:[{type:'text',data:{text:'看完视频'}},{type:'video',data:{url:'https://gchat.qpic.cn/full-video.mp4'}}]}});await until(()=>sent.length===n+1);assert.equal(models.length,beforeVideo+6,'an attached QQ video wins over a historical Bili reference');assert.match(JSON.stringify(models.at(-1).model.messages.at(-1)),/600/);
     await update({enabled:false});await api('/runtime/resume',{reason:'idle'});assert.equal((await(await api('/state')).json()).enabled,false,'manual pause survives network recovery');
   }finally{try{await api('/shutdown',{});}catch{}await until(()=>exited||false).catch(()=>child.kill());if(child.connected)child.disconnect();}
 });
