@@ -1,6 +1,6 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
 import fs from 'node:fs';import os from 'node:os';import path from 'node:path';
-import {ConversationMemory,conversationScope,preference} from '../assets/conversation-memory.mjs';
+import {ConversationMemory,conversationScope,preference,memoryTerms,reinforceTopics,topicStrength,localDigest} from '../assets/conversation-memory.mjs';
 import {worldContext,requestHistory} from '../assets/chat-style.mjs';
 const base=path.resolve(import.meta.dirname,'../build/memory-tests');fs.mkdirSync(base,{recursive:true});
 const directory=()=>fs.mkdtempSync(path.join(base,'case-'));
@@ -86,4 +86,59 @@ test('failed optional summaries do not repeatedly spend tokens on every message'
  await assert.rejects(()=>store.compress(s,config,fail));
  for(let i=0;i<11;i++){store.commit(s,'继续聊'+i,'回答',config);assert.equal(await store.compress(s,config,fail),false);}
  assert.equal(calls,1);store.commit(s,'第12轮','回答',config);await assert.rejects(()=>store.compress(s,config,fail));assert.equal(calls,2);
+});
+
+test('repeated words gain bounded local familiarity across time, not same-message spam, and decay when unused',()=>{
+ const start=Date.now()-60*86400000,one=reinforceTopics([],'白饭 白饭 白饭',start);
+ assert.equal(one.find(t=>t.term==='白饭').count,1);
+ const spam=reinforceTopics(one,'白饭',start+500);assert.deepEqual(spam,one);
+ const later=reinforceTopics(spam,'白饭',start+86400000),entry=later.find(t=>t.term==='白饭');assert.equal(entry.count,2);assert.ok(entry.strength>2);
+ assert.ok(topicStrength(entry,start+61*86400000)<topicStrength(entry,start+86400000));
+ let many=later;for(let i=2;i<50;i++)many=reinforceTopics(many,'白饭',start+i*86400000);assert.ok(many.every(t=>t.strength<=20));
+ assert.ok(memoryTerms('聊聊科比和篮球').includes('科比'));assert.ok(memoryTerms('Man, what can I say?').includes('man'));
+});
+
+test('familiarity excludes quoted/forwarded content and secrets and never turns mentions into likes',()=>{
+ const now=Date.now()-1000;
+ for(const value of ['他说白饭很好','引用：白饭','“白饭”是台词','https://example.com/白饭','API Key sk-synthetic','＃搜索 白饭','[CQ:reply,id=3]白饭'])assert.deepEqual(reinforceTopics([],value,now),[],value);
+ const store=new ConversationMemory(directory()),s=scope();store.commit(s,'不想吃白饭','助手很喜欢巧克力',c);
+ assert.ok(store.record(s).topics.some(t=>t.term==='白饭'));assert.equal(store.record(s).notes.length,0);assert.ok(!store.record(s).topics.some(t=>t.term==='巧克力'));
+ const called=reinforceTopics([],'@deepseek 今天吃白饭',now);assert.ok(called.some(t=>t.term==='白饭'));
+});
+
+test('reinforcement ranks existing relevant excerpts without adding token-hungry topic lists or unrelated favorites',()=>{
+ const now=Date.now(),topics=reinforceTopics(reinforceTopics([],'白饭',now-86400000),'白饭',now);
+ const turns=[{user:'白饭',assistant:'相关旧事'},{user:'青菜',assistant:'相关新事'}];
+ assert.match(localDigest(turns,20,'白饭 青菜',topics),/白饭/);assert.match(localDigest(turns,20,'青菜',topics),/青菜/);
+ assert.ok(localDigest(turns,20,'白饭 青菜',topics).length<=20);
+ const store=new ConversationMemory(directory()),s=scope();store.note(s,'白饭搭配清淡菜肴');for(let i=0;i<8;i++)store.note(s,'其他事情'+i);
+ store.records[s.id].topics=topics;
+ const context=store.context(s,c,[],'白饭怎么搭配');assert.match(context,/白饭搭配清淡菜肴/);assert.ok(!context.includes('strength'));assert.ok(!context.includes('count'));assert.match(context,/常提不等于喜欢/);
+ assert.equal(store.record(s).notes.length,9);
+});
+
+test('explicit correction wins over frequent older preference and ranked memory remains inspectable and removable',()=>{
+ const store=new ConversationMemory(directory()),s=scope();store.commit(s,'我喜欢白饭','知道了',c);
+ store.commit(s,'现在我不喜欢白饭','按新的来',c);
+ assert.deepEqual(store.record(s).notes.map(n=>n.content),['现在我不喜欢白饭']);
+ assert.ok(!store.context(s,{...c,compressionEnabled:false},[],'白饭').includes('\n我喜欢白饭'));
+ const item=store.record(s).notes[0];store.removeNote(s.id,item.id,c.owner,'765432');assert.equal(store.context(s,{...c,compressionEnabled:false},[],'白饭'),'');
+});
+
+test('weighted memory survives encrypted reload, remains isolated, bounded, optional and clears with history',()=>{
+ const dir=directory(),store=new ConversationMemory(dir,'weighted-test-key'),s=scope(),now=Date.now();store.commit(s,'白饭','知道了',c);
+ store.records[s.id].topics=reinforceTopics(reinforceTopics([],'白饭',now-86400000),'白饭',now);store.save();
+ const loaded=new ConversationMemory(dir,'weighted-test-key');assert.equal(loaded.record(s).topics.find(t=>t.term==='白饭').count,2);
+ assert.ok(!fs.readFileSync(loaded.file,'utf8').includes('白饭'));assert.equal(loaded.list(c.owner,'765432')[0].topics[0].term,'白饭');
+ const other=conversationScope(c,{...event,user_id:555555},'765432');assert.equal(loaded.record(other).topics.length,0);
+ const before=JSON.stringify(loaded.record(s).topics);loaded.commit(s,'青菜','回复',{...c,memoryReinforcement:false});assert.equal(JSON.stringify(loaded.record(s).topics),before);
+ let topics=[];for(let i=0;i<200;i++)topics=reinforceTopics(topics,'topic'+i,now);assert.ok(topics.length<=128);
+ loaded.end(s);assert.equal(loaded.record(s).topics.length,0);
+});
+
+test('specific recall does not fill the prompt with unrelated or duplicate excerpts',()=>{
+ const duplicate={user:'白饭搭配青菜',assistant:'清淡一点'};
+ const turns=[duplicate,{user:'篮球比赛明天开始',assistant:'知道了'},duplicate];
+ const digest=localDigest(turns,1800,'白饭搭配');assert.equal((digest.match(/清淡一点/g)||[]).length,1);assert.ok(!digest.includes('篮球'));
+ assert.equal(localDigest(turns,1800,'火星旅行'),'');assert.match(localDigest(turns,1800,''),/篮球/);
 });

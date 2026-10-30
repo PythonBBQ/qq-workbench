@@ -2,9 +2,9 @@
 
 安卓本机运行的 QQ AI 助手。无需让电脑一直开机；适用 Android 11 及以上、ARM64 设备。首次启动会准备容器、Linux QQ 与图形环境，需联网和数 GB 可用空间。不同厂商的后台限制仍需在系统设置放行。
 
-[下载最新 APK](https://github.com/PythonBBQ/qq-workbench/releases/latest) · [0.1.37 更新说明](docs/RELEASE-0.1.37.md) · [构建和发布](BUILDING.md)
+[下载最新 APK](https://github.com/PythonBBQ/qq-workbench/releases/latest) · [0.1.38 更新说明](docs/RELEASE-0.1.38.md) · [构建和发布](BUILDING.md)
 
-当前版本 **0.1.37** 将中文专用音轨转写替换为本机多语种SenseVoice，支持英文和中英混说；可疑中文重复会尝试英文重听并保留不确定候选，不做固定谐音替换。159项Node与7项Android框架检查通过。平板已验证英文、中文、混说及合成短句“Man, man, man, what can I say?”；真实变速梗音频仍可能误识别。默认不主动介绍或发送BGM，明确问声音或音乐才分析。覆盖更新保留账号和配置。
+当前版本 **0.1.38** 加入本机常提词加权：跨轮、跨时段提到的内容可提高相关旧记忆优先级，短时刷词限频，长期不提衰减；不将常提当喜欢，不新增记忆模型或嵌入调用。165项Node与7项Android框架检查通过。酒馆→记忆可关闭并查看常提词；原有视频、英文转写和按需BGM规则保持。分层记忆项目比较见[调研记录](docs/MEMORY-PROJECTS.md)。
 
 ## 使用
 
