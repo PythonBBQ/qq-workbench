@@ -142,6 +142,10 @@ class Device:
                 if b'/opt/qq-workbench/assistant.mjs' not in cmd.split(b'\0'):
                     continue
                 environ = self.run('exec-out', 'run-as', PACKAGE, 'cat', f'/proc/{pid}/environ')
+                # Additional QQ instances have independent tokens and never own port 13480.
+                slot = next((v.split(b'=', 1)[1] for v in environ.split(b'\0') if v.startswith(b'QQWB_INSTANCE_SLOT=')), b'0')
+                if slot not in (b'', b'0'):
+                    continue
                 self.token = next(v.split(b'=', 1)[1].decode() for v in environ.split(b'\0') if v.startswith(b'WORKBENCH_TOKEN='))
                 return
             except (subprocess.SubprocessError, StopIteration):

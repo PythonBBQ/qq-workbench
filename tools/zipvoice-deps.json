@@ -1,0 +1,28 @@
+{
+  "version": "2.0.1",
+  "aar": {
+    "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/v2.0.1/sherpa-onnx-static-link-onnxruntime-2.0.1.aar",
+    "sha256": "07e042d97f3a6bd5b7fe74d4eef0513dc01a714b16c15a903250095aba43a575"
+  },
+  "models": [
+    {
+      "name": "sherpa-onnx-zipvoice-distill-int8-zh-en-emilia.tar.bz2",
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/sherpa-onnx-zipvoice-distill-int8-zh-en-emilia.tar.bz2",
+      "sha256": "77219c8b40f4ee8d73a7f902305ff6c1128ef9b54461c41b4ca6ed890b6c2803"
+    },
+    {
+      "name": "vocos_24khz.onnx",
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/vocoder-models/vocos_24khz.onnx",
+      "sha256": "bcb3b970e384161c4d634f0bb9e999ff1c471b34c9bc0b1049a5014065ed3cc0"
+    },
+    {
+      "name": "lexicon-en-us.txt",
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/lexicon-en-us.txt",
+      "sha256": "8b67ae549a465eee78f92ecb74644ad90c3c58ce65f19c68baf85878a10ef73a"
+    }
+  ],
+  "kotlin": {
+    "url": "https://maven.aliyun.com/repository/central/org/jetbrains/kotlin/kotlin-stdlib/1.9.24/kotlin-stdlib-1.9.24.jar",
+    "sha256": "858b902696da9cf585ab9d98ffc1c2712269828354dfe9107e3711b084a36468"
+  }
+}

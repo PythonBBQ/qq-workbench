@@ -8,7 +8,7 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const pause=()=>new Promise(r=>setTimeout(r,40));
 test('first-run Key applies without restart; pictures and follow-ups use context in one call, no real QQ or model traffic',async()=>{
   const parent=path.join(root,'build','flow-tests');await fs.mkdir(parent,{recursive:true});const dir=await fs.mkdtemp(path.join(parent,'case-'));
-  for(const name of ['assistant.mjs','codex-jobs.mjs','shortcuts.mjs','qq-media.mjs','qzone-client.mjs','device-tools.mjs','usage-ledger.mjs','voice.mjs','model-client.mjs','personality-growth.mjs','group-moderation.mjs','conversation-memory.mjs','video.mjs','video-audio.mjs','bili-video.mjs','video-decoder.mjs','native-network.mjs','web-learning.mjs','browse-intent.mjs','learning.mjs','multi-parser.mjs','snowluma-bridge.mjs','images.mjs','chat-style.mjs'])await fs.copyFile(path.join(root,'assets',name),path.join(dir,name));
+  for(const name of ['assistant.mjs','account-instances.mjs','delivery-recovery.mjs','request-inspector.mjs','codex-jobs.mjs','shortcuts.mjs','qq-media.mjs','qzone-client.mjs','device-tools.mjs','usage-ledger.mjs','voice.mjs','feiyu-voice.mjs','model-client.mjs','personality-growth.mjs','group-moderation.mjs','conversation-memory.mjs','video.mjs','video-audio.mjs','bili-video.mjs','video-decoder.mjs','native-network.mjs','web-learning.mjs','browse-intent.mjs','learning.mjs','multi-parser.mjs','snowluma-bridge.mjs','images.mjs','chat-style.mjs'])await fs.copyFile(path.join(root,'assets',name),path.join(dir,name));
   await fs.writeFile(path.join(dir,'settings.json'),JSON.stringify({owner:'123456',enabled:true,others:true,rate:100,apiUrl:'https://api.deepseek.com',model:'deepseek-flash',persona:'温柔，爱吃白饭',maxReplyTokens:400,memoryEnabled:false}));
   await fs.writeFile(path.join(dir,'mock.mjs'),`
 import {SnowLumaBridge} from './snowluma-bridge.mjs';
@@ -42,7 +42,7 @@ globalThis.fetch=async(url,options)=>{
     if(body.messages[0].content.includes('联网检索路由器'))return Response.json({choices:[{message:{content:JSON.stringify({search:true,query:'DeepSeek 最新发布版本'})}}]});
     if(body.messages[0].content.includes('请将以下旧对话压缩'))await new Promise(r=>setTimeout(r,1200));
     if(JSON.stringify(body).includes('等待切换'))await new Promise(r=>setTimeout(r,200));
-    return Response.json({choices:[{message:{content:'好呀，配一碗白饭！'}}],usage:{prompt_tokens:100,completion_tokens:10,prompt_cache_hit_tokens:20}});
+    return Response.json({choices:[{message:{content:body.messages.at(-1).content.includes('今天累坏了')?'[[voice]]辛苦啦，先歇一歇吧。':'好呀，配一碗白饭！'}}],usage:{prompt_tokens:100,completion_tokens:10,prompt_cache_hit_tokens:20}});
   }
   if(u.origin==='http://127.0.0.1:13481'&&u.pathname==='/device/action'){const request=JSON.parse(options.body);process.send({device:request});return Response.json({ok:true,output:'synthetic battery: 80%',message:'执行完成'});}
   if(u.origin==='http://127.0.0.1:13481'&&u.pathname==='/video-frames'&&JSON.parse(options.body).source==='bilibili'){process.send({videoRead:true});return Response.json({audio:{status:'unintelligible',signal:'present',tags:[{name:'Music',confidence:.98}],tagWindows:3,segments:[]},sampling:'1fps-contact-sheet-v1',durationSeconds:120,sampledSeconds:120,frameCount:120,frames:Array.from({length:15},(_,i)=>({seconds:i*8,timestamps:Array.from({length:8},(_,j)=>i*8+j),url:'data:image/jpeg;base64,AQID'}))});}
@@ -59,6 +59,7 @@ globalThis.fetch=async(url,options)=>{
   if(u.hostname==='api.bilibili.com')return Response.json({code:0,data:{bvid:'BV1GJ411x7h7',title:'做饭与白饭',owner:{name:'测试作者'},desc:'仅供隔离测试的公开简介'}});
   if(u.hostname==='cn.bing.com'){process.send({browse:{url:u.href,auth:options.headers?.Authorization}});return new Response('<li class="b_algo"><h2><a href="https://example.com/deepseek">DeepSeek 官方资料</a></h2><p>公开搜索摘要</p></li>',{headers:{'content-type':'text/html'}});}
   if(u.hostname==='example.com'){process.send({browse:{url:u.href,auth:options.headers?.Authorization}});return new Response('<title>公开版本资料</title><main>'+('测试版本更新信息，仅供隔离验证。'.repeat(10))+'</main>',{headers:{'content-type':'text/html'}});}
+  if(u.hostname==='eastasia.tts.speech.microsoft.com')return new Response(Buffer.concat([Buffer.from('ID3'),Buffer.alloc(100)]));
   if(u.hostname==='qpic.cn')return new Response(new Uint8Array([1,2,3]),{headers:{'content-type':'image/png'}});
   if(u.hostname==='mp.weixin.qq.com')return new Response('<h1 id="activity-name">分享文章</h1><a id="js_name">公开作者</a><div id="js_content"><p>只存在于本次分享中的公开正文。</p><img data-src="https://qpic.cn/shared-article.png"/></div>',{headers:{'content-type':'text/html'}});
   throw new Error('Unmocked network refused');
@@ -174,11 +175,16 @@ globalThis.fetch=async(url,options)=>{
     const beforeDecline=browses.length;previousSent=sent.length;sendOwner(152,'不要联网，直接和我聊聊白饭');await until(()=>sent.length===previousSent+1);assert.equal(browses.length,beforeDecline);
     const preview=await(await api('/learning/preview',{text:'去搜一下DeepSeek最新版本'})).json();assert.equal(preview.items.length,1);assert.equal(sent.length,previousSent+1,'preview cannot send QQ');
     await update({learningEnabled:false});previousSent=sent.length;const beforeDisabled=browses.length;sendOwner(153,'去搜一下禁用时不能查');await until(()=>sent.length===previousSent+1);assert.equal(browses.length,beforeDisabled);
-    // An unconfirmed send is not a training sample and disables automatic reply.
+    // An unconfirmed send is not a training sample and protects only its conversation without disabling automatic reply.
     const beforeUnconfirmed=(await(await api('/memory/export',{})).json()).jsonl;
     const beforeFailed=sent.length;child.send({control:'unconfirmed'});sendOwner(146,'不会记住未确认发送');await until(()=>sent.length===beforeFailed+1);
-    await until(async()=>!(await(await api('/state')).json()).enabled);
+    await until(async()=>(await(await api('/state')).json()).deliveryRecovery.count===1);
+    assert.equal((await(await api('/state')).json()).enabled,true);
     assert.equal((await(await api('/memory/export',{})).json()).jsonl,beforeUnconfirmed);
+    child.send({control:'normal'});sendOwner(147,'本会话保护期间不发');await new Promise(r=>setTimeout(r,100));assert.equal(sent.length,beforeFailed+1);
+    child.send({event:{...event,user_id:888888,message_id:148,message:[{type:'text',data:{text:'其他会话正常回复'}}]}});await until(()=>sent.length===beforeFailed+2);
+    child.send({event:{...event,user_id:999999,message_id:146}});await new Promise(r=>setTimeout(r,100));assert.equal(sent.length,beforeFailed+2,'unknown send is never replayed');
+    await new Promise(resolve=>setTimeout(resolve,31000));await api('/runtime/resume',{reason:'test-after-protection'});
     // Candidate-card testing cannot mutate the live model or send a QQ message.
     const liveBefore=await(await api('/state')).json(),sentBeforeCheck=sent.length;
     const badProfile={settings:{apiUrl:'https://relay.example/v1',model:'unavailable-model',apiProtocol:'chat'},apiKey:'synthetic-bad-key'};
@@ -354,6 +360,14 @@ globalThis.fetch=async(url,options)=>{
     await api('/codex/result',completion);child.send({event:groupMessage(351,123456,'@codex做个隔离测试')});await new Promise(r=>setTimeout(r,150));assert.equal(sent.length,n+1,'duplicate result and QQ event are never replayed');
     assert.equal((await(await api('/usage')).json()).groups.filter(g=>g.category==='codex').length,1);
     n=sent.length;child.send({event:groupMessage(353,888888,'@codex做个隔离测试')});await new Promise(r=>setTimeout(r,100));assert.equal(sent.length,n);assert.equal((await(await api('/codex/claim',{worker})).json()).job,null);
+    // Smart audio sends a real record segment through the mocked QQ adapter, not pretend text.
+    await update({voiceEnabled:true,voiceMode:'smart',speechProvider:'azure',speechRegion:'eastasia'});await api('/voice/credentials',{key:'synthetic-speech-key'});
+    n=sent.length;const beforeSmart=models.length;sendOwner(359,'今天累坏了');await until(()=>sent.length===n+1);assert.equal(sent.at(-1).message[0].type,'record');assert.equal(models.length,beforeSmart+1);assert.match((await(await api('/voice/state')).json()).last.decision,/聊天模型/);
+    n=sent.length;const beforeVoice=models.length;sendOwner(360,'语音说说');await until(()=>sent.length===n+1);assert.equal(sent.at(-1).message[0].type,'record');assert.equal(models.length,beforeVoice+1,'voice decision adds no model call');assert.match(models.at(-1).model.messages[0].content,/工作台已开启语音/);assert.match(models.at(-1).model.messages.at(-1).content,/直接生成要朗读的口语正文/);
+    n=sent.length;sendOwner(361,'别用语音，打字回答');await until(()=>sent.length===n+1);assert.equal(sent.at(-1).message[0].type,'text');
+    n=sent.length;const usageModels=models.length;sendCommand(362,'#量前5');await until(()=>sent.length===n+1);assert.match(sent.at(-1).message[0].data.text,/最近 5 次模型调用/);assert.equal(models.length,usageModels);n=sent.length;child.send({event:{...event,user_id:888888,message_id:363,message:[{type:'text',data:{text:'#量前5'}}]}});await new Promise(r=>setTimeout(r,100));assert.equal(sent.length,n,'non-owner cannot read usage');
+    const inspections=await(await api('/requests/list')).json();assert.ok(inspections.requests.length>0);assert.equal((await api('/requests/get',{id:inspections.requests[0].id},false)).status,401);const inspected=await(await api('/requests/get',{id:inspections.requests[0].id})).json();assert.match(JSON.stringify(inspected.request.body),/别用语音/);assert.ok(!JSON.stringify(inspected).includes('synthetic-speech-key'));
+    const voiceState=await(await api('/voice/state')).json();assert.equal(voiceState.last.status,'accepted');assert.ok(!JSON.stringify(voiceState).includes('synthetic-speech-key'));
     await update({enabled:false});await api('/runtime/resume',{reason:'idle'});assert.equal((await(await api('/state')).json()).enabled,false,'manual pause survives network recovery');
   }finally{try{await api('/shutdown',{});}catch{}await until(()=>exited||false).catch(()=>child.kill());if(child.connected)child.disconnect();}
 });

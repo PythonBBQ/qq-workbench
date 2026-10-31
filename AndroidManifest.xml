@@ -1,4 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="cn.qqworkbench.assistant" android:versionCode="40" android:versionName="0.1.39-preview">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="cn.qqworkbench.assistant" android:versionCode="42" android:versionName="0.1.41-preview">
   <uses-sdk android:minSdkVersion="30" android:targetSdkVersion="35"/>
   <uses-permission android:name="android.permission.INTERNET"/>
   <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
@@ -11,7 +11,7 @@
   <uses-permission android:name="android.permission.CHANGE_WIFI_STATE"/>
   <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
   <uses-permission android:name="moe.shizuku.manager.permission.API_V23"/>
-  <queries><package android:name="moe.shizuku.privileged.api"/><package android:name="com.miui.securitycenter"/><intent><action android:name="miui.intent.action.HIDDEN_APPS_CONFIG_ACTIVITY"/></intent></queries>
+  <queries><package android:name="moe.shizuku.privileged.api"/><package android:name="com.miui.securitycenter"/><intent><action android:name="miui.intent.action.HIDDEN_APPS_CONFIG_ACTIVITY"/></intent><intent><action android:name="android.intent.action.TTS_SERVICE"/></intent></queries>
   <application android:label="七丘 QQ 工作台" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:extractNativeLibs="true" android:allowBackup="false" android:debuggable="true" android:networkSecurityConfig="@xml/network_security">
     <provider android:name="rikka.shizuku.ShizukuProvider" android:authorities="cn.qqworkbench.assistant.shizuku" android:multiprocess="false" android:enabled="true" android:exported="true" android:permission="android.permission.INTERACT_ACROSS_USERS_FULL"/>
     <provider android:name=".UpdateFileProvider" android:authorities="cn.qqworkbench.assistant.updates" android:exported="false" android:grantUriPermissions="true"/>
@@ -19,6 +19,7 @@
       <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
     </activity>
     <activity android:name=".BiliLoginActivity" android:exported="false" android:windowSoftInputMode="adjustResize"/>
+    <service android:name=".LocalVoiceService" android:exported="false" android:process=":speech"/>
     <service android:name=".RuntimeService" android:stopWithTask="false" android:exported="false" android:foregroundServiceType="specialUse">
       <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="User-started local QQ session and assistant runtime"/>
     </service>

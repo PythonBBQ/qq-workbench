@@ -17,9 +17,10 @@ final class NativeNetwork implements AutoCloseable {
     private final Set<HttpURLConnection> active=Collections.synchronizedSet(new HashSet<HttpURLConnection>());
     private volatile boolean closed;
     private final android.content.Context context;
+    private final NativeSpeech speech;
     NativeNetwork(String token)throws IOException{this(token,null);}
     NativeNetwork(String token,android.content.Context context)throws IOException{
-        this.context=context;
+        this.context=context;this.speech=context==null?null:new NativeSpeech(context);
         if(token.length()<24)throw new IOException("Missing local authentication");
         authorization=("Bearer "+token).getBytes(StandardCharsets.UTF_8);
         listener=new ServerSocket();listener.setReuseAddress(true);listener.bind(new InetSocketAddress("127.0.0.1",13481),8);
@@ -59,14 +60,14 @@ final class NativeNetwork implements AutoCloseable {
     private void handle(Socket socket){
         try(Socket s=socket){s.setSoTimeout(100000);InputStream in=new BufferedInputStream(s.getInputStream());
             String route=line(in);boolean video=route.equals("POST /video-frames HTTP/1.1"),updates=route.equals("POST /app-update HTTP/1.1");
-            if(!route.equals("POST /fetch HTTP/1.1")&&!video&&!updates&&!route.equals("POST /device/state HTTP/1.1")&&!route.equals("POST /device/action HTTP/1.1")){response(s,404,new JSONObject());return;}
+            if(!route.equals("POST /speech/state HTTP/1.1")&&!route.equals("POST /speech/synthesize HTTP/1.1")&&!route.equals("POST /fetch HTTP/1.1")&&!video&&!updates&&!route.equals("POST /device/state HTTP/1.1")&&!route.equals("POST /device/action HTTP/1.1")){response(s,404,new JSONObject());return;}
             Map<String,String> headers=new HashMap<>();String row;int total=0;
             while(!(row=line(in)).isEmpty()){total+=row.length();if(total>16384)throw new IOException("Headers too large");int colon=row.indexOf(':');if(colon<1)throw new IOException("Invalid header");headers.put(row.substring(0,colon).toLowerCase(Locale.ROOT),row.substring(colon+1).trim());}
             if(headers.containsKey("origin")||!MessageDigest.isEqual(authorization,headers.getOrDefault("authorization","").getBytes(StandardCharsets.UTF_8))){response(s,401,new JSONObject());return;}
             int length=Integer.parseInt(headers.getOrDefault("content-length","0"));if(length<2||length>24*1024*1024)throw new IOException("Invalid body size");
             byte[] body=new byte[length];int offset=0;while(offset<length){int n=in.read(body,offset,length-offset);if(n<0)throw new EOFException();offset+=n;}
             JSONObject request=new JSONObject(new String(body,StandardCharsets.UTF_8));
-            try{if(route.equals("POST /device/state HTTP/1.1")){if(context==null)throw new IOException("No app context");response(s,200,DeviceTools.get(context).state());}else if(route.equals("POST /device/action HTTP/1.1")){if(context==null)throw new IOException("No app context");response(s,200,DeviceTools.get(context).run(request));}else if(updates){if(context==null)throw new IOException("Update service unavailable");response(s,200,AppUpdates.check(context));}else if(video){if(context==null)throw new IOException("Video service unavailable");response(s,200,VideoFrames.remote(context,request.getString("url"),"bilibili".equals(request.optString("source"))));}else response(s,200,fetch(request));}catch(Exception e){String type=e instanceof java.net.SocketTimeoutException?"timeout":e instanceof java.net.UnknownHostException?"dns":e instanceof javax.net.ssl.SSLException?"tls":"network";response(s,502,new JSONObject().put("error",type).put("message",video&&e.getMessage()!=null&&e.getMessage().matches("^(B站|视频|链接).*")?e.getMessage():"网络请求未完成"));}
+            try{if(route.startsWith("POST /speech/")){if(speech==null)throw new IOException("No app context");if(request.optString("provider").equals("zipvoice")){response(s,200,LocalVoiceClient.call(context,route.equals("POST /speech/state HTTP/1.1")?"state":"synthesize",request));}else response(s,200,route.equals("POST /speech/state HTTP/1.1")?speech.state():speech.synthesize(request));}else if(route.equals("POST /device/state HTTP/1.1")){if(context==null)throw new IOException("No app context");response(s,200,DeviceTools.get(context).state());}else if(route.equals("POST /device/action HTTP/1.1")){if(context==null)throw new IOException("No app context");response(s,200,DeviceTools.get(context).run(request));}else if(updates){if(context==null)throw new IOException("Update service unavailable");response(s,200,AppUpdates.check(context));}else if(video){if(context==null)throw new IOException("Video service unavailable");response(s,200,VideoFrames.remote(context,request.getString("url"),"bilibili".equals(request.optString("source"))));}else response(s,200,fetch(request));}catch(Exception e){String type=e instanceof java.net.SocketTimeoutException?"timeout":e instanceof java.net.UnknownHostException?"dns":e instanceof javax.net.ssl.SSLException?"tls":"network";response(s,502,new JSONObject().put("error",type).put("message",(video||route.startsWith("POST /speech/"))&&e.getMessage()!=null&&e.getMessage().matches("^(B站|视频|链接|系统|所选|语音).*")?e.getMessage():"网络请求未完成"));}
         }catch(Exception ignored){}
     }
     static boolean qzoneCredentials(URL url,String method){
@@ -96,5 +97,5 @@ final class NativeNetwork implements AutoCloseable {
         for(String suffix:new String[]{"bilibili.com","b23.tv","bili2233.cn","douyin.com","iesdouyin.com","xiaohongshu.com","xiaohongshu.cn","xhslink.com","xhslink.cn","tieba.baidu.com","tiebac.baidu.com","weibo.com","weibo.cn","sina.com.cn","sina.cn","zhihu.com","zhihu.com.cn","xiaoheihe.cn","heybox.com","heybox.cn","weixin.qq.com","yuanbao.tencent.com","hdslb.com","xhscdn.com","sinaimg.cn","zhimg.com","qpic.cn","qlogo.cn","pximg.net","pd.qq.com"})if(host.equals(suffix)||host.endsWith("."+suffix))return true;
         return false;
     }
-    public void close(){closed=true;try{listener.close();}catch(IOException ignored){}synchronized(active){for(HttpURLConnection c:active)c.disconnect();}workers.shutdownNow();}
+    public void close(){if(context!=null)LocalVoice.get(context).release();if(speech!=null)speech.close();closed=true;try{listener.close();}catch(IOException ignored){}synchronized(active){for(HttpURLConnection c:active)c.disconnect();}workers.shutdownNow();}
 }

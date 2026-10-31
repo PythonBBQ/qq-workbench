@@ -1,0 +1,15 @@
+ZipVoice-Distill INT8 中英文模型
+
+模型与研究作者：Han Zhu, Wei Kang, Zengwei Yao, Liyong Guo, Fangjun Kuang, Zhaoqing Li, Weiji Zhuang, Long Lin, Daniel Povey，k2-fsa/ZipVoice 项目。
+论文：ZipVoice: Fast and High-Quality Zero-Shot Text-to-Speech with Flow Matching (2025), arXiv:2506.13053。
+源项目：https://github.com/k2-fsa/ZipVoice
+模型卡：https://huggingface.co/k2-fsa/ZipVoice
+ONNX 部署、INT8 模型和词典：https://github.com/k2-fsa/sherpa-onnx
+模型包：https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/sherpa-onnx-zipvoice-distill-int8-zh-en-emilia.tar.bz2
+
+许可区分：ZipVoice 源码适用 Apache-2.0；预训练模型不是 Apache-2.0。上游模型卡声明：“Our code is released under the Apache 2.0 License. The pre-trained model is licensed under the CC-BY-NC due to constraints from its training data (Emilia).” 因此本包中的 Emilia / ZipVoice-Distill 预训练权重适用上游 CC-BY-NC 非商业条款。本应用不另行赋予商业使用许可；具体适用条件以权利人模型卡和许可为准。上游模型卡未标明 CC-BY-NC 的具体版本，本应用不擅自补定版本。模型卡原文与源码许可随包保留。
+
+本应用使用上游发布的 INT8 ONNX 权重，未训练、微调或修改权重；仅重新打包所需文件，省略上游示例人物录音。sherpa-onnx 2.0.1、ONNX Runtime、Kotlin 和 Vocos 的源码许可分别保留，不代替模型权重的条件。
+Vocos 声码器来源：https://github.com/gemelo-ai/vocos
+声码器权重：https://huggingface.co/charactr/vocos-mel-24khz
+参考录音由使用者自行选择并保存于设备，不随软件分发。未提供或声称已提取肥鱼声音权重、RVC 权重或人物录音。默认参考由设备系统 TTS 生成，系统引擎另受其提供者条款约束。上游与作者未背书本应用。

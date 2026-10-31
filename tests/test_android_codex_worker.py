@@ -15,6 +15,18 @@ spec.loader.exec_module(worker)
 
 
 class WorkerCheck(unittest.TestCase):
+    def test_additional_instance_cannot_supply_the_primary_worker_token(self):
+        device = worker.Device('fake-adb', 'synthetic', 18766)
+        def run(*args):
+            if args[0] == 'forward': return b''
+            if args[:2] == ('shell', 'pidof'): return b'111 222'
+            if args[-1].endswith('/cmdline'): return b'node\0/opt/qq-workbench/assistant.mjs\0'
+            if '/111/' in args[-1]: return b'QQWB_INSTANCE_SLOT=3\0WORKBENCH_TOKEN=additional-secret\0'
+            return b'WORKBENCH_TOKEN=primary-secret\0'
+        device.run = run
+        device.connect()
+        self.assertEqual(device.token, 'primary-secret')
+
     def setUp(self):
         base = ROOT/'build/worker-tests'
         base.mkdir(parents=True, exist_ok=True)

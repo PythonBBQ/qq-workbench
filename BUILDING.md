@@ -70,3 +70,9 @@ B站视频路径通过固定官方API选择最低码率视频轨，安卓受限�
 
 
 本机视频语音识别由 `tools/build-video-asr.py` 按 `tools/asr-lock.json` 下载并校验ARM64 Sherpa-ONNX运行时和发布者中文模型，打成离线资源。可用 `QQWB_ASR_CACHE` 指定下载缓存；默认位于相邻的 `research/android/asr`。首次构建需下载约90MB，模型及运行库解压约100MB；APK内增加约63MB。转写无需额外API Key或云端声音上传。
+
+## 本机 ZipVoice 语音
+
+构建从 `tools/zipvoice-deps.json` 下载并校验固定的 sherpa-onnx 2.0.1 AAR、Kotlin 1.9.24、ZipVoice-Distill INT8、Vocos 声码器和中英文词典，缓存于 `build/zipvoice-deps`。`tools/zipvoice_deps.py` 仅提取所需的六个文件生成 `assets/zipvoice-models.zip` 和逐文件 SHA-256 清单；不包含上游人物参考录音。模型压缩包不提交 Git，首次构建需要联网；APK 内置模型，设备首次使用自动本机解压。Java 和 D8 均加载固定依赖，ARM64 JNI 库随包加入。
+
+模型许可与源码许可不同：ZipVoice 代码 Apache-2.0，当前 Emilia 预训练权重 CC-BY-NC 非商业；Vocos 权重 MIT。来源及上游模型卡保留于 `assets/licenses`。不要用本仓库源码许可替代第三方权重条款。语音默认参考由设备系统 TTS 生成；本项目未捆绑肥鱼人物声库。运行 `python tests/run-native-settings.py` 可检查 JNI 所需的具体 typed callback 方法签名；实际推理需要已安装 APK 的 Android Application 上下文。

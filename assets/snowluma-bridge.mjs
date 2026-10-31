@@ -1,3 +1,4 @@
+import {instanceLayout} from './account-instances.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -19,10 +20,15 @@ export function readyAccount(items) {
 export function needsRelaunchRecovery({launcherExited,args,nativeLoaded}) {
   return launcherExited&&args.includes('--relaunch')&&!nativeLoaded;
 }
-export function oneBotConfig(config,token) {
+export function qqRecoveryReason({launcherExited,ownedCount,lostHook,stopped=false}){
+  if(stopped||!launcherExited)return null;
+  return ownedCount===0?'missing':lostHook?'relaunch':null;
+}
+export function oneBotConfig(config,token,port=13001) {
+  if(!Number.isInteger(port)||port<13001||port>13004)throw new Error('Invalid instance port');
   if(!config?.networks)throw new Error('SnowLuma OneBot 配置格式不兼容');
   return {...config,networks:{...config.networks,
-    wsServers:[{name:'qq-workbench-android',enabled:true,host:'127.0.0.1',port:13001,
+    wsServers:[{name:'qq-workbench-android',enabled:true,host:'127.0.0.1',port,
       path:'/',role:'Universal',accessToken:token,messageFormat:'array',reportSelfMessage:false}],
     wsClients:[],httpServers:[],httpClients:[]}};
 }
@@ -30,21 +36,23 @@ function privateText(file,value) {
   fs.writeFileSync(file+'.next',value,{mode:0o600});fs.renameSync(file+'.next',file);
 }
 export class SnowLumaBridge {
-  constructor({work='/opt/qq-workbench/snowluma',onExit=()=>{}}={}) {
+  constructor({work='/opt/qq-workbench/snowluma',onExit=()=>{},slot=0}={}) {
     this.work=work;this.onExit=onExit;this.failure='';this.auth='';this.stopped=false;
     this.root='/opt/qqwb-snow-1.14.22';this.home='/root/.local/share/qqwb-snow';
     this.onebotToken=crypto.randomBytes(32).toString('hex');this.children=[];this.configuredUin='';
-    this.recoveries=[];this.launcherExited=false;
+    this.recoveries=[];this.snowRecoveries=[];this.launcherExited=false;this.slot=slot;this.wsPort=13001;this.snowPort=15099;this.runtime='/tmp/qqwb-runtime';
+    if(slot){const l=instanceLayout(slot);this.home=l.home;this.wsPort=l.wsPort;this.snowPort=l.snowPort;this.runtime=l.runtime;}
   }
   start() {
     fs.mkdirSync(this.work,{recursive:true,mode:0o700});
     const file=path.join(this.work,'console-password');
     try{this.password=fs.readFileSync(file,'utf8');}catch(e){if(e.code!=='ENOENT')throw e;}
     if(!this.password||this.password.length<32){this.password='Local!7'+crypto.randomBytes(32).toString('hex');privateText(file,this.password);}
-    const env={...process.env,HOME:this.home,XDG_CONFIG_HOME:this.home+'/.config',
-      XDG_RUNTIME_DIR:'/tmp/qqwb-runtime',SNOWLUMA_HOOK_RUNTIME_DIR:'/tmp/qqwb-runtime'};
-    for(const name of ['DEEPSEEK_API_KEY','VISION_API_KEY','SPEECH_API_KEY','WORKBENCH_TOKEN','WORKBENCH_MEMORY_KEY','VNC_PASSWORD',
-      'LD_PRELOAD','ELECTRON_RUN_AS_NODE','SNOWLUMA_WEBUI_BOOTSTRAP_PASSWORD',
+    fs.mkdirSync(this.home,{recursive:true,mode:0o700});fs.mkdirSync(this.runtime,{recursive:true,mode:0o700});
+    const env={...process.env,HOME:this.home,XDG_CONFIG_HOME:this.home+'/.config',XDG_CACHE_HOME:this.home+'/.cache',TMPDIR:this.runtime,
+      XDG_RUNTIME_DIR:this.runtime,SNOWLUMA_HOOK_RUNTIME_DIR:this.runtime};
+    for(const name of ['DEEPSEEK_API_KEY','VISION_API_KEY','SPEECH_API_KEY','FEIYU_API_KEY','WORKBENCH_TOKEN','WORKBENCH_MEMORY_KEY','VNC_PASSWORD',
+      'QQWB_ACCOUNT_PROFILES','QQWB_NATIVE_TOKEN','LD_PRELOAD','ELECTRON_RUN_AS_NODE','SNOWLUMA_WEBUI_BOOTSTRAP_PASSWORD',
       'NAPCAT_QUICK_PASSWORD','NAPCAT_QUICK_PASSWORD_MD5'])delete env[name];
     this.launch=(command,args,extra={},role='snow')=>{
       const child=spawn(command,args,{cwd:this.work,env:{...env,...extra},detached:true,stdio:['ignore','pipe','pipe']});
@@ -55,8 +63,9 @@ export class SnowLumaBridge {
         if(/undefined symbol|error while loading shared libraries/.test(text))this.failure='SnowLuma 或 QQ 缺少原生运行库';
         if(/EADDRINUSE/.test(text))this.failure='本机接入端口已被占用，请停止旧服务后重试';
       });
-      child.on('error',()=>{this.failure='SnowLuma 接入进程未能启动';this.onExit();});
+      child.on('error',()=>{if(this.stopped)return;if(role==='qq')this.launcherExited=true;this.failure=role==='qq'?'QQ启动失败，等待本账号自动恢复':'SnowLuma 接入进程未能启动';this.onExit();});
       child.on('exit',(code,signal)=>{if(!this.stopped){
+        if(role==='qq'&&this.qq!==child||role!=='qq'&&this.snow!==child)return;
         if(role==='qq')this.launcherExited=true;
         this.failure=role==='qq'?'QQ 启动进程已结束，正在核对登录后重启状态':'SnowLuma 已退出，请重启本地服务';
         console.log('QQWB:'+ (role==='qq'?'QQ 启动进程':'SnowLuma')+'结束（'+(signal||code)+'）');this.onExit();
@@ -64,13 +73,17 @@ export class SnowLumaBridge {
       return child;
     };
     this.launchQq();
+    this.launchSnow();
+  }
+  launchSnow(){
+    this.auth='';this.authorizing=null;this.snowStartedAt=Date.now();
     this.snow=this.launch('/opt/snowluma/node',['--import','/opt/qq-workbench/proc-locks-compat.mjs',this.root+'/index.mjs'],
-      {SNOWLUMA_UPDATE_ROOT:this.root,SNOWLUMA_WEBUI_HOST:'127.0.0.1',SNOWLUMA_WEBUI_PORT:'15099',
+      {SNOWLUMA_UPDATE_ROOT:this.root,SNOWLUMA_WEBUI_HOST:'127.0.0.1',SNOWLUMA_WEBUI_PORT:String(this.snowPort),
         SNOWLUMA_WEBUI_BOOTSTRAP_PASSWORD:this.password,SNOWLUMA_HOOK_AUTOLOAD:'0',QQWB_PROC_LOCKS_FDINFO:'1',
         SNOWLUMA_LOG_MAX_TOTAL_MB:'32',SNOWLUMA_LOG_RETAIN_DAYS:'2',SNOWLUMA_ACCEPT_EULA:'1',SNOWLUMA_ACCEPT_PRIVACY:'1'});
   }
   launchQq() {
-    this.launcherExited=false;this.configuredUin='';
+    this.launcherExited=false;this.configuredUin='';this.qqStartedAt=Date.now();
     this.qq=this.launch('/usr/bin/dbus-run-session',['--','/usr/bin/env',
       'SNOWLUMA_HOOK_STUB_START=true','SNOWLUMA_HOOK_SERVICE_MODE=in-process',
       'LD_PRELOAD='+this.root+'/native/snowluma-linux-arm64.so','/opt/QQ/qq',
@@ -86,11 +99,12 @@ export class SnowLumaBridge {
         args:fs.readFileSync('/proc/'+pid+'/cmdline','utf8').split('\0'),
         nativeLoaded:fs.readFileSync('/proc/'+pid+'/maps','utf8').includes('/snowluma-linux-arm64.so')});
     }catch{}
-    if(!lost)return;
+    const reason=qqRecoveryReason({launcherExited:this.launcherExited,ownedCount:pids.length,lostHook:lost,stopped:this.stopped});
+    if(!reason||Date.now()-(this.qqStartedAt||0)<12000)return;
     const now=Date.now();this.recoveries=this.recoveries.filter(t=>now-t<600000);
     if(this.recoveries.length>=2){this.failure='QQ 多次重启后接入仍未恢复，请停止本地服务后查看诊断';return;}
     if(this.recoveries.length&&now-this.recoveries.at(-1)<30000)return;
-    this.recoveries.push(now);this.failure='QQ 登录后重新启动，正在恢复 SnowLuma 接入';
+    this.recoveries.push(now);this.failure=reason==='missing'?'此账号QQ进程已退出，正在独立恢复，其他账号继续运行':'QQ 登录后重新启动，正在恢复 SnowLuma 接入';
     console.log('QQWB:'+this.failure);this.onExit();
     // Only this app UID and the dedicated QQ profile, never Android QQ or SnowLuma.
     for(const pid of fs.readdirSync('/proc').filter(p=>/^\d+$/.test(p)))try{
@@ -105,7 +119,7 @@ export class SnowLumaBridge {
     this.launchQq();
   }
   async request(route,payload,open=false) {
-    const response=await fetch('http://127.0.0.1:15099'+route,{method:payload===undefined?'GET':'POST',
+    const response=await fetch('http://127.0.0.1:'+this.snowPort+route,{method:payload===undefined?'GET':'POST',
       headers:{'Content-Type':'application/json',...(!open?{Authorization:'Bearer '+this.auth}:{})},
       ...(payload===undefined?{}:{body:JSON.stringify(payload)}),signal:AbortSignal.timeout(route.endsWith('/load')?45000:12000)});
     if(response.status===401)this.auth='';
@@ -140,9 +154,13 @@ export class SnowLumaBridge {
   async processes() {
     if(this.recovering)await this.recovering;
     else {this.recovering=this.recoverRelaunch();try{await this.recovering;}finally{this.recovering=null;}}
+    if(this.snow&&(this.snow.exitCode!=null||this.snow.signalCode!=null)&&!this.stopped){
+      const now=Date.now();this.snowRecoveries=this.snowRecoveries.filter(t=>now-t<600000);
+      if(this.snowRecoveries.length<3&&now-this.snowStartedAt>=15000&&(!this.snowRecoveries.length||now-this.snowRecoveries.at(-1)>=30000)){this.snowRecoveries.push(now);this.launchSnow();this.failure='此账号接入组件已退出，正在独立恢复';}
+    }
     await this.authorize();
     let items=((await this.request('/api/processes')).list||[]).filter(p=>this.ownsQq(p.pid));
-    for(const p of items)if(!p.connected&&fs.existsSync('/tmp/qqwb-runtime/mojo.'+p.pid+'.control.sock')){
+    for(const p of items)if(!p.connected&&fs.existsSync(this.runtime+'/mojo.'+p.pid+'.control.sock')){
       await this.request('/api/processes/'+p.pid+'/load',{});
       items=((await this.request('/api/processes')).list||[]).filter(p=>this.ownsQq(p.pid));break;
     }
@@ -155,7 +173,7 @@ export class SnowLumaBridge {
       const uin=String(account.uin);
       if(this.configuredUin!==uin){
         const saved=(await this.request('/api/config/'+uin)).config;
-        await this.request('/api/config/'+uin,oneBotConfig(saved,this.onebotToken));
+        await this.request('/api/config/'+uin,oneBotConfig(saved,this.onebotToken,this.wsPort));
         this.configuredUin=uin;
       }
       return {status:{isLogin:true},info:{uin}};
@@ -171,7 +189,8 @@ export class SnowLumaBridge {
     if(!validUin(uin))throw new Error('请选择正确的 QQ 账号');
     return false; // QQ's official window owns account selection and login.
   }
-  async remember() {}
+  lastKnownUin(){try{const value=fs.readFileSync(path.join(this.work,'last-account'),'utf8').trim();return validUin(value)?value:'';}catch{return '';}}
+  async remember(uin){if(validUin(uin))privateText(path.join(this.work,'last-account'),String(uin));}
   qrData(){return '';}
   async stop() {
     this.stopped=true;

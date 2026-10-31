@@ -6,6 +6,10 @@ import org.json.JSONObject;
 public final class NativeSettingsCheck {
     static void check(boolean value){if(!value)throw new AssertionError();}
     public static void main(String[] args)throws Exception{
+        org.json.JSONObject accountProfile=new org.json.JSONObject().put("slot",1).put("name","独立测试").put("bot","765432").put("owner","123456").put("apiUrl","https://example.com/v1").put("apiKey","synthetic-key").put("model","test").put("speechProvider","android");
+        check(AccountProfiles.validate(accountProfile).optString("apiKey").equals("synthetic-key"));
+        for(String key:new String[]{"bot","apiKey"}){org.json.JSONObject invalid=new org.json.JSONObject(accountProfile.toString());invalid.put(key,"");boolean rejected=false;try{AccountProfiles.validate(invalid);}catch(Exception e){rejected=true;}check(rejected);}
+
         check(BiliLoginActivity.allowed("https://passport.bilibili.com/h5-app/passport/login"));
         for(String u:new String[]{"https://passport.bilibili.com.evil.test/login","http://passport.bilibili.com/","https://user:pass@passport.bilibili.com/","https://passport.bilibili.com:8443/","intent://test","file:///test"})check(!BiliLoginActivity.allowed(u));
         check(BiliLoginActivity.usableCookie("a=1; SESSDATA=synthetic").contains("SESSDATA"));

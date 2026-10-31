@@ -1,6 +1,6 @@
 import {deviceRequest,validDeviceOperation} from './device-tools.mjs';
 export const COMMANDS=[
- ['指令','','显示全部指令'],['状态','','查看QQ和模型状态'],['用量','','查看Token用量'],['暂停','','暂停自动回复'],['继续','','恢复自动回复'],['结束','','结束当前对话'],
+ ['指令','','显示全部指令'],['状态','','查看QQ和模型状态'],['用量','','查看Token用量'],['量前','次数（1–20）','查看最近几次调用用量，如＃量前5'],['暂停','','暂停自动回复'],['继续','','恢复自动回复'],['结束','','结束当前对话'],
  ['来源','','查看当前对话最近一次真实来源'],['搜索','关键词','联网搜索'],['浏览','网址','读取公开网页'],['收藏','','收藏刚发的表情'],['表情','','发一个收藏表情'],['语音','文字','朗读指定文字'],['开音','','开启语音'],['静音','','关闭语音'],['音色','晓晓','切换基础音色'],['语速','数值','调整语速百分比'],['音高','数值','调整音高百分比'],
  ['动态','正文','发布指定说说，省略则生成并发布'],['草稿','主题','只生成说说草稿'],['发布','','发布已有草稿'],['空间','','检查QQ空间连接'],['自发','','开启自动说说'],['停发','','关闭自动说说'],['更新','','检查软件更新'],
  ['电量','','查看设备电量'],['存储','','查看剩余空间'],['应用','','查看应用列表'],['屏幕','','查看屏幕尺寸'],['打开','B站 / 包名','打开应用'],['亮度','1–100','调整亮度'],['音量','0–15','调整媒体音量'],['点击','横坐标 纵坐标','点击屏幕'],['滑动','起点X 起点Y 终点X 终点Y 毫秒','滑动屏幕，毫秒可省略'],['按键','桌面 / 返回 / 最近 / 回车 / 亮屏 / 息屏','按指定键'],
@@ -9,11 +9,12 @@ export const COMMANDS=[
 export function commandHelp(){return '主人指令\n半角#、全角＃都可以；群聊直接发，不用再@deepseek。\n\n'+COMMANDS.map(([name,args,description])=>'＃'+name+(args?' '+args:'')+'：'+description).join('\n')+'\n\n只有当前大号可用。设备操作需开启并授权Shizuku。原有自然说法和@codex继续可用；语音、说说可能产生服务费用。';}
 export function shortcutEvent(event,text){return {...event,raw_message:text,message:[{type:'text',data:{text:(event.message_type==='group'?'@deepseek ':'')+text}},...(Array.isArray(event.message)?event.message.filter(s=>s.type!=='text'):[])]};}
 export function parseShortcut(event){
- const raw=(Array.isArray(event.message)?event.message.filter(s=>s.type==='text').map(s=>s.data?.text||'').join(''):String(event.raw_message||'')).trim().replace(/^@deepseek\b\s*/i,'');
+ const raw=(Array.isArray(event.message)?event.message.filter(s=>s.type==='text').map(s=>s.data?.text||'').join(''):String(event.raw_message||'')).trim().replace(/^@deepseek\b\s*/i,'').replace(/[０-９]/g,c=>String(c.charCodeAt(0)-0xff10));
  const m=raw.match(/^[#＃]([\u4e00-\u9fff]{2})([\s\S]*)$/);if(!m)return null;
  const name=m[1]==='帮助'?'指令':m[1]==='联网'?'搜索':m[1],entry=COMMANDS.find(c=>c[0]===name);
  const error=message=>({operation:{action:'commandText',text:message+'\n发＃指令查看列表。'}});
  if(!entry)return error('没有这条指令：＃'+name);
+ if(name==='量前'){const number=m[2].trim().replace(/^[：:]\s*/,'').replace(/^[（(](\d+)[）)]$/,'$1');return /^\d{1,2}$/.test(number)&&Number(number)>=1&&Number(number)<=20?{operation:{action:'usageRecent',count:Number(number)}}:error('用法：＃量前5，次数为1到20；每次指一次模型调用，不一定是一条聊天。');}
  if(m[2]&&!/^[\s：:\d+\-]/.test(m[2]))return error('指令后请加空格，例如＃'+name+(entry[1]?' '+entry[1]:''));
  const arg=m[2].replace(/^[\s：:]+/,'').trim();
  if(!entry[1]&&arg)return error('＃'+name+'不用填写参数。');

@@ -73,6 +73,8 @@ assert sha(ASSETS/'linuxqq.deb')=='181b895cb573548e396e54bb0548cca92ffdc1b1a4b01
 local_native=json.loads((ASSETS/'snow-preload-build.json').read_text(encoding='utf-8'))
 assert sha(ROOT/local_native['source'])==local_native['sourceSha256'], 'Rebuild the Linux preload loader after editing its source'
 assert sha(ASSETS/'snow-preload-loader.bin')==local_native['binarySha256']
+from tools.zipvoice_deps import sdk_jars as voice_jars, bundle as voice_bundle
+voice_bundle(ROOT)
 receipt={'schema':1,'sources':{'DSHA':{'commit':'8362bba747fcf84c19e436c3dbb594a0fc388a67','url':'https://github.com/DSH-APP/DSHA','apkSha256':sha(APK_SOURCE)},'SnowLuma':{'version':'2.2.0','url':'https://github.com/SnowLuma/SnowLuma/releases/tag/v2.2.0','sha256':sha(ASSETS/'snowluma.tar.gz')},'LinuxQQ':{'version':'3.2.34-53644','sha256':sha(ASSETS/'linuxqq.deb')}},'assets':{p.name:sha(p) for p in ASSETS.iterdir() if p.is_file()}}
 receipt['sources']['SnowLuma']['role']='Node.js runtime only; 2.2.0 native bridge is not loaded'
 receipt['sources']['SnowLumaBridge']={'version':'1.14.22','url':'https://github.com/SnowLuma/SnowLuma/releases/tag/v1.14.22','sha256':sha(ASSETS/'snowluma-bridge.tar.gz')}
@@ -82,6 +84,7 @@ classes.mkdir(exist_ok=True)
 sources=sorted((ROOT/'src').rglob('*.java'))
 from tools.shizuku_deps import sdk_jars
 shizuku_jars=sdk_jars(ROOT)
+shizuku_jars+=voice_jars(ROOT,native)
 # Compile Java library calls against Android, not the host JDK (e.g. Files.writeString is absent even on API 35).
 run(JAVA/'javac.exe','-encoding','UTF-8','-source','8','-target','8','-Xlint:-options','-bootclasspath',str(TOOLS/'core-lambda-stubs.jar')+os.pathsep+str(ANDROID),'-classpath',os.pathsep.join(map(str,shizuku_jars)),'-d',classes,*sources)
 jar=BUILD/'classes.jar'

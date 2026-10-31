@@ -32,3 +32,8 @@ test('group shortcuts preserve image, reply and at segments and use existing mod
  assert.equal(parseShortcut(event('#拉黑 999999')).operation.action,'commandText');
  const image={type:'image',data:{url:'https://qpic.cn/test'}};const imageEvent=group('#搜索 白饭');imageEvent.message.push(image);const parsed=parseShortcut(imageEvent);assert.equal(parsed.event.message.at(-1),image);assert.match(parsed.event.message[0].data.text,/^@deepseek 去搜一下白饭$/);
 });
+
+test('recent usage shortcut accepts compact, spaced, fullwidth and parenthesized counts, rejects unbounded input',()=>{
+ for(const text of ['#量前5','＃量前 5','#量前（5）','#量前(5)','＃量前５'])assert.deepEqual(parseShortcut(event(text)).operation,{action:'usageRecent',count:5});
+ for(const text of ['#量前','#量前0','#量前-1','#量前21','#量前1.5','#量前99999999'])assert.equal(parseShortcut(event(text)).operation.action,'commandText');
+});

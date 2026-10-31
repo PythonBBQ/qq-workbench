@@ -19,5 +19,12 @@ export class UsageLedger{
     for(const row of today){const key=row.host+'\0'+row.model+'\0'+row.category;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(row);}
     return {notice:this.notice,day:day(now),today:total(today),session:total(this.session),retained:total(this.rows),last:this.rows.at(-1)||null,groups:[...groups.values()].map(rows=>({model:rows[0].model,host:rows[0].host,category:rows[0].category,...total(rows)})),recent:this.rows.slice(-30).reverse()};
   }
+  recentText(number){
+    if(!Number.isInteger(number)||number<1||number>20)throw new Error('次数需为1到20');
+    const rows=this.rows.slice(-number).reverse(),sum=total(rows);if(!rows.length)return '暂时没有模型调用用量记录。';
+    const labels={chat:'聊天',vision:'看图',search:'搜索',memory:'记忆',personality:'性格',sticker:'表情',qzone:'空间',device:'设备',codex:'Codex',test:'测试',other:'其他'};
+    const lines=rows.map((r,i)=>{const time=new Date(r.at+8*3600000).toISOString().slice(5,19).replace('T',' ');return (i+1)+'）'+time+' '+(labels[r.category]||'其他')+' '+r.model.slice(0,24)+(r.ok?'':'（失败）')+'\n输入 '+(r.input??'未报告')+'，输出 '+(r.output??'未报告')+'，缓存 '+r.cached;});
+    return '最近 '+rows.length+' 次模型调用（最新在前，北京时间）'+(rows.length<number?'，仅有这些记录':'')+'\n\n'+lines.join('\n\n')+'\n\n已报告部分合计：输入 '+sum.input+'，输出 '+sum.output+'，缓存 '+sum.cached+' Token。缓存已包含在输入中，不重复相加。'+(sum.unreported?'\n'+sum.unreported+' 次未完整报告用量，未知部分不按零计。':'')+'\n一次聊天可能包含多次看图、搜索或记忆调用；费用以服务商账单为准。'+(this.notice?'\n'+this.notice:'');
+  }
   text(){const s=this.snapshot(),t=s.today;return '今日模型用量（北京时间）\n输入 '+t.input+' Token，输出 '+t.output+' Token，缓存命中 '+t.cached+' Token（已包含在输入中）。\n共 '+t.calls+' 次调用，'+t.unreported+' 次未返回完整用量；未知用量不按零计。'+(s.last?'\n最近一次：'+s.last.model+'，'+(s.last.reported?'输入 '+s.last.input+'，输出 '+s.last.output:'服务商未报告完整用量')+'。':'')+'\n包括看图、搜索规划、记忆等辅助调用；费用以服务商账单为准。';}
 }
