@@ -12,6 +12,8 @@ import java.util.*;
 
 /** Public releases only. Provider/model credentials are never used for updates. */
 final class AppUpdates {
+    static final long MAX_APK_BYTES=1024L*1024*1024;
+    static boolean validApkSize(long size){return size>0&&size<=MAX_APK_BYTES;}
     static final String DEFAULT_FEED="https://api.github.com/repos/PythonBBQ/qq-workbench/releases/latest";
     static String feed(Context c){return c.getSharedPreferences("settings",0).getString("updateFeed",DEFAULT_FEED);}
     static URL releaseUrl(String value)throws Exception{
@@ -29,17 +31,17 @@ final class AppUpdates {
         if(compare(tag,current)<=0)return new JSONObject().put("available",false).put("message","当前已是最新版本").put("version",tag);
         JSONObject asset=null;if(assets!=null)for(int i=0;i<assets.length();i++){JSONObject a=assets.optJSONObject(i);if(a!=null&&a.optString("name").toLowerCase(Locale.ROOT).endsWith(".apk")){if(asset!=null)throw new IOException("发行版有多个安装包，请使用只发布本应用APK的更新源");asset=a;}}
         if(asset==null)return new JSONObject().put("available",false).put("message","新发行版尚未提供安卓安装包");
-        assetUrl(asset.optString("browser_download_url"));long size=asset.optLong("size");if(size<=0||size>600L*1024*1024)throw new IOException("更新包大小无效");
+        assetUrl(asset.optString("browser_download_url"));long size=asset.optLong("size");if(!validApkSize(size))throw new IOException("更新包大小无效");
         return new JSONObject().put("available",true).put("version",tag).put("url",asset.getString("browser_download_url")).put("bytes",size).put("digest",asset.optString("digest")).put("message","发现新版本 "+tag);
     }
     static URL assetUrl(String value)throws Exception{URL u=NativeNetwork.publicUrl(value);String h=u.getHost();if(!(h.equals("github.com")||h.equals("objects.githubusercontent.com")||h.equals("release-assets.githubusercontent.com"))||u.getPort()!=-1)throw new IOException("更新包必须来自 GitHub 发行版");return u;}
     static File file(Context c){return new File(new File(c.getCacheDir(),"updates"),"latest.apk");}
     static File download(Context context,JSONObject release)throws Exception{
-        File target=file(context);target.getParentFile().mkdirs();File temporary=new File(target.getParentFile(),"download.part");URL url=assetUrl(release.getString("url"));long expected=release.getLong("bytes");MessageDigest hash=MessageDigest.getInstance("SHA-256");
+        long expected=release.getLong("bytes");if(!validApkSize(expected))throw new IOException("更新包大小无效");File target=file(context);target.getParentFile().mkdirs();File temporary=new File(target.getParentFile(),"download.part");URL url=assetUrl(release.getString("url"));MessageDigest hash=MessageDigest.getInstance("SHA-256");
         try{boolean complete=false;for(int hops=0;hops<5;hops++){
             HttpURLConnection c=connection(url);c.setRequestProperty("Accept","application/octet-stream");
             try{int status=c.getResponseCode();if(status>=300&&status<400){url=assetUrl(new URL(url,c.getHeaderField("Location")).toString());continue;}if(status!=200)throw new IOException("更新下载失败（"+status+"）");
-                long count=0;try(InputStream in=c.getInputStream();OutputStream out=new FileOutputStream(temporary)){byte[] b=new byte[65536];int n;while((n=in.read(b))!=-1){if(Thread.currentThread().isInterrupted())throw new InterruptedIOException();count+=n;if(count>expected||count>600L*1024*1024)throw new IOException("更新包超过预期大小");hash.update(b,0,n);out.write(b,0,n);}}
+                long count=0;try(InputStream in=c.getInputStream();OutputStream out=new FileOutputStream(temporary)){byte[] b=new byte[65536];int n;while((n=in.read(b))!=-1){if(Thread.currentThread().isInterrupted())throw new InterruptedIOException();count+=n;if(count>expected||count>MAX_APK_BYTES)throw new IOException("更新包超过预期大小");hash.update(b,0,n);out.write(b,0,n);}}
                 if(count!=expected)throw new IOException("更新下载不完整，请重试");complete=true;break;
             }finally{c.disconnect();}
         }if(!complete)throw new IOException("更新下载跳转过多");
