@@ -19,7 +19,11 @@ env -u QQWB_ACCOUNT_PROFILES -u QQWB_SITE_COOKIES -u DEEPSEEK_API_KEY -u VISION_
 env -u QQWB_ACCOUNT_PROFILES -u QQWB_SITE_COOKIES -u DEEPSEEK_API_KEY -u VISION_API_KEY -u SPEECH_API_KEY -u FEIYU_API_KEY -u WORKBENCH_TOKEN -u WORKBENCH_MEMORY_KEY x11vnc -storepasswd "$VNC_PASSWORD" /tmp/qqwb-vnc/password >/dev/null 2>&1
 unset VNC_PASSWORD
 env -u QQWB_ACCOUNT_PROFILES -u QQWB_SITE_COOKIES -u DEEPSEEK_API_KEY -u VISION_API_KEY -u SPEECH_API_KEY -u FEIYU_API_KEY -u WORKBENCH_TOKEN -u WORKBENCH_MEMORY_KEY x11vnc -display :17 -localhost -rfbport 15917 -forever -shared -noshm -rfbauth /tmp/qqwb-vnc/password -quiet >vnc.log 2>&1 & children+=("$!")
+desktop_pid=$!
 env -u QQWB_ACCOUNT_PROFILES -u QQWB_SITE_COOKIES -u DEEPSEEK_API_KEY -u VISION_API_KEY -u SPEECH_API_KEY -u FEIYU_API_KEY -u WORKBENCH_TOKEN -u WORKBENCH_MEMORY_KEY /usr/bin/python3 -m websockify --web=/usr/share/novnc 127.0.0.1:16080 127.0.0.1:15917 >websockify.log 2>&1 & children+=("$!")
+web_pid=$!
+source /opt/qq-workbench/window-ready.sh
+window_ready 16080 15917 "$web_pid" "$desktop_pid"
 echo 'QQWB:SnowLuma 1.14.22 正在启动，QQ 登录完成后会自动核验连接'
 /opt/snowluma/node /opt/qq-workbench/assistant.mjs & children+=("$!")
 wait "${children[-1]}"

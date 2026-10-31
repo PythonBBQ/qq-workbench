@@ -11,7 +11,7 @@ final class PythonBootstrap {
         Path executable=canonical.resolve("usr/bin/python3.12");
         Path command=canonical.resolve("usr/bin/python3");
         // Installed Ubuntu packages may already provide a valid version; leave it alone.
-        if(Files.isRegularFile(command)&&Files.isExecutable(command))return;
+        if(Files.isRegularFile(command)&&Files.isExecutable(command)&&Files.size(command)>0)return;
         if(!Files.isRegularFile(executable)||Files.size(executable)==0||!Files.isRegularFile(canonical.resolve("usr/lib/python3.12/encodings/__init__.py")))throw new IOException("离线Python环境不完整，缺少程序或标准库");
         if(!executable.toRealPath().startsWith(canonical)||!command.getParent().toRealPath().startsWith(canonical))throw new IOException("Python路径超出容器目录");
         try{Set<PosixFilePermission> mode=Files.getPosixFilePermissions(executable);mode.add(PosixFilePermission.OWNER_EXECUTE);mode.add(PosixFilePermission.GROUP_EXECUTE);mode.add(PosixFilePermission.OTHERS_EXECUTE);Files.setPosixFilePermissions(executable,mode);}

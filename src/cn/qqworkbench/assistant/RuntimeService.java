@@ -12,6 +12,7 @@ public final class RuntimeService extends Service {
     static volatile String state="尚未启动";
     static volatile boolean running=false;
     static volatile boolean stopping=false;
+    static volatile String environmentProblem="";
     static final ArrayDeque<String> logs=new ArrayDeque<>();
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
     private final ScheduledExecutorService health=Executors.newSingleThreadScheduledExecutor();
@@ -50,7 +51,7 @@ public final class RuntimeService extends Service {
         if(RuntimePolicy.resetWindow(now,window)){window=now;attempts=0;}
         return p.edit().putLong("recoveryWindow",window).putInt("recoveryAttempts",attempts+1).commit();
     }
-    private void update(String s){state=s;record(s);try{Container.writePrivate(new File(getFilesDir(),"runtime-status.txt"),s+"\n"+logText());}catch(IOException ignored){}}
+    private void update(String s){state=s;record(s);if(s.startsWith("基础环境检测通过")||s.startsWith("环境复检通过"))environmentProblem="";else if(s.contains("下载失败：")||s.contains("组件下载连接失败")||s.contains("空间不足")||s.contains("组件补齐未完成")||s.contains("环境复检未通过"))environmentProblem=s;try{Container.writePrivate(new File(getFilesDir(),"runtime-status.txt"),s+"\n"+logText());}catch(IOException ignored){}}
     private void resumeConnection(String reason){
         if(stopped||!running||!RuntimePolicy.resumeDue(lastResume,SystemClock.elapsedRealtime()))return;
         lastResume=SystemClock.elapsedRealtime();
@@ -114,7 +115,7 @@ public final class RuntimeService extends Service {
             else if(line.contains("error while loading shared libraries")||line.contains("EADDRINUSE")||line.contains("PTRACE_")||line.startsWith("E:")||line.contains("Segmentation fault")||line.contains("Permission denied"))record(line.substring(0,Math.min(line.length(),500)));
             else if(line.matches(".*(?:install|session)\\.sh: line [0-9]+:.*(?:syntax error|command not found|bad interpreter).*"))record("启动脚本错误："+line.replaceAll("[^\\p{L}\\p{N} /_.:()\\-]","?").substring(0,Math.min(line.length(),500)));
         }}
-        int code=process.waitFor();process=null;if(!stopped)update("运行已停止（退出码 "+code+"），请查看诊断后重试");return code;
+        int code=process.waitFor();process=null;if(!stopped)update("运行已停止（退出码 "+code+"）"+(environmentProblem.isEmpty()?"，请查看诊断后重试":" · "+environmentProblem));return code;
     }
     private void requestShutdown(){
         java.net.HttpURLConnection c=null;

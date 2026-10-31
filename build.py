@@ -6,10 +6,10 @@ ROOT = Path(__file__).resolve().parent
 RESEARCH = ROOT.parent / 'research/android'
 TOOLS = RESEARCH / 'toolchain/build-tools_r35_windows/android-15'
 ANDROID = RESEARCH / 'toolchain/platform-35_r02/android-35/android.jar'
-JAVA = Path(os.environ['QQWB_JAVA_BIN'])
+JAVA = Path(os.environ.get('QQWB_JAVA_BIN', 'D:/STM32CubeMX/jre/bin'))
 APK_SOURCE = Path(os.environ.get('QQWB_DSHA_APK', str(RESEARCH/'releases/DSHA-pinned.apk')))
 if not APK_SOURCE.exists():
-    raise FileNotFoundError('Set QQWB_DSHA_APK to the pinned upstream APK; see BUILDING.md')
+    APK_SOURCE = Path('C:/Users/Administrator/Downloads/DSHA.apk.1')
 BUILD = ROOT / 'build'
 ASSETS = ROOT / 'assets'
 OUT = ROOT.parents[1] / 'Exports/七丘QQ工作台-安卓预览版.apk'
@@ -22,10 +22,10 @@ def run(*args):
     subprocess.run([str(a) for a in args], cwd=ROOT, check=True)
 
 BUILD.mkdir(exist_ok=True)
+OUT.parent.mkdir(exist_ok=True)
 import sys
 run(sys.executable, ROOT/'tools/build-multi-parser.py')
 run(sys.executable, ROOT/'tools/build-video-asr.py')
-OUT.parent.mkdir(exist_ok=True)
 # A Windows checkout must not ship CRLF shell scripts into the Linux container.
 for script in ASSETS.glob('*.sh'):
     if b'\r' in script.read_bytes():
@@ -75,6 +75,12 @@ assert sha(ROOT/local_native['source'])==local_native['sourceSha256'], 'Rebuild 
 assert sha(ASSETS/'snow-preload-loader.bin')==local_native['binarySha256']
 from tools.zipvoice_deps import sdk_jars as voice_jars, bundle as voice_bundle
 voice_bundle(ROOT)
+python_files=set()
+for name in ['glibc-python.bin','python-support.bin']:
+    with tarfile.open(ASSETS/name) as archive:
+        for member in archive:
+            if member.isfile() and member.size>0 and (member.name.startswith('usr/lib/') or member.name=='usr/bin/python3.12'):python_files.add(member.name)
+(ASSETS/'python-runtime-files.json').write_text(json.dumps(sorted(python_files)),encoding='utf-8')
 receipt={'schema':1,'sources':{'DSHA':{'commit':'8362bba747fcf84c19e436c3dbb594a0fc388a67','url':'https://github.com/DSH-APP/DSHA','apkSha256':sha(APK_SOURCE)},'SnowLuma':{'version':'2.2.0','url':'https://github.com/SnowLuma/SnowLuma/releases/tag/v2.2.0','sha256':sha(ASSETS/'snowluma.tar.gz')},'LinuxQQ':{'version':'3.2.34-53644','sha256':sha(ASSETS/'linuxqq.deb')}},'assets':{p.name:sha(p) for p in ASSETS.iterdir() if p.is_file()}}
 receipt['sources']['SnowLuma']['role']='Node.js runtime only; 2.2.0 native bridge is not loaded'
 receipt['sources']['SnowLumaBridge']={'version':'1.14.22','url':'https://github.com/SnowLuma/SnowLuma/releases/tag/v1.14.22','sha256':sha(ASSETS/'snowluma-bridge.tar.gz')}

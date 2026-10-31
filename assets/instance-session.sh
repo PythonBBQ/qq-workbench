@@ -17,6 +17,10 @@ safe_env=(env -u QQWB_ACCOUNT_PROFILES -u QQWB_SITE_COOKIES -u DEEPSEEK_API_KEY 
 for attempt in {1..40}; do [ -S "/tmp/.X11-unix/X$display" ] && break; sleep .25; done
 # Reuse the app's VNC password file; API and account credentials never enter VNC.
 "${safe_env[@]}" x11vnc -display ":$display" -localhost -rfbport "$vnc" -forever -shared -noshm -rfbauth /tmp/qqwb-vnc/password -quiet >vnc.log 2>&1 & children+=("$!")
+desktop_pid=$!
 "${safe_env[@]}" /usr/bin/python3 -m websockify --web=/usr/share/novnc "127.0.0.1:$web" "127.0.0.1:$vnc" >websockify.log 2>&1 & children+=("$!")
+web_pid=$!
+source /opt/qq-workbench/window-ready.sh
+window_ready "$web" "$vnc" "$web_pid" "$desktop_pid"
 /opt/snowluma/node /opt/qq-workbench/assistant.mjs & children+=("$!")
 wait "${children[-1]}"

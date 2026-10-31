@@ -53,10 +53,7 @@ final class AccountScreens {
         voice.tests();a.button("停止此账号以修改配置",()->action(a,"/multi/stop",slot,false));
     }
     static void window(MainActivity a,int slot){
-        a.editingSlot=slot;final int port=16080+slot;a.base("独立QQ "+slot,"instanceQQ");a.section("此窗口仅登录账号 "+slot,"请先在账号列表启动此实例，再选择匹配的机器人QQ。号码不一致时不会自动回复。");
-        a.button("核对并连接此账号",()->a.io.submit(()->{try{JSONObject p=profile(a,slot),result=a.accountApi(slot,"/connect",new JSONObject().put("uin",p.getString("bot")));a.runOnUiThread(()->a.toast(result.optString("message")));}catch(Exception e){a.runOnUiThread(()->a.toast("请先启动此账号并登录对应QQ"));}}));
-        a.browser=new WebView(a);a.browser.setBackgroundColor(Color.TRANSPARENT);a.browser.getSettings().setJavaScriptEnabled(true);a.browser.getSettings().setDomStorageEnabled(true);a.browser.getSettings().setAllowFileAccess(false);a.browser.getSettings().setAllowContentAccess(false);
-        a.browser.setWebViewClient(new WebViewClient(){public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){try{URI u=URI.create(request.getUrl().toString());return !"http".equals(u.getScheme())||!"127.0.0.1".equals(u.getHost())||u.getPort()!=port;}catch(Exception e){return true;}}});a.body.addView(a.browser,new LinearLayout.LayoutParams(-1,a.dp(520)));
-        Runnable load=()->{try{a.browser.loadUrl("http://127.0.0.1:"+port+"/vnc.html?autoconnect=true&resize=scale#password="+URLEncoder.encode(new Secrets(a).ensure("vnc").substring(0,8),"UTF-8"));}catch(Exception e){a.toast("窗口凭据未就绪");}};a.button("刷新独立QQ窗口",load);load.run();
+        a.editingSlot=slot;a.base("独立QQ "+slot,"instanceQQ");a.section("此窗口仅登录账号 "+slot,"窗口会等待主服务和此实例准备好；请选择匹配的机器人QQ。号码不一致时不会自动回复。");
+        new QqLoginWindow(a,slot,()->a.io.submit(()->{try{JSONObject p=profile(a,slot),result=a.accountApi(slot,"/connect",new JSONObject().put("uin",p.getString("bot")));a.runOnUiThread(()->a.toast(result.optString("message")));}catch(Exception e){a.runOnUiThread(()->a.toast("此账号尚未完成登录，请查看当前窗口状态"));}}));
     }
 }
