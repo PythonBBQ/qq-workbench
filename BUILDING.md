@@ -53,10 +53,16 @@ Windows类路径分隔符改为分号。实际设备动作仍需安装APK、启�
 3. 提交源码；使用已授权的 GitHub CLI 上传新 Releases。软件更新源默认 PythonBBQ/qq-workbench，仅识别最新正式 Release 中唯一的 APK。
 
 ```sh
-python tools/publish-release.py --notes docs/RELEASE-0.1.33.md --gh /path/to/gh
+python tools/publish-release.py --notes docs/RELEASE-0.1.43.md --gh /path/to/gh
 ```
 
 发布脚本从本地 build/build-receipt.json 读取已校验安装包，上传 APK 和 SHA256SUMS.txt，不上传整个 build 目录。不会代替用户确认安卓系统安装。
+
+先创建草稿，按文件检查大小和 GitHub 返回的 SHA256；已完整上传的文件跳过，只重新上传缺失或未完成的同名草稿资产。全部核对后才发布并设为最新版本。上传失败保持草稿，重新执行相同命令即可续处理；这是按文件重试，不是单个大文件断点续传。已公开版本仅检查，不替换资产。源码在上传期间变化时停止发布。默认最多重试3次、每次上传时限1小时，可用 `--upload-attempts` / `--upload-timeout` 调整。
+
+进度和上传日志位于 `build/release-upload-版本号/`，发布状态位于 `build/publish-status-版本号.json`。状态确认 `published` 后再交付地址，不把“源码已推送”或“正在上传”表述为安装包已发布。GitHub授权仅通过本机CLI读取，不写入日志或命令参数。
+
+Android“已安装更高版本”的只读诊断和保留数据回退工具见 [ANDROID-REINSTALL.md](docs/ANDROID-REINSTALL.md)。它是电脑维护工具，不是APK新增功能；不能代替对实际设备的验证。
 
 ## 视频验证
 
