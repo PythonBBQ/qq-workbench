@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "repo": "Esmerubphire/FeiyuVoice-CosyVoice3",
+  "revision": "f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2",
+  "source": "https://huggingface.co/Esmerubphire/FeiyuVoice-CosyVoice3",
+  "attribution": "星落落_oi / Esmerubphire 肥鱼声音项目",
+  "references": {
+    "cute": {
+      "url": "https://huggingface.co/Esmerubphire/FeiyuVoice-CosyVoice3/resolve/f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2/references/cute_N01.wav",
+      "bytes": 219244,
+      "sha256": "cefa06b7f45479130169d154f84a32bc89d90585b7de50f96e36533c5ebe819e",
+      "text": "我已经准备好了，我们开始吧。"
+    },
+    "gentle": {
+      "url": "https://huggingface.co/Esmerubphire/FeiyuVoice-CosyVoice3/resolve/f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2/references/gentle_N10.wav",
+      "bytes": 801644,
+      "sha256": "d6f6365b66bc14f26def0f281beb2bd1db6392b76150b990603d04e34e364356",
+      "text": "我刚刚把桌子收拾了一下，也给自己倒了一杯温水。现在可以坐下来，安安静静地听你说话了。"
+    }
+  }
+}

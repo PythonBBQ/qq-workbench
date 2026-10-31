@@ -1,0 +1,13 @@
+肥鱼可爱 / 温柔参考声音
+
+来源：Esmerubphire / FeiyuVoice-CosyVoice3
+https://huggingface.co/Esmerubphire/FeiyuVoice-CosyVoice3
+项目：https://github.com/Esmerubphire/astrbot_plugin_feiyu_voice
+原始声源署名：B站 UP 主 星落落_oi，https://space.bilibili.com/30584746/
+
+上游提供的 cute_N01.wav / gentle_N10.wav 是现有肥鱼合成链路生成的参考，不是新增真人录音。对应文字与 SHA-256 固定于 feiyu-references.json，来源版本随同记录。
+本 APK 只提供下载和导入入口，没有分发这些录音或肥鱼模型权重。使用者明确点击后，从上游指定版本下载约1MB参考并核对完整性，作为设备内所选账号的参考配置。后续由 ZipVoice 小模型进行参考合成，不等同于完整 CosyVoice 肥鱼模型，音色相似度和语气需要实际试听。
+
+上游声明已获得用于其项目声库训练的原始素材授权；其 NOTICE 同时声明未为本地贡献、参考或人物资产授予仓库级通用复用许可。本应用不将上游组件的 Apache-2.0 解释为人物素材或参考录音的通用分发许可。请按上游版权说明使用参考；本应用不重新授予素材许可或声称上游背书。
+上游声明：https://huggingface.co/Esmerubphire/FeiyuVoice-CosyVoice3/blob/main/NOTICE.md
+署名与训练授权：https://github.com/Esmerubphire/astrbot_plugin_feiyu_voice/blob/main/COPYRIGHT.md

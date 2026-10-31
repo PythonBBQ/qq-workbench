@@ -7,6 +7,8 @@ public final class VoiceAudioCheck {
         boolean rejected=false;try{VoiceAudio.pcm(new byte[48000],24000,1,android.media.AudioFormat.ENCODING_PCM_16BIT);}catch(java.io.IOException e){rejected=true;}check(rejected);
         rejected=false;try{VoiceAudio.wav(new float[]{Float.NaN},24000);}catch(java.io.IOException e){rejected=true;}check(rejected);
         check(LocalVoice.slot(0)==0&&LocalVoice.slot(3)==3);rejected=false;try{LocalVoice.slot(4);}catch(java.io.IOException e){rejected=true;}check(rejected);check(LocalVoice.mood("arbitrary").equals("neutral"));check(LocalVoice.StopCallback.class.getMethod("invoke",float[].class).getReturnType()==Integer.class);
+        StringBuilder digest=new StringBuilder();for(byte b:java.security.MessageDigest.getInstance("SHA-256").digest(wav))digest.append(String.format(java.util.Locale.ROOT,"%02x",b&255));org.json.JSONObject reference=new org.json.JSONObject().put("bytes",wav.length).put("sha256",digest.toString());FeiyuReferences.checked(wav,reference);byte[] corrupt=wav.clone();corrupt[44]^=1;rejected=false;try{FeiyuReferences.checked(corrupt,reference);}catch(java.io.IOException expected){rejected=true;}check(rejected);
+        for(String url:new String[]{"http://huggingface.co/voice.wav","https://evil.example/voice.wav","https://huggingface.co.evil.example/x.wav","https://u:p@huggingface.co/x.wav"}){rejected=false;try{FeiyuReferences.allowed(url);}catch(java.io.IOException expected){rejected=true;}check(rejected);}
         System.out.println("QQWB_VOICE_AUDIO_OK: bounded PCM/WAV roundtrip, silence and invalid-sample rejection, instance/reference validation");
     }
 }
