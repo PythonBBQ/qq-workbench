@@ -8,7 +8,7 @@ import org.json.*;
 /** The same voice controls are used for the primary and isolated bot profiles. */
 final class VoicePanel {
     boolean busy;final MainActivity a;final int slot;final JSONObject original;
-    final Switch enabled,emotion;final Spinner policy,provider,voice,feiyuStyle,zipSteps;final EditText region,key,group,feiyuUrl,feiyuKey;
+    final Switch enabled,emotion,natural,memory,adaptive;final Spinner policy,provider,voice,feiyuStyle,zipSteps;final EditText region,key,group,feiyuUrl,feiyuKey;
     final SeekBar rate,pitch,preference,cooldown;String androidVoice,qqVoiceId,qqVoiceName;
     static final String[] IDS={"zh-CN-XiaoxiaoNeural","zh-CN-XiaoyiNeural","zh-TW-HsiaoChenNeural","zh-HK-HiuMaanNeural","ja-JP-NanamiNeural","ko-KR-SunHiNeural"};
     VoicePanel(MainActivity activity,int account,JSONObject c){a=activity;slot=account;original=c;
@@ -19,6 +19,13 @@ final class VoicePanel {
         preference=a.slider("智能语音倾向",c.optInt("voicePreference",35),0,100,"（0仅主动要求，100更偏向语音）");
         cooldown=a.slider("自动语音最短间隔",c.optInt("voiceCooldown",45),20,180," 秒（明确要求不受限）");
         emotion=a.toggle("让语气随情境变化",c.optBoolean("voiceEmotion",true));
+        natural=a.toggle("自然口语与句间停顿",c.optBoolean("voiceNatural",true));
+        memory=a.toggle("单独记住说话偏好",c.optBoolean("voiceMemoryEnabled",true));
+        adaptive=a.toggle("本机语音长句自动加速",c.optBoolean("zipVoiceAdaptive",true));
+        a.note("合成前按约18字寻找句号、逗号或语意边界分段，过短尾句合并，完成后拼成一条语音。超过60字时自动用4步；关闭自动加速后保留原精度。语速设置保留，总等待最多约两分钟，失败则保留全文分两段文字回复。");
+        a.note("仅记住明确反馈，如“以后语音短一点”；刚收到语音后说“慢一点”也可学习。按账号、联系人和群分别保存，不修改酒馆人设，不新增模型调用。临时不方便听不保存为长期偏好。语音是否自然仍受音色和模型影响。");
+        a.button("查看说话偏好",()->request("/voice/memory",null,r->{JSONArray list=r.optJSONArray("sessions");StringBuilder text=new StringBuilder();if(list!=null)for(int i=0;i<list.length();i++){JSONObject item=list.getJSONObject(i);text.append(item.optString("group").isEmpty()?"私聊":"群 "+item.optString("group")).append(" · QQ ").append(item.optString("user")).append("\n").append(item.optString("description")).append("\n\n");}new AlertDialog.Builder(a).setTitle("独立说话偏好").setMessage(text.length()>0?text.toString():r.optString("problem","").isEmpty()?"还没有明确反馈，暂未学习偏好":r.optString("problem")).setPositiveButton("关闭",null).show();}));
+        a.button("清除本账号说话偏好",()->request("/voice/memory/clear",new JSONObject(),r->a.toast(r.optString("message"))));
         String service=c.optString("speechProvider",slot==0?"azure":"android");
         provider=a.choices(new String[]{"安卓系统语音 · 无需另填Key","微软 Azure · 中日韩女声","QQ 群内置音色 · 仅群聊","肥鱼声音服务 · 需部署后端","轻量本机语音 · ZipVoice"},service.equals("azure")?1:service.equals("qq")?2:service.equals("feiyu")?3:service.equals("zipvoice")?4:0);
         LinearLayout host=a.body,system=new LinearLayout(a),azure=new LinearLayout(a),qq=new LinearLayout(a),feiyu=new LinearLayout(a),light=new LinearLayout(a);system.setOrientation(1);azure.setOrientation(1);qq.setOrientation(1);host.addView(system);host.addView(azure);host.addView(qq);feiyu.setOrientation(1);host.addView(feiyu);light.setOrientation(1);host.addView(light);a.body=light;VoiceReferences.controls(a,slot,()->{provider.setSelection(4);enabled.setChecked(true);emotion.setChecked(true);policy.setSelection(0);});zipSteps=a.choices(new String[]{"快速合成 · 4步","细致合成 · 8步（更慢）"},c.optInt("zipVoiceSteps",4)==8?1:0);a.body=system;
@@ -40,7 +47,7 @@ final class VoicePanel {
     JSONObject values()throws Exception{
         String service=new String[]{"android","azure","qq","feiyu","zipvoice"}[provider.getSelectedItemPosition()],r=region.getText().toString().trim();if(service.equals("azure")&&!r.matches("[a-z][a-z0-9]{1,30}"))throw new Exception("Azure区域格式不正确");
         if(service.equals("feiyu"))AccountProfiles.voiceAddress(feiyuUrl.getText().toString().trim());
-        return new JSONObject().put("zipVoiceSteps",zipSteps.getSelectedItemPosition()==1?8:4).put("voiceCooldown",cooldown.getProgress()+20).put("voiceEmotion",emotion.isChecked()).put("feiyuUrl",feiyuUrl.getText().toString().trim()).put("feiyuVoice","feiyu").put("feiyuStyle",new String[]{"auto","cute","gentle"}[feiyuStyle.getSelectedItemPosition()]).put("voiceEnabled",enabled.isChecked()).put("voiceAlways",false).put("voicePreference",preference.getProgress()).put("voiceMode",new String[]{"smart","request","always"}[policy.getSelectedItemPosition()]).put("speechProvider",service).put("speechVoice",IDS[voice.getSelectedItemPosition()]).put("androidVoice",androidVoice).put("speechLanguage","zh-CN").put("speechRegion",r).put("speechRate",rate.getProgress()-40).put("speechPitch",pitch.getProgress()-30).put("qqVoiceGroup",group.getText().toString().trim()).put("qqVoiceId",qqVoiceId).put("qqVoiceName",qqVoiceName);
+        return new JSONObject().put("zipVoiceAdaptive",adaptive.isChecked()).put("voiceNatural",natural.isChecked()).put("voiceMemoryEnabled",memory.isChecked()).put("zipVoiceSteps",zipSteps.getSelectedItemPosition()==1?8:4).put("voiceCooldown",cooldown.getProgress()+20).put("voiceEmotion",emotion.isChecked()).put("feiyuUrl",feiyuUrl.getText().toString().trim()).put("feiyuVoice","feiyu").put("feiyuStyle",new String[]{"auto","cute","gentle"}[feiyuStyle.getSelectedItemPosition()]).put("voiceEnabled",enabled.isChecked()).put("voiceAlways",false).put("voicePreference",preference.getProgress()).put("voiceMode",new String[]{"smart","request","always"}[policy.getSelectedItemPosition()]).put("speechProvider",service).put("speechVoice",IDS[voice.getSelectedItemPosition()]).put("androidVoice",androidVoice).put("speechLanguage","zh-CN").put("speechRegion",r).put("speechRate",rate.getProgress()-40).put("speechPitch",pitch.getProgress()-30).put("qqVoiceGroup",group.getText().toString().trim()).put("qqVoiceId",qqVoiceId).put("qqVoiceName",qqVoiceName);
     }
     interface Result{void show(JSONObject result)throws Exception;}
     void request(String route,JSONObject data,Result handler){if(busy){a.toast("上次操作尚未完成");return;}busy=true;a.toast("正在检查，请勿重复操作…");a.io.submit(()->{try{JSONObject r=a.accountApi(slot,route,data);a.runOnUiThread(()->{busy=false;if(a.destroyed)return;try{handler.show(r);}catch(Exception e){a.toast("语音响应未完成");}});}catch(Exception e){a.runOnUiThread(()->{busy=false;a.toast("检查未完成，请先保存设置并启动对应账号");});}});}

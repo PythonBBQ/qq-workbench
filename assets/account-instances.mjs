@@ -16,7 +16,7 @@ export function validateInstance(p){
   if(p.speechProvider==='feiyu'){feiyuBase(p.feiyuUrl);if(!p.feiyuKey?.trim())throw new Error('请为此账号配置肥鱼服务自己的Key');}
   return {...p,slot:layout.slot,bot:String(p.bot),owner:String(p.owner),name:String(p.name||'账号'+p.slot).slice(0,60)};
 }
-const settingKeys=['owner','apiUrl','model','apiProtocol','visionMode','visionUrl','visionModel','voiceEnabled','voiceAlways','voiceMode','voicePreference','voiceCooldown','voiceEmotion','zipVoiceSteps','feiyuUrl','feiyuVoice','feiyuStyle','androidVoice','speechLanguage','speechProvider','speechVoice','speechRegion','speechRate','speechPitch','qqVoiceId','qqVoiceGroup','others','rate','persona','characterName','contextTurns','maxReplyTokens'];
+const settingKeys=['owner','apiUrl','model','apiProtocol','visionMode','visionUrl','visionModel','voiceEnabled','voiceAlways','voiceMode','voicePreference','voiceCooldown','voiceNatural','voiceMemoryEnabled','voiceEmotion','zipVoiceSteps','zipVoiceAdaptive','feiyuUrl','feiyuVoice','feiyuStyle','androidVoice','speechLanguage','speechProvider','speechVoice','speechRegion','speechRate','speechPitch','qqVoiceId','qqVoiceGroup','others','rate','persona','characterName','contextTurns','maxReplyTokens'];
 export class AccountInstances{
   constructor({root,source,token,nativeToken,profiles=[],spawnChild=spawn,fetcher=fetch,environment=process.env,primaryBot=()=>''}={}){
     this.primaryBot=primaryBot;this.root=root;this.source=source;this.token=token;this.nativeToken=nativeToken||token;this.profiles=new Map();this.children=new Map();this.tokens=new Map();this.problems=new Map();this.spawnChild=spawnChild;this.fetcher=fetcher;this.environment=environment;
@@ -48,7 +48,7 @@ export class AccountInstances{
   }
   async call(slot,route,data){
     const l=instanceLayout(Number(slot),this.root),token=this.tokens.get(l.slot);if(!token)throw new Error('账号实例尚未启动');
-    const r=await this.fetcher('http://127.0.0.1:'+l.port+route,{method:data===undefined?'GET':'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},...(data===undefined?{}:{body:JSON.stringify(data)}),signal:AbortSignal.timeout(route.startsWith('/voice/')?75000:12000)});
+    const r=await this.fetcher('http://127.0.0.1:'+l.port+route,{method:data===undefined?'GET':'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},...(data===undefined?{}:{body:JSON.stringify(data)}),signal:AbortSignal.timeout(route.startsWith('/voice/')?145000:12000)});
     if(!r.ok)throw new Error('账号本地服务尚未就绪');return r.json();
   }
   async list(){return Promise.all([...this.profiles.values()].map(async p=>{let state=null;if(this.children.has(p.slot))try{state=await this.call(p.slot,'/state');}catch{}

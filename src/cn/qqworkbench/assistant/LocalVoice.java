@@ -19,8 +19,8 @@ import java.util.zip.*;
 final class LocalVoice {
     /** JNI resolves invoke(float[]) specifically; a Java lambda only exposes invoke(Object). */
     public static final class StopCallback implements kotlin.jvm.functions.Function1<float[],Integer>{
-        final long deadline;StopCallback(long deadline){this.deadline=deadline;}
-        public Integer invoke(float[] samples){return SystemClock.elapsedRealtime()>deadline||Thread.currentThread().isInterrupted()?0:1;}
+        final long deadline;boolean interrupted;int chunks;StopCallback(long deadline){this.deadline=deadline;}
+        public Integer invoke(float[] samples){chunks++;interrupted=SystemClock.elapsedRealtime()>deadline||Thread.currentThread().isInterrupted();return interrupted?0:1;}
     }
     static final String[] MOODS={"neutral","happy","gentle","shy","sad","serious"};
     private static LocalVoice instance;
@@ -28,6 +28,7 @@ final class LocalVoice {
     private final Context context;private final File models,refs;private final ReentrantLock inference=new ReentrantLock();
     private volatile OfflineTts engine;private volatile long used,lastMillis;private volatile String lastReference="",lastProblem="";
     private LocalVoice(Context c){context=c;models=new File(c.getFilesDir(),"zipvoice-models-v1");refs=new File(c.getFilesDir(),"voice-references");ScheduledExecutorService idle=Executors.newSingleThreadScheduledExecutor(r->{Thread t=new Thread(r,"voice-idle");t.setDaemon(true);return t;});idle.scheduleWithFixedDelay(()->{if(SystemClock.elapsedRealtime()-used>60000)release();},30,30,TimeUnit.SECONDS);}
+    static JSONArray phraseLengths(List<String> phrases){JSONArray result=new JSONArray();for(String phrase:phrases)result.put(phrase.length());return result;}
     static int slot(int n)throws IOException{if(n<0||n>3)throw new IOException("语音账号无效");return n;}
     static String mood(String value){return Arrays.asList(MOODS).contains(value)?value:"neutral";}
     private File profile(int n)throws Exception{File p=new File(refs,"slot-"+slot(n));p.mkdirs();return p;}
@@ -56,14 +57,18 @@ final class LocalVoice {
     JSONObject synthesize(JSONObject request)throws Exception{
         int n=slot(request.optInt("slot"));String text=request.optString("text").trim();if(text.isEmpty()||text.length()>240)throw new IOException("语音轻量模式限240字，长内容使用文字");
         if(!inference.tryLock(8,TimeUnit.SECONDS))throw new IOException("语音模型正忙，本条使用文字");
-        long start=SystemClock.elapsedRealtime(),deadline=Math.min(start+55000,request.optLong("localDeadline",start+55000));try{if(start>=deadline)throw new IOException("语音排队超时，本条使用文字");prepare();defaultReference(n,request.optString("voice"));String style=mood(request.optString("emotion"));File dir=profile(n),meta=new File(dir,style+".json");if(!meta.isFile()&&Arrays.asList("shy","sad","serious").contains(style)&&new File(dir,"gentle.json").isFile()){style="gentle";meta=new File(dir,"gentle.json");}if(!meta.isFile()){style="neutral";meta=new File(dir,"neutral.json");}
+        long start=SystemClock.elapsedRealtime(),deadline=Math.min(start+115000,request.optLong("localDeadline",start+115000));try{if(start>=deadline)throw new IOException("语音排队超时，本条使用文字");prepare();defaultReference(n,request.optString("voice"));String style=mood(request.optString("emotion"));File dir=profile(n),meta=new File(dir,style+".json");if(!meta.isFile()&&Arrays.asList("shy","sad","serious").contains(style)&&new File(dir,"gentle.json").isFile()){style="gentle";meta=new File(dir,"gentle.json");}if(!meta.isFile()){style="neutral";meta=new File(dir,"neutral.json");}
             JSONObject ref=new JSONObject(new String(Files.readAllBytes(meta.toPath()),StandardCharsets.UTF_8));String name=ref.getString("file");if(!name.matches("[a-f0-9-]{36}\\.wav"))throw new IOException("语音参考记录无效");VoiceAudio audio=VoiceAudio.decode(new File(dir,name));
             if(engine==null){OfflineTtsZipVoiceModelConfig z=new OfflineTtsZipVoiceModelConfig();z.setEncoder(new File(models,"encoder.int8.onnx").getPath());z.setDecoder(new File(models,"decoder.int8.onnx").getPath());z.setVocoder(new File(models,"vocos_24khz.onnx").getPath());z.setTokens(new File(models,"tokens.txt").getPath());z.setLexicon(new File(models,"lexicon.txt").getPath()+","+new File(models,"lexicon-en-us.txt").getPath());OfflineTtsModelConfig m=new OfflineTtsModelConfig();m.setZipvoice(z);m.setNumThreads(2);m.setProvider("cpu");OfflineTtsConfig c=new OfflineTtsConfig();c.setModel(m);c.setMaxNumSentences(1);engine=new OfflineTts(null,c);}
             GenerationConfig c=new GenerationConfig();c.setReferenceAudio(audio.samples);c.setReferenceSampleRate(audio.rate);c.setReferenceText(ref.getString("text"));c.setNumSteps(request.optInt("steps",4)==8?8:4);c.setSpeed((float)Math.max(.8,Math.min(1.2,1+request.optDouble("rate",0)/100)));c.setSilenceScale(.25f);
+            // Upstream counts every Chinese character as a word. Defaults of 5/20
+            // create many tiny chunks and may force a cut inside a Chinese clause.
+            Map<String,String> chunkOptions=new HashMap<>();chunkOptions.put("min_words_in_sentence","30");chunkOptions.put("max_words_in_sentence","70");c.setExtra(chunkOptions);
             if(SystemClock.elapsedRealtime()>=deadline)throw new IOException("语音准备耗时过长，本条使用文字");
-            GeneratedAudio output=engine.generateWithConfigAndCallback(text,c,new StopCallback(deadline));
-            if(SystemClock.elapsedRealtime()>deadline)throw new IOException("语音合成耗时过长，本条使用文字");byte[] bytes=VoiceAudio.wav(output.getSamples(),output.getSampleRate());if(bytes.length>6*1024*1024)throw new IOException("语音生成内容过长");used=SystemClock.elapsedRealtime();lastMillis=used-start;lastReference=style;lastProblem="";
-            return new JSONObject().put("ok",true).put("audio",Base64.encodeToString(bytes,Base64.NO_WRAP)).put("format","wav").put("elapsedMs",lastMillis).put("referenceMood",style).put("referenceSource",ref.optString("source"));
+            List<String> phrases=SpeechPhrasing.chunks(text,request.optBoolean("phrasing",true));List<float[]> segments=new ArrayList<>();int sampleRate=0;
+            for(String phrase:phrases){if(SystemClock.elapsedRealtime()>=deadline)throw new IOException("语音合成耗时过长，本条使用文字");StopCallback callback=new StopCallback(deadline);GeneratedAudio output=engine.generateWithConfigAndCallback(phrase,c,callback);if(callback.interrupted)throw new IOException("语音生成中断，本条使用文字");if(sampleRate!=0&&sampleRate!=output.getSampleRate())throw new IOException("语音采样率变化，本条使用文字");sampleRate=output.getSampleRate();SpeechPhrasing.validateDuration(phrase,output.getSamples().length,sampleRate);segments.add(SpeechPhrasing.finish(output.getSamples(),sampleRate));}
+            if(SystemClock.elapsedRealtime()>deadline)throw new IOException("语音合成耗时过长，本条使用文字");byte[] bytes=VoiceAudio.wav(SpeechPhrasing.join(segments,phrases,sampleRate),sampleRate);if(bytes.length>6*1024*1024)throw new IOException("语音生成内容过长");used=SystemClock.elapsedRealtime();lastMillis=used-start;lastReference=style;lastProblem="";
+            return new JSONObject().put("ok",true).put("audio",Base64.encodeToString(bytes,Base64.NO_WRAP)).put("format","wav").put("elapsedMs",lastMillis).put("referenceMood",style).put("referenceSource",ref.optString("source")).put("segments",phrases.size()).put("completedSegments",segments.size()).put("durationMs",(bytes.length-44)*500L/sampleRate).put("characters",text.length()).put("phraseTarget",request.optBoolean("phrasing",true)?SpeechPhrasing.TARGET:0).put("phraseLengths",phraseLengths(phrases)).put("steps",c.getNumSteps()).put("requestedSteps",request.optInt("requestedSteps",c.getNumSteps()));
         }catch(Exception|LinkageError e){lastProblem=e instanceof LinkageError?"语音原生组件无法加载，请安装匹配的完整版":e.getMessage();throw new IOException(lastProblem,e);}finally{used=SystemClock.elapsedRealtime();inference.unlock();}}
     void release(){if(!inference.tryLock())return;try{if(engine!=null){engine.release();engine=null;}}finally{inference.unlock();}}
 }

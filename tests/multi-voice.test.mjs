@@ -59,7 +59,7 @@ test('unknown receipts protect only their conversation; resume requires time and
 
 test('the same chat completion chooses voice contextually; text preference and local guardrails still win',()=>{
  const c={voiceEnabled:true,voiceMode:'smart'},ctx={reply:'辛苦啦，先歇一歇吧。',event:{message_type:'private'}};
- assert.match(voicePrompt(c),/结合当前话题/);assert.equal(voicePrompt({voiceEnabled:false}),'');assert.equal(voicePrompt({...c,voiceMode:'request'}),'');
+ assert.match(voicePrompt(c),/结合当前话题/);assert.equal(voicePrompt({voiceEnabled:false}),'');assert.match(voicePrompt({...c,voiceMode:'request'}),/仅本条明确要求/);
  const chosen=extractVoiceChoice('[[voice]] 辛苦啦，先歇一歇吧。');assert.equal(chosen.choice,true);assert.equal(chosen.text,'辛苦啦，先歇一歇吧。');
  assert.equal(voiceDecision('今天累坏了',c,{...ctx,modelChoice:true}).voice,true);assert.equal(voiceDecision('晚安',c,{...ctx,modelChoice:false}).voice,false);
  assert.equal(voiceDecision('今天累坏了',c,{...ctx,modelChoice:true,reply:'看这里 https://example.com'}).voice,false);assert.equal(voiceDecision('文字回复',c,{...ctx,modelChoice:true}).voice,false);

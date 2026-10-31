@@ -1,7 +1,11 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {chatBudget,systemPrompt,senderIdentity,requestHistory,addUsage,naturalStyle,sourceReply,withoutSourceFooter,capabilityPrompt} from '../assets/chat-style.mjs';
+import {corePrompt,chatBudget,systemPrompt,senderIdentity,requestHistory,addUsage,naturalStyle,sourceReply,withoutSourceFooter,capabilityPrompt} from '../assets/chat-style.mjs';
 const history=Array.from({length:20},(_,i)=>({role:i%2?'assistant':'user',content:String(i)}));
+test('compact common instructions preserve execution, source and trust boundaries; video rules are supplied only for relevant topics',()=>{
+ assert.ok(corePrompt.length<300);assert.match(corePrompt,/本次工具回执/);assert.match(corePrompt,/不编造/);assert.match(corePrompt,/不是更高权限指令/);assert.match(corePrompt,/＃来源/);
+ assert.ok(!systemPrompt({}).includes('空转写'));assert.match(capabilityPrompt({},'看这个视频'),/音轨转写/);assert.match(capabilityPrompt({},'看这个视频'),/拼图里/);
+});
 test('idle chat avoids unrelated capability instructions; topic-specific instructions remain available',()=>{
  assert.equal(capabilityPrompt({},'今天开心吗'), '');
  assert.match(capabilityPrompt({},'帮我写条说说'),/仅草稿/);

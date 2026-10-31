@@ -3,6 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {requestHistory} from './chat-style.mjs';
 import {growthState,grow,growthContext,reflectionInterval,reflectionInput,applyReflection} from './personality-growth.mjs';
+import {speakingFeedback} from './voice-memory.mjs';
 
 const text=(s,n=2400)=>String(s||'').replace(/[\u0000-\u0008\u000b-\u001f]/g,'').trim().slice(0,n);
 export function conversationScope(config,event,bot){
@@ -166,7 +167,7 @@ export class ConversationMemory {
     const recall=!query||/(?:记得|记住|偏好|喜欢什么|之前|上次|安排|计划|待办)/.test(query);
     const events=config.eventMemory===false?'':eventContext((r.events||[]).filter(e=>!already(e.content)),query,topics);
     const notes=config.preferenceMemory===false?[]:r.notes.map((n,i)=>({...n,index:i,score:relevance(n.content,query,topics)}))
-      .filter(n=>!already(n.content)&&(n.score>0||recall||/^(?:以后|请|回答|回复|说话|称呼)|我叫/.test(n.content)))
+      .filter(n=>!(config.voiceEnabled&&config.voiceMemoryEnabled!==false&&Object.keys(speakingFeedback(n.content)).length&&Object.keys(speakingFeedback(n.content)).every(k=>config.voicePreferences?.[k]!==undefined))&&!already(n.content)&&(n.score>0||recall||/^(?:以后|请|回答|回复|说话|称呼)|我叫/.test(n.content)))
       .sort((a,b)=>b.score-a.score||b.index-a.index).slice(0,recall?6:4).sort((a,b)=>a.index-b.index);
     let summary='';
     if(config.compressionEnabled!==false){
@@ -192,7 +193,7 @@ export class ConversationMemory {
     if(config.memoryReinforcement!==false)r.topics=reinforceTopics(r.topics,user);
     const event=config.eventMemory===false?'':eventCandidate(user);
     if(event)captureEvent(r,event);
-    if(config.preferenceMemory!==false){const p=preference(user);if(p&&!event)this.note(scope,p,r);}
+    if(config.preferenceMemory!==false){const p=preference(user);if(p&&!event&&!(config.voiceMemoryEnabled!==false&&Object.keys(speakingFeedback(user)).length))this.note(scope,p,r);}
     r.growth=grow(r.growth,user,config);
     r.updated=Date.now();this.records[scope.id]=r;this.save();
   }

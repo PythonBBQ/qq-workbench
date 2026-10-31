@@ -30,6 +30,9 @@
 |---|---|---|
 | [CosyVoice](https://github.com/FunAudioLLM/CosyVoice) | 支持语言、方言、情绪、速度等指令；按所选模型/接口确认 | 肥鱼已基于CosyVoice3，但其当前公开接口未暴露完整情绪指令，不能直接补一个参数就声称生效。 |
 | [IndexTTS](https://github.com/index-tts/index-tts) | 情绪参考音频、情绪描述、8维情绪向量；当日主分支为2.5 | 音色与情绪可分别控制，适合做后续独立GPU服务；“害羞”需要适当参考或描述试听，不是8维向量中的独立一项。未接入或安装。 |
+| [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS) | 提供0.6B和1.7B；Base支持参考克隆，CustomVoice预置说话人可配表达指令，VoiceDesign用文字描述设计音色 | 不能把各型号能力混为一谈。可作为后续较小模型候选，但未验证安卓部署、耗时和内存；没有随本APK安装。 |
 | [Fish Speech](https://github.com/fishaudio/fish-speech) | 当日文档支持whisper/angry/laughing等行内表达标签 | 另有模型、服务接口与许可；并非肥鱼RVC声库。未接入或安装。 |
+
+0.1.42再次核对官方README：CosyVoice当前为Fun-CosyVoice3-0.5B-2512；IndexTTS为2.5；Fish Speech主推Fish Audio Drama 3，不再把S2-Pro当作最新。当前设备实测的是ZipVoice肥鱼参考克隆，不是完整肥鱼CosyVoice权重。更强的节奏与情绪表达需要换相应引擎并实际试听；短句规划、速度或提示词微调无法保证达到真人听感。电脑GPU为RTX4060 Laptop、8GB显存，只完成硬件查询，未跑这些候选，不能承诺具体显存或速度。
 
 来源：[肥鱼项目](https://github.com/Esmerubphire/astrbot_plugin_feiyu_voice)、[HTTP接口](https://github.com/Esmerubphire/astrbot_plugin_feiyu_voice/blob/main/server/README.md)、[模型包](https://huggingface.co/Esmerubphire/FeiyuVoice-CosyVoice3)、[原始素材署名与授权说明](https://github.com/Esmerubphire/astrbot_plugin_feiyu_voice/blob/main/COPYRIGHT.md)。上游没有为其本地原创源码赋予一揽子开源许可，本版不复制或分发该插件源码、模型或录音，仅按公开协议编写客户端。各引擎与模型仍适用各自条款。
