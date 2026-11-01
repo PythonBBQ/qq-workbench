@@ -12,3 +12,6 @@ assets/*.bin
 assets/*.gz
 assets/*.deb
 assets/zipvoice-models.zip
+
+assets/kokoro-models.zip
+*.qqpatch

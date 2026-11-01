@@ -12,7 +12,7 @@ import java.util.*;
 
 /** Public releases only. Provider/model credentials are never used for updates. */
 final class AppUpdates {
-    static final long MAX_APK_BYTES=1024L*1024*1024;
+    static final long MAX_APK_BYTES=1900L*1024*1024;
     static boolean validApkSize(long size){return size>0&&size<=MAX_APK_BYTES;}
     static final String DEFAULT_FEED="https://api.github.com/repos/PythonBBQ/qq-workbench/releases/latest";
     static String feed(Context c){return c.getSharedPreferences("settings",0).getString("updateFeed",DEFAULT_FEED);}
@@ -29,10 +29,19 @@ final class AppUpdates {
         String tag=release.optString("tag_name"),current=context.getPackageManager().getPackageInfo(context.getPackageName(),0).versionName;JSONArray assets=release.optJSONArray("assets");
         if(!tag.matches("[vV]?[0-9]{1,6}\\.[0-9]{1,6}\\.[0-9]{1,6}(?:[-.][A-Za-z0-9.-]+)?"))return new JSONObject().put("available",false).put("message","发行版未提供可识别的版本号");
         if(compare(tag,current)<=0)return new JSONObject().put("available",false).put("message","当前已是最新版本").put("version",tag);
-        JSONObject asset=null;if(assets!=null)for(int i=0;i<assets.length();i++){JSONObject a=assets.optJSONObject(i);if(a!=null&&a.optString("name").toLowerCase(Locale.ROOT).endsWith(".apk")){if(asset!=null)throw new IOException("发行版有多个安装包，请使用只发布本应用APK的更新源");asset=a;}}
-        if(asset==null)return new JSONObject().put("available",false).put("message","新发行版尚未提供安卓安装包");
+        JSONObject asset=null,patch=null;boolean hasPatches=false;String baseHash="";
+        if(assets!=null)for(int i=0;i<assets.length();i++){JSONObject a=assets.optJSONObject(i);if(a==null)continue;String name=a.optString("name");
+            if(name.endsWith(".qqpatch")){hasPatches=true;if(baseHash.isEmpty())baseHash=installedHash(context);if(name.equals("QQWorkbench-from-"+baseHash+".qqpatch")){if(patch!=null)throw new IOException("发行版补丁重复");patch=a;}}
+            if(name.toLowerCase(Locale.ROOT).endsWith(".apk")){if(asset!=null)throw new IOException("发行版有多个安装包，请使用只发布本应用APK的更新源");asset=a;}
+        }
+        if(patch!=null)asset=patch;
+        if(asset==null)return new JSONObject().put("available",false).put("message",hasPatches?"此版本暂无适配当前安装包的补丁，请查看发行页；不会自动下载完整包":"新发行版尚未提供安卓安装包").put("version",tag);
         assetUrl(asset.optString("browser_download_url"));long size=asset.optLong("size");if(!validApkSize(size))throw new IOException("更新包大小无效");
-        return new JSONObject().put("available",true).put("version",tag).put("url",asset.getString("browser_download_url")).put("bytes",size).put("digest",asset.optString("digest")).put("message","发现新版本 "+tag);
+        if(!asset.optString("digest").matches("sha256:[a-f0-9]{64}"))throw new IOException("发行版缺少更新包校验值");
+        return new JSONObject().put("available",true).put("version",tag).put("kind",patch!=null?"patch":"full").put("baseSha256",baseHash).put("url",asset.getString("browser_download_url")).put("bytes",size).put("digest",asset.optString("digest")).put("message","发现"+(patch!=null?"节流补丁 ":"新版本 ")+tag+(patch!=null?"；本机重建后安装，保留配置":""));
+    }
+    static String installedHash(Context c)throws Exception{
+        File apk=new File(c.getApplicationInfo().sourceDir);String key=apk.getPath()+":"+apk.length()+":"+apk.lastModified();android.content.SharedPreferences p=c.getSharedPreferences("update-hashes",0);String hash=p.getString(key,"");if(!hash.matches("[a-f0-9]{64}")){hash=ApkPatch.sha(apk);p.edit().clear().putString(key,hash).apply();}return hash;
     }
     static URL assetUrl(String value)throws Exception{URL u=NativeNetwork.publicUrl(value);String h=u.getHost();if(!(h.equals("github.com")||h.equals("objects.githubusercontent.com")||h.equals("release-assets.githubusercontent.com"))||u.getPort()!=-1)throw new IOException("更新包必须来自 GitHub 发行版");return u;}
     static File file(Context c){return new File(new File(c.getCacheDir(),"updates"),"latest.apk");}
@@ -46,6 +55,10 @@ final class AppUpdates {
             }finally{c.disconnect();}
         }if(!complete)throw new IOException("更新下载跳转过多");
             String digest=release.optString("digest");if(!digest.isEmpty()){StringBuilder actual=new StringBuilder();for(byte b:hash.digest())actual.append(String.format(Locale.ROOT,"%02x",b&255));if(!digest.equals("sha256:"+actual))throw new IOException("更新包哈希校验失败");}
+            if(release.optString("kind").equals("patch")){
+                File rebuilt=new File(target.getParentFile(),"reconstructed.part");
+                try{ApkPatch.apply(new File(context.getApplicationInfo().sourceDir),temporary,rebuilt,release.getString("version"));verify(context,rebuilt);if(target.exists()&&!target.delete())throw new IOException("无法替换旧更新包");if(!rebuilt.renameTo(target))throw new IOException("无法保存更新包");return target;}finally{rebuilt.delete();}
+            }
             verify(context,temporary);if(target.exists()&&!target.delete())throw new IOException("无法替换旧更新包");if(!temporary.renameTo(target))throw new IOException("无法保存更新包");return target;
         }finally{temporary.delete();}
     }

@@ -36,3 +36,14 @@
 0.1.42再次核对官方README：CosyVoice当前为Fun-CosyVoice3-0.5B-2512；IndexTTS为2.5；Fish Speech主推Fish Audio Drama 3，不再把S2-Pro当作最新。当前设备实测的是ZipVoice肥鱼参考克隆，不是完整肥鱼CosyVoice权重。更强的节奏与情绪表达需要换相应引擎并实际试听；短句规划、速度或提示词微调无法保证达到真人听感。电脑GPU为RTX4060 Laptop、8GB显存，只完成硬件查询，未跑这些候选，不能承诺具体显存或速度。
 
 来源：[肥鱼项目](https://github.com/Esmerubphire/astrbot_plugin_feiyu_voice)、[HTTP接口](https://github.com/Esmerubphire/astrbot_plugin_feiyu_voice/blob/main/server/README.md)、[模型包](https://huggingface.co/Esmerubphire/FeiyuVoice-CosyVoice3)、[原始素材署名与授权说明](https://github.com/Esmerubphire/astrbot_plugin_feiyu_voice/blob/main/COPYRIGHT.md)。上游没有为其本地原创源码赋予一揽子开源许可，本版不复制或分发该插件源码、模型或录音，仅按公开协议编写客户端。各引擎与模型仍适用各自条款。
+
+
+## 1.0.0 · 无参考录音的本机中文语音
+
+再次核对GitHub的HayaiTTS、sherpa-onnx及Qwen3-TTS安卓实验路线。选择现有Sherpa SDK直接集成Kokoro v1.1-zh INT8：不复制HayaiTTS的GPL实现；不把面向更强硬件的Qwen实验包当作所有手机能用的默认方案。
+
+模型来源：https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models ，资产kokoro-int8-multi-lang-v1_1.tar.bz2，SHA256为259c9c8bc906d6078e4e0570421885dabb68b539c2f970fcbb890a58eeaf3e9c。上游模型卡：https://huggingface.co/hexgrad/Kokoro-82M-v1.1-zh 。模型包Apache-2.0许可保留在APK；四种中文女声使用上游zf_001至zf_004（speaker ID 3至6），不是肥鱼音色。首次展开逐文件校验，在独立语音进程两个CPU线程运行，空闲卸载，不新增云端语音Token。
+
+一键入口启用“内置中文女声”；已有声音选择保留。自动选择语音仍用聊天模型同一次输出，不再单独发一次判断请求。较完整语句合成后拼接，所有分段成功才发送；无独立情绪权重，开心/温柔等主要通过口语和有限语速表达，不宣称真人感保证。主观听感由用户实际试听确认。
+
+小米平板2410CRP4CC实测：12字首次11.31秒，23字中英6.78秒，103字32.44秒生成30.10秒音频。独立离线SenseVoice转写检出长句最后“照顾好自己”，未发现此前中途消失的情况；这是三条测试结果，不是所有文本准确率保证。此次没有向QQ发送声音或消耗付费模型。

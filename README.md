@@ -2,9 +2,9 @@
 
 安卓本机运行的 QQ AI 助手。无需让电脑一直开机；适用 Android 11 及以上、ARM64 设备。首次启动会准备内置容器、Linux QQ 与图形环境，需要数 GB 可用空间；基础组件优先离线安装，QQ登录和模型聊天需要联网。不同厂商的后台限制仍需在系统设置放行。
 
-[下载最新 APK](https://github.com/PythonBBQ/qq-workbench/releases/latest) · [0.1.45 更新说明](docs/RELEASE-0.1.45.md) · [构建和发布](BUILDING.md)
+[下载1.0基础安装包](https://github.com/PythonBBQ/qq-workbench/releases/tag/v1.0.0) · [最新补丁/发行版](https://github.com/PythonBBQ/qq-workbench/releases/latest) · [1.0.0 更新说明](docs/RELEASE-1.0.0.md) · [构建和发布](BUILDING.md)
 
-当前版本 **0.1.45** 内置252个校验过的Ubuntu基础依赖，按依赖顺序离线初始化并复检，减少首次打开对软件下载的等待。API、角色、账号和上下文方案统一为卡片；视频新增每秒1/2/4帧选择，按密度分段并对齐音轨；模型每轮获知真实语音通道，避免已开启却否认能发语音。详见[更新说明](docs/RELEASE-0.1.45.md)。
+当前版本 **1.0.0** 内置无需参考录音和额外Key的Kokoro中文女声，一键启用；修复后台网络/休眠变化误断开QQ消息通道。视频可选每秒1/2/4帧；API、角色、账号和上下文方案采用卡片视图。1.0.0提供完整基础包，之后1.0.x普通更新发布差分补丁，1.1等大更新再发整包。详见[更新说明](docs/RELEASE-1.0.0.md)与[补丁机制](docs/PATCH-UPDATES.md)。
 
 保留 **0.1.44** 对旧加密配置故障的恢复：隔离无法解密的记录并提示重填，保留原密文与QQ数据。密钥确实丢失的旧记忆无法凭空恢复。手机此前安装包与GitHub下载包SHA256相同；已实测越过加密错误，九项环境检查通过，登录网页返回HTTP200。详见[0.1.44说明](docs/RELEASE-0.1.44.md)。
 
@@ -24,15 +24,15 @@
 
 设置→Token用量可查看今日、本次运行和保留累计、最近调用，以及模型/用途汇总；QQ中可说“查看Token用量”。只统计服务商返回的实际usage，未报告不当作零，费用以平台账单为准。酒馆新增自然接话、口语自然度及情绪表现力，不额外增加模型调用。
 
-语音可选择安卓系统 TTS、ZipVoice 本机参考音色、Azure Speech 中日韩女声（需单独服务密钥）、独立部署的肥鱼服务及 QQ 群内置音色。ZipVoice 可一键获取并导入肥鱼可爱/温柔参考，也可导入自己的录音；模型为上游 CC-BY-NC 非商业许可。自动动态及语音默认关闭，按需启用。表情只在主人明确要求时收藏，旧自动收藏开关不再生效。动态生成仅用公开主题，不读取私人聊天。详情和主人指令见更新说明。
+语音新增内置Kokoro中文女声，能力→语音点“一键使用内置中文女声”即可启用，无需录音或声音服务Key；已有语音选择保留。还可选择安卓系统 TTS、ZipVoice 本机参考音色、Azure Speech 中日韩女声（需单独服务密钥）、独立部署的肥鱼服务及 QQ 群内置音色。ZipVoice 可一键获取并导入肥鱼可爱/温柔参考，也可导入自己的录音；模型为上游 CC-BY-NC 非商业许可。自动动态及语音默认关闭，按需启用。表情只在主人明确要求时收藏，旧自动收藏开关不再生效。动态生成仅用公开主题，不读取私人聊天。详情和主人指令见更新说明。
 
 ## 在线更新
 
-0.1.40及以前受旧版更新器的600MiB上限影响，首次升级较新版本请从Release直接下载APK覆盖安装；账号与配置保留。新版已将检查与下载上限统一为1GiB，继续核验来源、大小、哈希与签名。
+0.1.40及以前受旧版更新器的600MiB上限影响，首次升级较新版本请从Release直接下载APK覆盖安装；账号与配置保留。1.0.0将检查与下载上限统一为1900MiB（低于GitHub单资产2GiB限制），继续核验来源、大小、哈希与签名。
 
 0.1.20 起，设置 → 软件更新会读取本仓库 GitHub Releases，检查并下载同包名、同签名的新 APK。账号及配置保留，系统安装按钮需要在设备确认。维护者需构建并发布下一版本，上传源码不会自动生成已签名的安装包。签名私钥不上传 GitHub。
 
-更新源填写 `https://api.github.com/repos/PythonBBQ/qq-workbench/releases/latest`；浏览器下载入口为 [最新发行版](https://github.com/PythonBBQ/qq-workbench/releases/latest)。当前版本号是 `0.1.45`，对应标签 `v0.1.45`。草稿不提供公开下载；维护工具现在先补传并校验 APK 与校验和，完成后才公开发布，中断可以重新运行。
+更新源填写 `https://api.github.com/repos/PythonBBQ/qq-workbench/releases/latest`；浏览器下载入口为 [最新发行版](https://github.com/PythonBBQ/qq-workbench/releases/latest)。当前版本号是 `1.0.0`，对应标签 `v1.0.0`。草稿不提供公开下载；维护工具现在先补传并校验 APK 与校验和，完成后才公开发布，中断可以重新运行。
 
 卸载后安装旧版仍提示“更高版本”时，见[安装记录检查与保留数据回退](docs/ANDROID-REINSTALL.md)。电脑工具可检查多用户/分身的包记录，并对指定官方同签名 APK 请求保留数据安装；不会自动卸载或清空数据。尚未在报告问题的手机上完成实测。
 
@@ -45,6 +45,7 @@
 - 安卓容器与离线运行时基础复用 [DSHA](https://github.com/DSH-APP/DSHA)，并非运行完整 DeepSeek Harness 代理框架。
 - QQ 桥接采用 [SnowLuma](https://github.com/SnowLuma/SnowLuma) 1.14.22，配合官方 Linux QQ；2.2.0 归档仅用于 Node 运行时。保留已验证组合。
 - 设备能力集成 [Shizuku-API](https://github.com/RikkaApps/Shizuku-API) 13.1.5。调研来源及选择见 [方案说明](docs/AI-TOOLS-RESEARCH.md)。
+- 本机中文语音使用[Kokoro v1.1-zh](https://huggingface.co/hexgrad/Kokoro-82M-v1.1-zh)与[sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx)，模型Apache-2.0；[HayaiTTS](https://github.com/HayaiApp/HayaiTTS)仅用于路线调研，未复制其GPL源码。
 - 角色卡兼容酒馆基础格式，支持关键词世界书；不捆绑完整 SillyTavern 服务器或执行角色卡脚本。
 - 功能研究参考 [QQ 空间插件](https://github.com/Zhalslar/astrbot_plugin_qzone)、[表情管理插件](https://github.com/anka-afk/astrbot_plugin_meme_manager)、[edge-tts](https://github.com/rany2/edge-tts)。本版未复制这些插件源码；微软语音使用 Azure 官方 REST 接口。另按公开HTTP协议独立接入肥鱼声音服务，未捆绑其插件源码、模型或GPU服务；情绪引擎比较和能力边界见[语音说明](docs/VOICE-ENGINES.md)。
 
@@ -52,7 +53,9 @@
 
 ## 验证范围
 
-本版通过207项Node回归、16项环境/安装策略检查和10项Android框架检查。OPPO实际FFmpeg解码验证每秒1/2/4帧及末尾覆盖；10分钟各密度的分批、声音对齐及单次请求预算另以合成数据验证，不调用付费模型。小米平板独立空白容器实测完成252包离线安装，9项环境通过、dpkg审计为空，未触发联网补齐；首次约11分钟。平板已覆盖安装本版并启动，9项检查通过、QQ登录网页HTTP200；锁屏下未验收界面观感及真实聊天。
+本版通过207项Node回归与10项Android框架检查。Python与Android差分重建测试通过，8种无效补丁拒绝并清理。完整APK在平板从旧包重建，与待发布整包SHA256一致，签名检查和保留配置覆盖安装通过。新Kokoro语音实测短句11.3秒、中英混读6.8秒、103字长句32.4秒；离线转写检测到长句完整末尾。QQ在线身份核验通过；没有发送QQ测试消息或调用付费模型。网络恢复异常场景以隔离模拟验证，长期后台与人工听感仍依设备实际使用确认。
+
+252组件离线初始化已在隔离空白容器完成，9项环境通过、dpkg审计为空、首次约11分钟。当前平板九项环境检查通过、QQ登录网页HTTP200；锁屏下未验收新版界面观感。
 
 此前0.1.44已在OPPO PHU110（Android15）保留配置覆盖安装，九项环境检查通过，QQ登录网页返回HTTP200；尚未在该机完成真实QQ登录、聊天收发和长期后台验收。当前USB已换为平板，后续设备结果分别记录。
 

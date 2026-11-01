@@ -20,7 +20,7 @@ from tools.shizuku_deps import sdk_jars
 shizuku_jars=sdk_jars(root)
 from tools.zipvoice_deps import sdk_jars as voice_jars
 shizuku_jars+=voice_jars(root)
-sources=list((root/'src').rglob('*.java'))+[root/'tests/NativeSettingsCheck.java',root/'tests/PhotoBackgroundCheck.java',root/'tests/CharacterCardCheck.java',root/'tests/VideoFramesCheck.java',root/'tests/PythonBootstrapCheck.java',root/'tests/NavigationUpdateCheck.java',root/'tests/InstalledUpdateCheck.java',root/'tests/UnixTextCheck.java',root/'tests/UsageAgreementCheck.java',root/'tests/VoiceAudioCheck.java',root/'tests/QqWindowProbeCheck.java',root/'tests/BundledPythonRepairCheck.java']
+sources=list((root/'src').rglob('*.java'))+[root/'tests/NativeSettingsCheck.java',root/'tests/PhotoBackgroundCheck.java',root/'tests/CharacterCardCheck.java',root/'tests/VideoFramesCheck.java',root/'tests/PythonBootstrapCheck.java',root/'tests/NavigationUpdateCheck.java',root/'tests/InstalledUpdateCheck.java',root/'tests/UnixTextCheck.java',root/'tests/UsageAgreementCheck.java',root/'tests/VoiceAudioCheck.java',root/'tests/QqWindowProbeCheck.java',root/'tests/BundledPythonRepairCheck.java',root/'tests/ApkPatchCheck.java']
 if '--relay-profiles' in sys.argv:sources.append(root/'tests/RelayProfilesCheck.java')
 if '--device-tools' in sys.argv:sources.append(root/'tests/DeviceRuntimeCheck.java')
 print(run(java/'javac.exe','-encoding','UTF-8','-source','8','-target','8','-Xlint:-options','-bootclasspath',str(bt/'core-lambda-stubs.jar')+';'+str(sdk),'-classpath',';'.join(map(str,shizuku_jars)),'-d',classes,*sources).stderr)

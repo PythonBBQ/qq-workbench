@@ -10,6 +10,7 @@ parser.add_argument('--gh',default=shutil.which('gh') or str(root.parent/'resear
 parser.add_argument('--upload-attempts',type=int,default=3)
 parser.add_argument('--upload-timeout',type=int,default=3600)
 parser.add_argument('--direct-upload',action='store_true',help='直连 uploads.github.com，不改变系统代理')
+parser.add_argument('--patch-base',type=Path,action='append',default=[],help='额外保留的同系列已签名基础APK；普通1.0.x自动生成补丁，不上传整包')
 args=parser.parse_args()
 if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+',args.repo):parser.error('Invalid repository')
 if not 1<=args.upload_attempts<=5 or not 60<=args.upload_timeout<=7200:parser.error('Invalid upload limits')
@@ -25,7 +26,29 @@ assert actual==receipt['output']['sha256'],'APK changed since build verification
 release=root/('build/release-upload-'+tag[1:]);release.mkdir(exist_ok=True)
 target=release/'QQWorkbench-Android.apk'
 if not target.exists() or sha(target)!=actual:shutil.copyfile(apk,target)
-sums=release/'SHA256SUMS.txt';sums.write_text(actual+'  '+target.name+'\n',encoding='ascii')
+numbers=tuple(int(n) for n in tag[1:].split('.'))
+patch_only=numbers[0]>=1 and numbers[2]>0
+uploads=[target]
+if patch_only:
+    from apk_patch import build,apply
+    bases=list(args.patch_base)
+    for candidate in (root/'build').glob('release-upload-*/QQWorkbench-Android.apk'):
+        match=re.fullmatch(r'release-upload-(\d+)\.(\d+)\.(\d+)',candidate.parent.name)
+        if match:
+            base_version=tuple(map(int,match.groups()))
+            if base_version[:2]==numbers[:2] and base_version<numbers:bases.append(candidate)
+    unique={sha(p):p for p in bases if p.resolve()!=target.resolve()}
+    if not unique:raise RuntimeError('No preserved signed base APK; patch release refused')
+    uploads=[]
+    for base_hash,base in unique.items():
+        patch=release/('QQWorkbench-from-'+base_hash+'.qqpatch')
+        report=build(base,target,patch,tag)
+        reconstructed=release/'reconstruction-check.apk'
+        try:apply(base,patch,reconstructed);assert sha(reconstructed)==actual
+        finally:reconstructed.unlink(missing_ok=True)
+        print(json.dumps(report),flush=True);uploads.append(patch)
+sums=release/'SHA256SUMS.txt';sums.write_text(''.join(sha(p)+'  '+p.name+'\n' for p in uploads),encoding='ascii')
+uploads.append(sums)
 env=dict(os.environ)
 env.setdefault('GH_CONFIG_DIR',str(root/'build/github-auth'))
 env.setdefault('GODEBUG','http2client=0')
@@ -49,7 +72,7 @@ def find_release():
         page+=1
 def verify(info):
     assets={asset['name']:asset for asset in info['assets']}
-    for path in (target,sums):
+    for path in uploads:
         asset=assets.get(path.name,{})
         if asset.get('state')!='uploaded' or asset.get('size')!=path.stat().st_size or asset.get('digest')!='sha256:'+sha(path):
             raise RuntimeError('Remote asset incomplete: '+path.name)
@@ -65,7 +88,7 @@ try:
         if info is None or not info['draft'] or info['target_commitish']!=head:raise RuntimeError('Draft target does not match main; left unpublished')
         upload_url=info['upload_url'].split('{')[0]
         if not re.fullmatch(r'https://uploads\.github\.com/repos/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/releases/[0-9]+/assets',upload_url):raise RuntimeError('Invalid upload URL')
-        for path in (target,sums):
+        for path in uploads:
             for attempt in range(1,args.upload_attempts+1):
                 info=find_release()
                 if info is None or not info['draft']:raise RuntimeError('Draft state changed')
@@ -93,7 +116,7 @@ try:
         latest=api('releases/latest')
         if latest['tag_name']!=tag or latest['draft']:raise RuntimeError('Public latest release not confirmed')
         verify(latest)
-        phase('published',commit=head,url=latest['html_url'],download=next(a['browser_download_url'] for a in latest['assets'] if a['name']==target.name))
+        phase('published',commit=head,url=latest['html_url'],kind='patch' if patch_only else 'full',download=next(a['browser_download_url'] for a in latest['assets'] if a['name']==uploads[0].name))
 except Exception:
     phase('failed_not_confirmed_published',message='Draft retained; rerun to resume. Do not publish missing assets manually.')
     raise

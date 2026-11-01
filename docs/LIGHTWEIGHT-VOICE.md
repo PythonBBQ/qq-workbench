@@ -1,5 +1,7 @@
 # 低配本地中文语音选型
 
+1.0.0更新：已加入Kokoro v1.1-zh INT8固定中文女声，作为无需参考录音的推荐入口；下文保留ZipVoice早期测试记录，不能当作当前默认方案。当前选型与实测见[语音引擎](VOICE-ENGINES.md)和[1.0.0说明](RELEASE-1.0.0.md)。
+
 核对日期：2026-10-31。0.1.41 已集成 ZipVoice-Distill INT8 + sherpa-onnx 2.0.1 Android 原生推理，并在小米 2410CRP4CC / Android 15 真机完成中文与中英混读合成。其他候选仍是调研结果，不代表已安装。
 
 ## 0.1.41 使用与实测
@@ -24,7 +26,7 @@ ZipVoice 源码为 Apache-2.0；当前 Emilia 预训练模型的上游模型卡�
 
 ## 结论
 
-本版采用 **ZipVoice-Distill INT8 + sherpa-onnx Android 原生推理**。它同时满足中文、CPU 推理、短参考音频克隆和较小模型下载量。固定中文女声的备用研究路线为 **Kokoro INT8**，尚未集成。
+本版采用 **ZipVoice-Distill INT8 + sherpa-onnx Android 原生推理**。它同时满足中文、CPU 推理、短参考音频克隆和较小模型下载量。1.0.0已实现固定中文女声路线 **Kokoro v1.1-zh INT8**，ZipVoice继续提供参考克隆。
 
 音色信息可以在兼容引擎中预处理、复用；参考片段和对应文字也可保存在本机。但音色特征不是通用格式：肥鱼的 CosyVoice 权重、RVC checkpoint、Kokoro voice embedding 和 ZipVoice 参考条件不能任意互换。提取一份音色信息不等于可以删除负责发声的模型。
 

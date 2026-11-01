@@ -53,10 +53,10 @@ Windows类路径分隔符改为分号。实际设备动作仍需安装APK、启�
 3. 提交源码；使用已授权的 GitHub CLI 上传新 Releases。软件更新源默认 PythonBBQ/qq-workbench，仅识别最新正式 Release 中唯一的 APK。
 
 ```sh
-python tools/publish-release.py --notes docs/RELEASE-0.1.44.md --gh /path/to/gh --direct-upload
+python tools/publish-release.py --notes docs/RELEASE-1.0.0.md --gh /path/to/gh --direct-upload
 ```
 
-发布脚本从本地 build/build-receipt.json 读取已校验安装包，上传 APK 和 SHA256SUMS.txt，不上传整个 build 目录。不会代替用户确认安卓系统安装。
+发布脚本从本地 build/build-receipt.json 读取已校验安装包，基础版上传 APK 和 SHA256SUMS.txt，1.0.x普通更新改为上传对应所有保留基础APK的差分补丁和SHA256SUMS.txt；不会上传完整APK。详见[补丁发布](docs/PATCH-UPDATES.md)。，不上传整个 build 目录。不会代替用户确认安卓系统安装。
 
 先创建草稿，按文件检查大小和 GitHub 返回的 SHA256；已完整上传的文件跳过，只重新上传缺失或未完成的同名草稿资产。全部核对后才发布并设为最新版本。上传失败保持草稿，重新执行相同命令即可续处理；这是按文件重试，不是单个大文件断点续传。已公开版本仅检查，不替换资产。源码在上传期间变化时停止发布。默认最多重试3次、每次上传时限1小时，可用 `--upload-attempts` / `--upload-timeout` 调整。
 
@@ -66,7 +66,7 @@ Android“已安装更高版本”的只读诊断和保留数据回退工具见 
 
 ## 视频验证
 
-视频最多32MB、10分钟，每秒1帧，256×144画面按4×2拼成1024×288 JPEG。每段最多15张低清拼图，完整长视频顺序分析后汇总。预算估算不保证任意中转站的实际图像Token账单；用量页保存服务商实际返回的值。没有音轨与完整字幕转录。
+视频最多32MB、10分钟，每秒1/2/4帧可选，默认1帧，256×144画面按4×2拼成1024×288 JPEG。每段最多15张低清拼图，完整长视频顺序分析后汇总。预算估算不保证任意中转站的实际图像Token账单；用量页保存服务商实际返回的值。音轨优先使用现有字幕或离线识别，按视频段对齐；没有转写结果时不得编造对白。高帧率提高总Token与请求数。
 
 `python tests/run-device-video-budget.py` 可在连接的测试设备容器中生成并解码2/10分钟合成片段，验证帧时间、尺寸、分段预算与临时文件清理；需本机FFmpeg路径适配，默认脚本使用工作站工具目录。不发送QQ消息或调用付费模型。默认安卓框架测试不含shell媒体解码，厂商系统可能将无真实应用上下文的媒体进程终止。
 
@@ -91,3 +91,10 @@ B站视频路径通过固定官方API选择最低码率视频轨，安卓受限�
 运行时先校验全部内置DEB，先配置Python的固定前置依赖链，再由dpkg展开和配置其余组件，保留包管理数据库及现有配置，不自动降级、不联网取包；检查实际Python、桌面、QQ库等后才继续启动。APK保留Ubuntu包内许可证及版权文件，包清单和上游地址另见assets/licenses/UBUNTU-PACKAGES.json；各包源代码与原许可可从Ubuntu对应版本源包获取，不能把本项目许可当作第三方包的重新授权。可选FFmpeg仍从系统软件源按需准备。
 
 构建检查APK不得超过正式更新器的1GiB上限；当前约915MB。测试使用独立空白目录，绝不清空现有用户容器。
+
+
+## 1.0.0内置语音与补丁回归
+
+构建时tools/kokoro_deps.py下载固定SHA256的Kokoro v1.1-zh INT8模型，打入APK并保存逐文件清单及Apache-2.0许可。首次实际合成自动展开校验，无需系统TTS参考；CPU推理两个线程，闲置释放。ZipVoice克隆保留，许可独立。
+
+运行python tests/apk-patch-test.py验证差分重建及损坏拒绝。Android的ApkPatchCheck使用同一批fixture验证Java重建实现；完整签名APK的真实重建还须核对输出SHA256并通过AppUpdates.verify，不以fixture测试冒充安装验收。

@@ -1,0 +1,28 @@
+# 1.0 起的更新方式
+
+1.0.0 是完整基础版。后续 1.0.x 默认只上传 `.qqpatch` 差分补丁；用户明确要求 1.1 等大更新时，再发布完整 APK。补丁仍通过安卓系统安装器确认，不热替换代码，不改安卓签名检查。
+
+应用按已安装 APK 的 SHA256 选择补丁，下载后核验 GitHub 资产摘要；在私有缓存重建完整 APK，再核验目标哈希、包名、递增版本号及原签名。空间不足、基础包不匹配、数据损坏或签名不同会停止，不卸载或清空配置。补丁下载节流，但安装时仍需要完整 APK 的临时空间。界面显示实际下载大小。
+
+没有匹配当前安装包的补丁时会明确提示，不静默下载整包。必须先安装包含此更新器的1.0.0，旧版不能直接使用补丁。基础整包保留，供新用户下载安装。
+
+## 维护发布
+
+保留本地 `build/release-upload-1.0.*/QQWorkbench-Android.apk`，它们是已发布的原始签名包，不能重新签名代替。每次发布生成从所有保留版本到最新版的独立补丁，让用户可跳过中间更新；不要仅保留最近一次本地构建。大文件缓存、签名私钥和用户数据不提交源码仓库。
+
+```sh
+python tools/publish-release.py --notes docs/RELEASE-1.0.1.md --direct-upload
+```
+
+1.0.x 自动查找同系列本地历史签名包，生成补丁并完整重建复核后才上传。可重复指定 `--patch-base /path/to/original.apk` 补充不在默认缓存中的已发布基础包。没有基础包则拒绝发布。每个补丁资产命名为 `QQWorkbench-from-基础APK的64位SHA256.qqpatch`，目标版本写入补丁清单并与Release标签一致。
+
+```sh
+python tools/apk_patch.py base.apk target.apk QQWorkbench-from-基础哈希.qqpatch --version v1.0.1
+python tests/apk-patch-test.py
+python tools/retain-releases.py
+python tools/retain-releases.py --apply
+```
+
+补丁以未变的 ZIP 压缩数据为复制单元，更新本体较小时复用模型和容器资源。新增或更换模型仍可能产生较大的补丁，不能保证固定节省比例。1.0.0开发验证中，915MB旧包到1061MB新包补丁约148MB；Android重建包的SHA256与完整签名包一致，实际安装及原签名验证通过。这是测试结果，不是给旧更新器发布的升级补丁。
+
+发行页清理保留当前基础整包与最新补丁；发布大版本整包时保留两个最新公开发行版。源码提交和标签历史不随发行资产删除。未完成草稿不算可用版本。

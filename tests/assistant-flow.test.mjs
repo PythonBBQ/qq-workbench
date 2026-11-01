@@ -14,7 +14,7 @@ test('first-run Key applies without restart; pictures and follow-ups use context
 import {SnowLumaBridge} from './snowluma-bridge.mjs';
 import dns from 'node:dns/promises';dns.lookup=async()=>[{address:'93.184.216.34'}];
 SnowLumaBridge.prototype.start=function(){};SnowLumaBridge.prototype.stop=async function(){};
-SnowLumaBridge.prototype.state=async function(){return {status:{isLogin:true},info:{uin:'765432'}}};
+SnowLumaBridge.prototype.state=async function(){if(globalThis.bridgeFailure)throw new Error('synthetic console unavailable');return {status:{isLogin:true},info:{uin:'765432'}}};
 SnowLumaBridge.prototype.remember=async function(){};
 let socket;let syntheticFaces=[];
 globalThis.WebSocket=class extends EventTarget{
@@ -30,7 +30,7 @@ globalThis.WebSocket=class extends EventTarget{
     setTimeout(()=>this.receive({echo:d.echo,status:'ok',retcode:0,data}),delay);}
   close(){this.readyState=3;}
 };
-process.on('message',m=>{if(m.socketClose&&socket){socket.readyState=3;socket.dispatchEvent(new Event('close'));}if(m.control)globalThis.sendControl=m.control;if(m.faces)syntheticFaces=m.faces;if(m.event)socket?.receive(m.event);});
+process.on('message',m=>{if(m.bridgeFailure!==undefined)globalThis.bridgeFailure=m.bridgeFailure;if(m.socketClose&&socket){socket.readyState=3;socket.dispatchEvent(new Event('close'));}if(m.control)globalThis.sendControl=m.control;if(m.faces)syntheticFaces=m.faces;if(m.event)socket?.receive(m.event);});
 globalThis.fetch=async(url,options)=>{
   const u=new URL(url);
   if(u.origin==='https://api.deepseek.com'||u.origin==='https://relay.example'){
@@ -348,6 +348,17 @@ globalThis.fetch=async(url,options)=>{
     n=sent.length;beforeVideo=models.length;sendCommand(347,'#来源');await until(()=>sent.length===n+1);assert.equal(models.length,beforeVideo);assert.match(sent.at(-1).message[0].data.text,/UP主：愚鸟渡渡/);assert.match(sent.at(-1).message[0].data.text,/BV1ycx76dEjW/);
     n=sent.length;child.send({event:groupMessage(348,123456,'＃来源')});await until(()=>sent.length===n+1);assert.match(sent.at(-1).message[0].data.text,/mp.weixin.qq.com/);assert.ok(!sent.at(-1).message[0].data.text.includes('BV1ycx76dEjW'),'group sources cannot reveal private video records');assert.equal(models.length,beforeVideo);
     n=sent.length;beforeVideo=models.length;child.send({event:{...event,message_id:344,message:[{type:'text',data:{text:'看完视频'}},{type:'video',data:{url:'https://gchat.qpic.cn/full-video.mp4'}}]}});await until(()=>sent.length===n+1);assert.equal(models.length,beforeVideo+6,'an attached QQ video wins over a historical Bili reference');assert.match(JSON.stringify(models.at(-1).model.messages.at(-1)),/600/);
+    // Network hints must preserve a healthy channel and an answer already in flight.
+    n=sent.length;beforeVideo=models.length;child.send({bridgeFailure:true});
+    sendCommand(3490,'等待切换，恢复网络时也要回答');await until(()=>models.length===beforeVideo+1);
+    for(let i=0;i<4;i++)await api('/runtime/resume',{reason:'network'});
+    await until(()=>sent.length===n+1);assert.equal((await(await api('/state')).json()).connected,true);
+    n=sent.length;sendCommand(3491,'网络恢复后继续聊天');await until(()=>sent.length===n+1);
+    assert.ok(models.at(-1).model.messages.length>2,'network hints preserve conversation');
+    child.send({socketClose:true});await new Promise(r=>setTimeout(r,16000));
+    await until(async()=>(await(await api('/state')).json()).connected);
+    n=sent.length;sendCommand(3492,'控制台不可用但QQ重连后继续');await until(()=>sent.length===n+1);
+    child.send({bridgeFailure:false});
     // Android owner -> persistent job -> computer claim -> final text -> original QQ target.
     await update({learningEnabled:false,memoryEnabled:true,emojiEnabled:false});
     n=sent.length;beforeVideo=models.length;sendCommand(350,'@codex做个隔离测试');await until(()=>sent.length===n+1);assert.match(sent.at(-1).message[0].data.text,/未连接/);assert.equal(models.length,beforeVideo);

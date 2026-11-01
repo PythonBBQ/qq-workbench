@@ -11,12 +11,12 @@ export function validateInstance(p){
   if(typeof p.model!=='string'||!p.model.trim()||p.model.length>200||!['chat','responses'].includes(p.apiProtocol||'chat'))throw new Error('模型配置不完整');
   if(!['auto','chat','separate'].includes(p.visionMode||'auto'))throw new Error('视觉模式无效');
   if(p.visionMode==='separate'){const v=new URL(p.visionUrl);if(v.protocol!=='https:'||v.username||v.password||v.search||v.hash||!p.visionModel||!p.visionKey?.trim())throw new Error('单独视觉服务需HTTPS地址、模型和自己的Key');}
-  if(!['android','azure','qq','feiyu','zipvoice'].includes(p.speechProvider||'android')||!['smart','request','always'].includes(p.voiceMode||'smart'))throw new Error('语音配置无效');
+  if(!['android','azure','qq','feiyu','zipvoice','kokoro'].includes(p.speechProvider||'android')||!['smart','request','always'].includes(p.voiceMode||'smart'))throw new Error('语音配置无效');
   if((p.visionKey||'').length>4096||(p.speechKey||'').length>4096||(p.feiyuKey||'').length>4096)throw new Error('密钥过长');
   if(p.speechProvider==='feiyu'){feiyuBase(p.feiyuUrl);if(!p.feiyuKey?.trim())throw new Error('请为此账号配置肥鱼服务自己的Key');}
   return {...p,slot:layout.slot,bot:String(p.bot),owner:String(p.owner),name:String(p.name||'账号'+p.slot).slice(0,60)};
 }
-const settingKeys=['owner','apiUrl','model','apiProtocol','visionMode','visionUrl','visionModel','voiceEnabled','voiceAlways','voiceMode','voicePreference','voiceCooldown','voiceNatural','voiceMemoryEnabled','voiceEmotion','zipVoiceSteps','zipVoiceAdaptive','feiyuUrl','feiyuVoice','feiyuStyle','androidVoice','speechLanguage','speechProvider','speechVoice','speechRegion','speechRate','speechPitch','qqVoiceId','qqVoiceGroup','others','rate','persona','characterName','contextTurns','maxReplyTokens'];
+const settingKeys=['owner','apiUrl','model','apiProtocol','visionMode','visionUrl','visionModel','voiceEnabled','voiceAlways','voiceMode','voicePreference','voiceCooldown','voiceNatural','voiceMemoryEnabled','voiceEmotion','zipVoiceSteps','zipVoiceAdaptive','feiyuUrl','feiyuVoice','feiyuStyle','androidVoice','speechLanguage','speechProvider','kokoroSpeaker','speechVoice','speechRegion','speechRate','speechPitch','qqVoiceId','qqVoiceGroup','others','rate','persona','characterName','contextTurns','maxReplyTokens'];
 export class AccountInstances{
   constructor({root,source,token,nativeToken,profiles=[],spawnChild=spawn,fetcher=fetch,environment=process.env,primaryBot=()=>''}={}){
     this.primaryBot=primaryBot;this.root=root;this.source=source;this.token=token;this.nativeToken=nativeToken||token;this.profiles=new Map();this.children=new Map();this.tokens=new Map();this.problems=new Map();this.spawnChild=spawnChild;this.fetcher=fetcher;this.environment=environment;

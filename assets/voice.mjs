@@ -21,7 +21,7 @@ export function speechRequest(c,text,key,emotion='neutral'){
 }
 export function voiceCapability(c,event={},delivery=null){
   if(!c.voiceEnabled)return '\n[语音能力]当前语音回复未开启；可在能力→语音开启。本条使用文字。';
-  const engine=({android:'系统TTS',zipvoice:'本机参考音色',feiyu:'肥鱼服务',azure:'Azure语音',qq:'QQ群音色'})[c.speechProvider||'android']||'所选引擎';
+  const engine=({kokoro:'本机中文女声',android:'系统TTS',zipvoice:'本机参考音色',feiyu:'肥鱼服务',azure:'Azure语音',qq:'QQ群音色'})[c.speechProvider||'android']||'所选引擎';
   if(c.speechProvider==='qq'&&event.message_type!=='group')return '\n[语音能力]所选QQ群音色仅支持群聊，本私聊暂用文字；切换为系统或本机音色可发私聊语音。';
   return '\n[语音能力]已开启，由工作台用'+engine+'合成并发送QQ语音；你生成正文即可，不要因自己是文字模型就否认语音通道。本条用文字不等于没有语音能力。此状态优先于旧聊天及记忆的能力判断；仅发送回执成功后可称已发送。'+
     (delivery?.status==='accepted'?'本会话最近一条语音已被QQ接口受理，不代表对方已听到。':delivery?.status==='fallback'?'本会话上次合成失败、已改发文字；不能当成永久无语音能力。':delivery?.status==='uncertain'?'上次语音发送未确认，不能声称送达，不自动重发。':'');
@@ -94,17 +94,18 @@ export function splitSpeechFallback(input){
 }
 export async function synthesize(c,text,{key='',feiyuKey='',emotion='neutral',event={},rpc,fetcher=fetch,directory,stillCurrent=()=>true,native,convert=execute}={}){
   const plan=speechPlan(text,c,emotion),value=plan.text;emotion=plan.emotion;if(!value||value.length>1200)throw new Error('语音限1200字，长回复继续使用文字');
-  if(c.speechProvider==='android'||c.speechProvider==='feiyu'||c.speechProvider==='zipvoice'){
+  if(c.speechProvider==='kokoro'||c.speechProvider==='android'||c.speechProvider==='feiyu'||c.speechProvider==='zipvoice'){
     let bytes,info=null;
     if(c.speechProvider==='feiyu')bytes=(await feiyuSpeech(c,value,{key:feiyuKey,emotion,fetcher,stillCurrent})).bytes;
     else{
       if(!native)throw new Error('系统语音接口尚未就绪');
       const adjustments=c.speechProvider==='zipvoice'||c.voiceEmotion===false?[0,0]:({happy:[6,3],gentle:[-7,-2],shy:[-9,1],sad:[-10,-3],serious:[-4,-2]})[emotion]||[0,0];
       const requestedSteps=c.zipVoiceSteps===8?8:4,steps=c.speechProvider==='zipvoice'&&c.zipVoiceAdaptive!==false&&value.length>60?4:requestedSteps;
-      const result=await native('synthesize',{provider:c.speechProvider,text:value,phrasing:plan.phrasing,voice:c.androidVoice||'',language:c.speechLanguage||'zh-CN',emotion:c.voiceEmotion===false?'neutral':emotion,steps,requestedSteps,rate:clamp(Number(c.speechRate||0)+adjustments[0],-40,60,0),pitch:clamp(Number(c.speechPitch||0)+adjustments[1],-30,30,0)});
+      const result=await native('synthesize',{provider:c.speechProvider,speaker:c.kokoroSpeaker||3,text:value,phrasing:plan.phrasing,voice:c.androidVoice||'',language:c.speechLanguage||'zh-CN',emotion:c.voiceEmotion===false?'neutral':emotion,steps,requestedSteps,rate:clamp(Number(c.speechRate||0)+adjustments[0],-40,60,0),pitch:clamp(Number(c.speechPitch||0)+adjustments[1],-30,30,0)});
       bytes=Buffer.from(result.audio||'','base64');
+      if(c.speechProvider==='kokoro')info={provider:'kokoro',speaker:result.speaker||3,elapsedMs:result.elapsedMs||0};
       if(c.speechProvider==='zipvoice')info={provider:'zipvoice',referenceMood:result.referenceMood||'neutral',referenceSource:result.referenceSource||'unknown',elapsedMs:result.elapsedMs||0};
-      if(c.speechProvider==='zipvoice'&&result.segments!==undefined){
+      if(['zipvoice','kokoro'].includes(c.speechProvider)&&result.segments!==undefined){
         if(!Number.isInteger(result.segments)||result.segments<1||result.segments!==result.completedSegments)throw new Error('语音分段未全部完成，本次使用文字');
         info={...info,segments:result.segments,completedSegments:result.completedSegments,durationMs:result.durationMs||0,characters:result.characters||0,phraseTarget:result.phraseTarget||0,phraseLengths:Array.isArray(result.phraseLengths)?result.phraseLengths:[]};
       }

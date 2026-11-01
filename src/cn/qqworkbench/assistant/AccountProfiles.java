@@ -16,7 +16,7 @@ final class AccountProfiles {
         if(!bot.matches("[1-9][0-9]{4,11}")||!owner.matches("[1-9][0-9]{4,11}")||bot.equals(owner))throw new IOException("请分别填写机器人QQ和大号QQ");
         JSONObject api=ApiProfiles.validated(p);for(java.util.Iterator<String> it=api.keys();it.hasNext();){String k=it.next();p.put(k,api.get(k));}
         if(p.optString("speechKey").length()>4096||p.optString("feiyuKey").length()>4096)throw new IOException("语音密钥过长");
-        if(!java.util.Arrays.asList("android","azure","qq","feiyu","zipvoice").contains(p.optString("speechProvider","android")))throw new IOException("语音服务无效");
+        if(!java.util.Arrays.asList("android","azure","qq","feiyu","zipvoice","kokoro").contains(p.optString("speechProvider","android")))throw new IOException("语音服务无效");
         if(!java.util.Arrays.asList("smart","request","always").contains(p.optString("voiceMode","smart")))throw new IOException("语音策略无效");
         if(p.optString("speechProvider").equals("feiyu")){voiceAddress(p.optString("feiyuUrl"));if(p.optString("feiyuKey").trim().isEmpty())throw new IOException("请填写肥鱼服务自己的Key");}
         return p;

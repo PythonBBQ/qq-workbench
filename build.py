@@ -77,6 +77,8 @@ assert sha(ROOT/local_native['source'])==local_native['sourceSha256'], 'Rebuild 
 assert sha(ASSETS/'snow-preload-loader.bin')==local_native['binarySha256']
 from tools.zipvoice_deps import sdk_jars as voice_jars, bundle as voice_bundle
 voice_bundle(ROOT)
+from tools.kokoro_deps import bundle as kokoro_bundle
+kokoro_bundle(ROOT)
 python_files=set()
 for name in ['glibc-python.bin','python-support.bin']:
     with tarfile.open(ASSETS/name) as archive:
@@ -119,7 +121,7 @@ if not keystore.exists():
 run(JAVA/'java.exe','-jar',TOOLS/'lib/apksigner.jar','sign','--ks',keystore,'--ks-key-alias','qqworkbench','--ks-pass','file:'+str(password),'--out',OUT,aligned)
 run(JAVA/'java.exe','-jar',TOOLS/'lib/apksigner.jar','verify','--print-certs',OUT)
 run(TOOLS/'zipalign.exe','-c','-p','4',OUT)
-assert OUT.stat().st_size<=1024**3, 'APK exceeds the production updater 1GiB limit'
+assert OUT.stat().st_size<=1900*1024**2, 'APK exceeds the updater limit (below GitHub 2GiB per asset)'
 with zipfile.ZipFile(OUT) as z:
     for p in sorted(ASSETS.rglob('*')):
         if p.is_file():

@@ -31,7 +31,7 @@ import { fileURLToPath } from 'node:url';
 const sourceDirectory=path.dirname(fileURLToPath(import.meta.url));
 const instanceSlot=Number(process.env.QQWB_INSTANCE_SLOT||0),layout=instanceSlot?instanceLayout(instanceSlot,sourceDirectory):null;
 const here=layout?.directory||sourceDirectory;const localPort=layout?.port||13480;
-const defaults = { owner: '', enabled: false, others: false, rate: 35, apiUrl: 'https://api.deepseek.com', model: 'deepseek-flash', visionMode: 'auto', contextTurns:4, maxReplyTokens:600, visionDetail:'low', visionUrl: '', visionModel: '' };
+const defaults = { speechProvider:'kokoro',kokoroSpeaker:3,owner: '', enabled: false, others: false, rate: 35, apiUrl: 'https://api.deepseek.com', model: 'deepseek-flash', visionMode: 'auto', contextTurns:4, maxReplyTokens:600, visionDetail:'low', visionUrl: '', visionModel: '' };
 export function completionUrl(base) {
   return modelEndpoint(base);
 }
@@ -105,8 +105,8 @@ async function main() {
   let apiKey = process.env.DEEPSEEK_API_KEY || '', visionKey = process.env.VISION_API_KEY || '', speechKey=process.env.SPEECH_API_KEY||'',feiyuKey=process.env.FEIYU_API_KEY||'';
   delete process.env.DEEPSEEK_API_KEY;delete process.env.VISION_API_KEY;delete process.env.SPEECH_API_KEY;delete process.env.FEIYU_API_KEY;
   let ws=null,connected=false,identity=null,connectionMessage='正在启动兼容 QQ 接入',busy=false,queue=[],summary='本机助手等待新消息';
-  let shuttingDown=false,monitor=null,healthAt=0,connectionEpoch=0,queuedSelection=null,lastMonitor=Date.now(),lastResume=0;
-  const bridge=new SnowLumaBridge({work:path.join(here,'snowluma'),slot:instanceSlot,onExit:()=>disconnect('QQ 接入进程已停止')});
+  let shuttingDown=false,monitor=null,healthAt=0,connectionEpoch=0,queuedSelection=null,lastMonitor=Date.now(),lastResume=0,reconnects=0,controlFlight=null;
+  const bridge=new SnowLumaBridge({work:path.join(here,'snowluma'),slot:instanceSlot,onExit:()=>{healthAt=0;void connect();}});
   const requestInspector=new RequestInspector({secrets:()=>[apiKey,visionKey,speechKey,feiyuKey,token,nativeToken,...Object.values(siteCookies||{})]});
   const usage={input:0,output:0,cached:0},usageLedger=new UsageLedger(here);
   const queuedCodexResults=new Set();
@@ -134,14 +134,14 @@ async function main() {
   function config() {
     let saved={};try{saved=JSON.parse(fs.readFileSync(path.join(here,'settings.json'),'utf8'));}catch{}
     if(saved.visionMode==null&&saved.visionUrl&&saved.visionModel)saved.visionMode='separate';
-    const next={...defaults,...saved},owner=JSON.stringify([String(next.owner),next.characterName||'',next.persona||'',next.worldBook||'',next.voiceEnabled,next.voiceAlways,next.voiceMode,next.voicePreference,next.voiceCooldown,next.voiceNatural,next.voiceMemoryEnabled,next.voiceEmotion,next.zipVoiceSteps,next.zipVoiceAdaptive,next.feiyuStyle,next.feiyuUrl,next.androidVoice,next.speechProvider,next.speechVoice,next.speechRate,next.speechPitch,next.emojiEnabled,next.emojiAutoLabel,next.autoCollectEmoji,next.speechRegion,next.qqVoiceId]);
+    const next={...defaults,...saved},owner=JSON.stringify([String(next.owner),next.characterName||'',next.persona||'',next.worldBook||'',next.voiceEnabled,next.voiceAlways,next.voiceMode,next.voicePreference,next.voiceCooldown,next.voiceNatural,next.voiceMemoryEnabled,next.voiceEmotion,next.zipVoiceSteps,next.zipVoiceAdaptive,next.feiyuStyle,next.feiyuUrl,next.androidVoice,next.speechProvider,next.kokoroSpeaker,next.speechVoice,next.speechRate,next.speechPitch,next.emojiEnabled,next.emojiAutoLabel,next.autoCollectEmoji,next.speechRegion,next.qqVoiceId]);
     if(ownerSnapshot!==null&&ownerSnapshot!==owner){ownerStickers.clear();connectionEpoch++;contexts.clear();videoContexts.clear();sourceContexts.clear();sessions.clear();groupContext.clear();queue=[];queuedCodexResults.clear();}
     ownerSnapshot=owner;return next;
   }
   function record(role, text) { recent.push(`${role}：${String(text).slice(0,180)}`); if (recent.length > 20) recent.shift(); }
   function rememberVoiceDelivery(key,status){voiceDeliveries.delete(key);voiceDeliveries.set(key,{status,at:Date.now()});if(voiceDeliveries.size>200)voiceDeliveries.delete(voiceDeliveries.keys().next().value);}
   function disconnect(message) {
-    ownerStickers.clear();connectionEpoch++;connected=false;connectionMessage=message;sessions.clear();ambientActivity.clear();groupContext.clear();queue=[];queuedCodexResults.clear();
+    ownerStickers.clear();connectionEpoch++;connected=false;connectionMessage=message;queue=[];queuedCodexResults.clear();
     for(const entry of pending.values())entry.reject(new Error('连接断开，结果不确定；不自动重发'));
     pending.clear();
   }
@@ -150,7 +150,7 @@ async function main() {
   }
   function resumeConnection(reason){
     const now=Date.now();if(shuttingDown||now-lastResume<15000)return false;lastResume=now;healthAt=0;
-    record('连接','网络或休眠状态变化，正在重新核验QQ连接');
+    if(!connected)record('连接','正在恢复QQ消息连接');
     // Only revalidate the existing connection. No cached QQ messages are replayed.
     void connect();return true;
   }
@@ -166,7 +166,7 @@ async function main() {
         if(ws!==socket||shuttingDown)return;
         if(!verifiedConnection(login,status,expectedIdentity))throw new Error('identity mismatch');
         if(identity&&identity!==expectedIdentity){sessions.clear();contexts.clear();videoContexts.clear();sourceContexts.clear();}
-        identity=expectedIdentity;connected=true;healthAt=Date.now();
+        identity=expectedIdentity;connected=true;healthAt=Date.now();reconnects=0;
         connectionMessage=`已连接 QQ ${identity} · 身份与在线状态核验通过`;
         void bridge.remember(identity).catch(()=>{});void maintainStickers();
       }catch{if(ws===socket){retireSocket('QQ 身份或在线状态尚未核验通过，自动回复未接入');}}
@@ -189,7 +189,25 @@ async function main() {
     if(busy){if(selectedUin!=null)queuedSelection=String(selectedUin);return {message:selectedUin!=null?'已记录所选 QQ，当前检查完成后自动继续连接':connectionMessage};}busy=true;
     try {
       if(selectedUin!=null&&!validUin(selectedUin))throw new Error('请选择正确的 QQ 账号');
-      const {status,info}=await bridge.state();
+      // A screen/DNS/VPN event is not a reason to tear down a local message channel.
+      if(ws?.readyState===WebSocket.OPEN&&identity&&(selectedUin==null||String(selectedUin)===identity)){
+        if(connected&&Date.now()-healthAt<30000)return {message:connectionMessage};
+        const socket=ws;
+        try{
+          const [login,state]=await Promise.all([rpc('get_login_info',{},8000),rpc('get_status',{},8000)]);
+          if(ws!==socket)return {message:connectionMessage};
+          if(!verifiedConnection(login,state,identity))throw new Error('QQ offline or identity changed');
+          connected=true;healthAt=Date.now();reconnects=0;
+          connectionMessage=`已连接 QQ ${identity} · 身份与在线状态核验通过`;
+          return {message:connectionMessage};
+        }catch{if(ws===socket)retireSocket('QQ消息通道未通过核验，正在重新连接');}
+      }
+      if(ws?.readyState===WebSocket.CONNECTING)return {message:connectionMessage};
+      if(identity&&selectedUin==null&&reconnects<3){reconnects++;attachSocket(identity);return {message:connectionMessage};}
+      // Keep a single control repair alive, even if this caller reaches its deadline.
+      if(!controlFlight){const flight=bridge.state();controlFlight=flight;flight.finally(()=>{if(controlFlight===flight)controlFlight=null;}).catch(()=>{});}
+      let deadline;
+      const {status,info}=await Promise.race([controlFlight,new Promise((_,reject)=>{deadline=setTimeout(()=>reject(new Error('Control-plane deadline')),60000);})]).finally(()=>clearTimeout(deadline));
       if(!status.isLogin||!validUin(info.uin)) {
         if(connected)disconnect('QQ 已离线；请打开登录页面检查');
         connectionMessage=status.loginError?'QQ 登录需要处理，请打开登录页面查看':'接入组件已启动，请选择已保存账号或扫码登录';
@@ -208,7 +226,7 @@ async function main() {
       }
       return {message:connectionMessage};
     } catch {
-      if(ws||connected)retireSocket('QQ 接入暂不可用，等待恢复');
+      if(!connected&&ws?.readyState!==WebSocket.CONNECTING&&ws)retireSocket('QQ 接入暂不可用，等待恢复');
       connectionMessage=bridge.failure||'QQ 接入正在准备或等待登录，请打开登录页面检查';
       return {message:connectionMessage};
     }finally{busy=false;if(queuedSelection!==null&&!shuttingDown){const next=queuedSelection;queuedSelection=null;void connect(next);}}
@@ -424,7 +442,7 @@ async function main() {
     if(speech)rememberVoiceDelivery(key,'uncertain');
     let result;try{result=faceOnly?await rpc('send_custom_face',{emoji_id:face.id,...(event.message_type==='group'?{group_id:event.group_id}:{user_id:event.user_id})}):await rpc(event.message_type==='group'?'send_group_msg':'send_private_msg',params);}catch(e){if(speech)voiceStatus={status:'uncertain',message:'QQ语音发送超时，不重发',at:Date.now()};throw e;}finally{speech?.cleanup();}
     if(!confirmed(result)){speech?.cleanup();if(speech)voiceStatus={status:'uncertain',message:'QQ语音发送未获得完整回执，不重发',at:Date.now()};throw new Error('QQ 没有返回完整发送凭据，结果不确定；不自动重发');}
-    if(speech){voiceActivity.delete(key);voiceActivity.set(key,Date.now());if(voiceActivity.size>200)voiceActivity.delete(voiceActivity.keys().next().value);voiceStatus={status:'accepted',message:'QQ接口已接受语音，对方实际收到以QQ显示为准',decision:voiceChoice.reason,emotion:replyEmotion,audio:speech.info||null,expressionControl:c.speechProvider==='zipvoice'?'同一音色的参考语气（未导入则自然）':c.speechProvider==='android'?'系统语速音高轻微调整':c.speechProvider==='feiyu'?'可爱或温柔声线':c.speechProvider==='azure'?'所选音色支持的情绪样式':'QQ音色',at:Date.now()};}
+    if(speech){voiceActivity.delete(key);voiceActivity.set(key,Date.now());if(voiceActivity.size>200)voiceActivity.delete(voiceActivity.keys().next().value);voiceStatus={status:'accepted',message:'QQ接口已接受语音，对方实际收到以QQ显示为准',decision:voiceChoice.reason,emotion:replyEmotion,audio:speech.info||null,expressionControl:c.speechProvider==='kokoro'?'本机中文女声与轻微语速调整':c.speechProvider==='zipvoice'?'同一音色的参考语气（未导入则自然）':c.speechProvider==='android'?'系统语速音高轻微调整':c.speechProvider==='feiyu'?'可爱或温柔声线':c.speechProvider==='azure'?'所选音色支持的情绪样式':'QQ音色',at:Date.now()};}
     if(speech||speechFallback)rememberVoiceDelivery(key,speech?'accepted':'fallback');
     journal[id]='accepted';deliveryRecovery.success(event);saveJournal();speech?.cleanup();if(codexDelivery)codexJobs.delivery(codexDelivery,'accepted');
     // A setting change or deletion may happen while QQ acknowledges the send.
@@ -565,17 +583,17 @@ async function main() {
       else if(req.method==='GET'&&req.url==='/requests/list')res.end(JSON.stringify({requests:requestInspector.list()}));
       else if(req.method==='POST'&&req.url==='/requests/get'){const d=await body(req);res.end(JSON.stringify({request:requestInspector.get(d.id)}));}
       else if(req.method==='POST'&&req.url==='/requests/clear'){await body(req);requestInspector.clear();res.end(JSON.stringify({message:'本机输入预览已清除，不影响聊天记忆'}));}
-      else if(req.method==='GET'&&req.url==='/state')res.end(JSON.stringify({connected,identity,deliveryRecovery:deliveryRecovery.state(connected,healthAt),codex:codexJobs.state(),voice:voiceStatus,instanceSlot,engine:'SnowLuma 1.14.22',modelConfigured:!!apiKey,activeModel:config().model,activeApiUrl:config().apiUrl,activeProtocol:config().apiProtocol||'chat',enabled:config().enabled,usage,summary:`${bridge.failure||connectionMessage}\n${config().enabled?'自动回复开启':'自动回复暂停'} · ${apiKey?'聊天密钥已配置':'请在设置中填写聊天 API Key'} · ${summary}\n本次运行 Token：输入 ${usage.input} · 输出 ${usage.output} · 输入缓存命中 ${usage.cached}`,recentText:recent.join('\n'),queue:queue.length}));
+      else if(req.method==='GET'&&req.url==='/state')res.end(JSON.stringify({connected,identity,deliveryRecovery:deliveryRecovery.state(connected,healthAt),codex:codexJobs.state(),voice:voiceStatus,instanceSlot,engine:'SnowLuma 1.14.22',modelConfigured:!!apiKey,activeModel:config().model,activeApiUrl:config().apiUrl,activeProtocol:config().apiProtocol||'chat',enabled:config().enabled,usage,summary:`${connected?connectionMessage:(bridge.failure||connectionMessage)}\n${config().enabled?'自动回复开启':'自动回复暂停'} · ${apiKey?'聊天密钥已配置':'请在设置中填写聊天 API Key'} · ${summary}\n本次运行 Token：输入 ${usage.input} · 输出 ${usage.output} · 输入缓存命中 ${usage.cached}`,recentText:recent.join('\n'),queue:queue.length}));
       else if(req.method==='POST'&&req.url==='/runtime/resume'){const d=await body(req);if(!['network','idle','wake','health'].includes(d.reason))throw new Error('Invalid recovery reason');const scheduled=resumeConnection(d.reason);res.end(JSON.stringify({ok:true,scheduled,message:scheduled?'正在重新核验连接':'已在检查连接'}));}
       else if(req.method==='GET'&&req.url==='/media/state'){stickers.reset(identity);res.end(JSON.stringify({faces:stickers.faces,labelBusy:stickers.labelBusy,labelMessage:stickers.labelMessage,voices:FEMALE_VOICES,speechKeyConfigured:!!speechKey,post:identity?{...posts.state(config().owner,identity),problem:posts.problem}:null}));}
       else if(req.method==='POST'&&req.url==='/stickers/sync'){await body(req);if(!connected)throw new Error('请先连接QQ');const epoch=connectionEpoch,bot=identity;stickers.reset(bot);try{const faces=await stickers.sync(()=>epoch===connectionEpoch&&bot===identity);void maintainStickers();res.end(JSON.stringify({ok:true,faces,message:'已读取 '+faces.length+' 张 QQ 收藏表情'}));}catch(e){res.end(JSON.stringify({ok:false,message:e.message}));}}
       else if(req.method==='POST'&&req.url==='/stickers/annotate'){await body(req);if(!connected)throw new Error('请先连接QQ');void maintainStickers({retry:true});res.end(JSON.stringify({ok:true,message:'已安排后台备注未备注表情；原有备注保留，可稍后刷新查看'}));}
       else if(req.method==='POST'&&req.url==='/stickers/label'){const d=await body(req);if(!connected)throw new Error('请先连接QQ');try{await stickers.label(d.id,d.desc);res.end(JSON.stringify({ok:true,message:'已更新QQ表情备注'}));}catch(e){res.end(JSON.stringify({ok:false,message:e.message}));}}
-      else if(req.method==='GET'&&req.url==='/voice/state'){const c=config();let local=null;if(['android','zipvoice'].includes(c.speechProvider))try{local=await speechNative('state',{provider:c.speechProvider});}catch(e){local={ok:false,message:e.message};}res.end(JSON.stringify({enabled:!!c.voiceEnabled,provider:c.speechProvider||'azure',speechKeyConfigured:!!speechKey,feiyuKeyConfigured:!!feiyuKey,local,last:voiceStatus,message:voiceStatus.message}));}
+      else if(req.method==='GET'&&req.url==='/voice/state'){const c=config();let local=null;if(['android','zipvoice','kokoro'].includes(c.speechProvider))try{local=await speechNative('state',{provider:c.speechProvider});}catch(e){local={ok:false,message:e.message};}res.end(JSON.stringify({enabled:!!c.voiceEnabled,provider:c.speechProvider||'azure',speechKeyConfigured:!!speechKey,feiyuKeyConfigured:!!feiyuKey,local,last:voiceStatus,message:voiceStatus.message}));}
       else if(req.method==='POST'&&req.url==='/voice/test-send'){const d=await body(req),c=config();if(voiceTestBusy)throw new Error('语音测试正在进行，请勿重复点击');let audio;const epoch=connectionEpoch;if(!connected||!validUin(c.owner)||c.owner===identity)throw new Error('请先连接QQ并配置大号');voiceTestBusy=true;try{audio=await synthesize(c,'主人，语音回复测试。',{key:speechKey,feiyuKey,event:{message_type:'private',user_id:c.owner},rpc,native:speechNative,directory:speechDirectory,stillCurrent:()=>epoch===connectionEpoch&&connected});if(epoch!==connectionEpoch)throw new Error('账号变化，已取消测试');voiceStatus={status:'sending',message:'语音发送中',at:Date.now()};const result=await rpc('send_private_msg',{user_id:c.owner,message:[audio.segment]});if(!confirmed(result)){voiceStatus={status:'uncertain',message:'语音发送结果未确认，不重发',at:Date.now()};res.end(JSON.stringify({ok:false,message:voiceStatus.message}));}else{voiceStatus={status:'accepted',message:'QQ接口已接受测试语音，请在大号确认实际收到',at:Date.now()};res.end(JSON.stringify({ok:true,message:voiceStatus.message}));}}catch(e){if(voiceStatus.status==='sending')voiceStatus={status:'uncertain',message:'语音发送超时，不重发',at:Date.now()};else voiceStatus={status:'failed',message:e.message,at:Date.now()};res.end(JSON.stringify({ok:false,message:voiceStatus.message}));}finally{audio?.cleanup();voiceTestBusy=false;}}
       else if(req.method==='POST'&&req.url==='/voice/credentials'){const d=await body(req);if(typeof d.key!=='string'||d.key.length>4096)throw new Error('Invalid speech key');if(d.feiyuKey!==undefined&&(typeof d.feiyuKey!=='string'||d.feiyuKey.length>4096))throw new Error('Invalid voice service key');speechKey=d.key.trim();if(d.feiyuKey!==undefined)feiyuKey=d.feiyuKey.trim();res.end(JSON.stringify({message:'语音密钥已应用'}));}
       else if(req.method==='POST'&&req.url==='/voice/characters'){const d=await body(req);if(!connected||!validUin(String(d.group)))throw new Error('请填写群号并连接QQ');const r=await rpc('get_ai_characters',{group_id:d.group,chat_type:1});res.end(JSON.stringify({ok:ok(r),groups:ok(r)&&Array.isArray(r.data)?r.data:[],message:ok(r)?'已获取群内音色':'此群暂不可用QQ语音'}));}
-      else if(req.method==='POST'&&req.url==='/voice/preview'){const d=await body(req);let audio;try{const c={...config(),...(d.provider==='zipvoice'?{speechProvider:'zipvoice'}:{})};audio=await synthesize(c,String(d.text||'主人，今天也要好好吃饭。'),{key:speechKey,feiyuKey,emotion:['neutral','happy','gentle','shy','sad','serious'].includes(d.emotion)?d.emotion:'neutral',event:{message_type:d.group?'group':'private',group_id:d.group},rpc,native:speechNative,directory:speechDirectory});if(!audio.file)throw new Error('QQ音色请使用列表中的官方试听链接');res.end(JSON.stringify({ok:true,audio:fs.readFileSync(audio.file).toString('base64'),info:audio.info||null,message:'试听已生成，未发送QQ'}));}catch(e){res.end(JSON.stringify({ok:false,message:e.message}));}finally{audio?.cleanup();}}
+      else if(req.method==='POST'&&req.url==='/voice/preview'){const d=await body(req);let audio;try{const c={...config(),...(['zipvoice','kokoro'].includes(d.provider)?{speechProvider:d.provider,kokoroSpeaker:d.speaker||3}:{})};audio=await synthesize(c,String(d.text||'主人，今天也要好好吃饭。'),{key:speechKey,feiyuKey,emotion:['neutral','happy','gentle','shy','sad','serious'].includes(d.emotion)?d.emotion:'neutral',event:{message_type:d.group?'group':'private',group_id:d.group},rpc,native:speechNative,directory:speechDirectory});if(!audio.file)throw new Error('QQ音色请使用列表中的官方试听链接');res.end(JSON.stringify({ok:true,audio:fs.readFileSync(audio.file).toString('base64'),info:audio.info||null,message:'试听已生成，未发送QQ'}));}catch(e){res.end(JSON.stringify({ok:false,message:e.message}));}finally{audio?.cleanup();}}
       else if(req.method==='POST'&&req.url==='/qzone/check'){await body(req);try{const epoch=connectionEpoch;const message=await checkQzone(qzoneRpc,()=>connected&&epoch===connectionEpoch);res.end(JSON.stringify({ok:true,message}));}catch(e){res.end(JSON.stringify({ok:false,message:e.message}));}}
       else if(req.method==='POST'&&req.url==='/qzone/draft'){const d=await body(req);try{const epoch=connectionEpoch,c=config(),bot=identity;if(!bot)throw new Error('请先连接QQ');const draft=await generatePost(d.topic);if(epoch!==connectionEpoch)throw new Error('配置已切换，请重新生成');posts.preview(c,bot,draft);res.end(JSON.stringify({ok:true,draft,message:'草稿已生成，尚未发布'}));}catch(e){res.end(JSON.stringify({ok:false,message:e.message}));}}
       else if(req.method==='POST'&&req.url==='/qzone/publish'){const d=await body(req);try{const epoch=connectionEpoch,c=config(),bot=identity;if(!connected)throw new Error('请先连接QQ');const message=await posts.publish(c,bot,d.text,qzoneRpc,()=>epoch===connectionEpoch&&connected);res.end(JSON.stringify({ok:true,message}));}catch(e){res.end(JSON.stringify({ok:false,message:e.message}));}}
