@@ -12,6 +12,7 @@ import hashlib
 import hmac
 import importlib.util
 import json
+import math
 import os
 from pathlib import Path
 import secrets
@@ -106,6 +107,14 @@ def checked_character_reference(runtime, mood, variant=0):
     return speaker, emotion, alpha
 
 
+def character_controls(reference, alpha, delivery):
+    # Ordinary conversation keeps more of the stable speaker prompt. A strong
+    # emotion prompt can also copy whisper/breath patterns from reference audio.
+    # Soft/expressive delivery is opt-in and preserves the prepared full strength.
+    return {'emo_audio_prompt': str(reference),
+            'emo_alpha': min(alpha, .45) if delivery == 'normal' else alpha}
+
+
 def make_app(studio, runtime, worker, token):
     from fastapi import FastAPI, HTTPException, Request
     from fastapi.responses import FileResponse
@@ -164,9 +173,15 @@ def make_app(studio, runtime, worker, token):
                     else:
                         ref = checked_ssr_reference(runtime) if request["voice"] == "feiyu-ssr" else checked_reference(package, request["style"])
                     model = studio.tts.ensure_loaded()
-                    controls = {'emo_audio_prompt': str(emo_ref), 'emo_alpha': alpha} if custom else {'emo_vector': emotion_vector(request['emotion']), 'emo_alpha': .50}
+                    controls = character_controls(emo_ref, alpha, request['delivery']) if custom else {'emo_vector': emotion_vector(request['emotion']), 'emo_alpha': .50}
+                    quality = request.get('quality', {})
+                    if custom and 'emotion_alpha' in quality:
+                        controls['emo_alpha'] = quality['emotion_alpha']
+                    if custom and quality.get('speaker_reference') == 'emotion':
+                        ref = emo_ref
+                    infer_quality = {k: quality[k] for k in ('diffusion_steps', 'inference_cfg_rate', 'temperature', 'top_p') if k in quality}
                     model.infer(spk_audio_prompt=str(ref), text=request["text"],
-                                output_path=str(wav), **controls,
+                                output_path=str(wav), **controls, **infer_quality,
                                 use_emo_text=False, use_random=False,
                                 max_text_tokens_per_segment=90, num_beams=1,
                                 max_mel_tokens=1800, interval_silence=140)
@@ -213,12 +228,31 @@ def make_app(studio, runtime, worker, token):
             text = data["text"]
             voice, style, mood = data.get("voice", "feiyu"), data.get("style", "cute"), data.get("emotion", "neutral")
             variant = data.get('variant', 0)
+            delivery = data.get('delivery', 'normal')
             if not isinstance(text, str) or not text.strip() or len(text) > 1200:
                 raise ValueError()
             if voice not in VOICES or style not in {"cute", "gentle"} or mood not in MOODS:
                 raise ValueError()
             if not isinstance(variant, int) or isinstance(variant, bool) or not 0 <= variant <= 7:
                 raise ValueError()
+            if delivery not in ('normal', 'soft', 'expressive'):
+                raise ValueError()
+            quality = data.get('quality', {})
+            if not isinstance(quality, dict) or set(quality) - {'diffusion_steps', 'inference_cfg_rate', 'temperature', 'top_p', 'emotion_alpha', 'speaker_reference'}:
+                raise ValueError()
+            if quality and voice != 'character-daily':
+                raise ValueError()
+            for name, value in quality.items():
+                if name == 'speaker_reference':
+                    if value not in ('base', 'emotion'):
+                        raise ValueError()
+                elif name == 'diffusion_steps':
+                    if type(value) is not int or value not in (16, 32, 48, 64):
+                        raise ValueError()
+                else:
+                    bounds = {'inference_cfg_rate': (.3, 1), 'temperature': (.4, 1), 'top_p': (.5, 1), 'emotion_alpha': (0, 1)}[name]
+                    if type(value) not in (int, float) or not math.isfinite(value) or not bounds[0] <= value <= bounds[1]:
+                        raise ValueError()
         except (ValueError, TypeError, KeyError):
             raise HTTPException(400, "Invalid voice request")
         with guard:
@@ -232,7 +266,7 @@ def make_app(studio, runtime, worker, token):
                 raise HTTPException(429, "Voice queue is full")
             job_id = uuid.uuid4().hex
             jobs[job_id] = {"id": job_id, "status": "queued", "created": now}
-        pool.submit(run, job_id, {"text": text, "voice": voice, "style": style, "emotion": mood, "variant": variant})
+        pool.submit(run, job_id, {"text": text, "voice": voice, "style": style, "emotion": mood, "variant": variant, "delivery": delivery, "quality": quality})
         return {"id": job_id, "status": "queued"}
 
     def get_job(job_id):

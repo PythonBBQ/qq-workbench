@@ -55,7 +55,7 @@ test('synthesis receives spoken forms and phrasing controls once and keeps per-a
 });
 
 test('voice delivery preserves the full source and adds 1.5 seconds only after speech normalization, with a quieter ASMR target',async()=>{
- assert.match(speechDeliveryFilter(),/loudnorm=I=-19/);assert.match(speechDeliveryFilter(true),/loudnorm=I=-23/);assert.ok(speechDeliveryFilter().endsWith('apad=pad_dur=1.5'));assert.ok(!/silenceremove|afade|agate/.test(speechDeliveryFilter()));
+ assert.match(speechDeliveryFilter(),/volume=0.000000dB/);assert.ok(!/dynaudnorm|loudnorm/.test(speechDeliveryFilter()));assert.ok(speechDeliveryFilter().endsWith('apad=pad_dur=1.5'));assert.ok(!/silenceremove|afade|agate/.test(speechDeliveryFilter()));
  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'tail-margin-'));try{const wav=Buffer.alloc(128);wav.write('RIFF');let encoded=0;
  const audio=await synthesize(c,'先把最后几个字完整说完。',{directory,native:async()=>({ok:true,audio:wav.toString('base64')}),convert:async(bin,args)=>{assert.equal(args.includes('-t'),false);assert.equal(args[args.indexOf('-af')+1],speechDeliveryFilter(false));encoded++;fs.writeFileSync(args.at(-1),Buffer.alloc(100));}});assert.equal(encoded,1);audio.cleanup();
  }finally{fs.rmSync(directory,{recursive:true,force:true});}
@@ -83,9 +83,9 @@ test('an incomplete native synthesis is rejected before conversion or QQ deliver
  const complete=await synthesize(c,'分句全部完成后再发。',{...options,native:async()=>({ok:true,audio:wav.toString('base64'),segments:2,completedSegments:2,durationMs:3500,characters:11}),convert:async(bin,args)=>fs.writeFileSync(args.at(-1),Buffer.alloc(100))});assert.equal(complete.info.completedSegments,2);assert.equal(complete.info.durationMs,3500);complete.cleanup();
  }finally{fs.rmSync(directory,{recursive:true,force:true});}
 });
-test('long local speech selects four steps before submission, short speech and an explicit quality lock keep eight',async()=>{
+test('long local speech preserves selected quality rather than silently reducing steps',async()=>{
  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'speech-steps-'));try{const wav=Buffer.alloc(128);wav.write('RIFF');
- for(const [text,adaptive,expected] of [['短句。',true,8],['这是完整的一句话。'.repeat(8),true,4],['这是完整的一句话。'.repeat(8),false,8]]){
+ for(const [text,adaptive,expected] of [['短句。',true,8],['这是完整的一句话。'.repeat(8),true,8],['这是完整的一句话。'.repeat(8),false,8]]){
  let calls=0;const audio=await synthesize({...c,zipVoiceSteps:8,zipVoiceAdaptive:adaptive},text,{directory,native:async(route,data)=>{calls++;assert.equal(data.steps,expected);assert.equal(data.requestedSteps,8);return {ok:true,audio:wav.toString('base64'),steps:expected,requestedSteps:8};},convert:async(bin,args)=>fs.writeFileSync(args.at(-1),Buffer.alloc(100))});assert.equal(calls,1);assert.equal(audio.info.steps,expected);audio.cleanup();
  }
  }finally{fs.rmSync(directory,{recursive:true,force:true});}

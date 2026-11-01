@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {visionTarget,imageParts,contextText,trimImageHistory,limitContextImages} from '../assets/images.mjs';
+import {visionTarget,imageParts,imageSegments,QQFaces,contextText,trimImageHistory,limitContextImages} from '../assets/images.mjs';
 const official={apiUrl:'https://api.deepseek.com/v1',model:'deepseek-chat'};
 test('official image requests reuse the existing Key with the documented vision model',()=>{
   assert.deepEqual(visionTarget(official,'chat-key'),{url:official.apiUrl,model:'deepseek-flash',key:'chat-key',direct:true});
@@ -33,6 +33,22 @@ test('bad responses and oversized pictures leave accompanying text usable',async
 });
 const picture=size=>({type:'image_url',image_url:{url:'data:image/png;base64,'+'a'.repeat(size)}});
 const turn=(text,size)=>({role:'user',content:[{type:'text',text},picture(size)]});
+test('QQ system faces preserve message order and labels without pretending that metadata is image vision',async()=>{
+ let calls=0;const faces=new QQFaces(async(action,params)=>{calls++;assert.equal(action,'fetch_face_entity');return {status:'ok',retcode:0,data:{q_des:params.face_id===14?'微笑':'托腮'}};});
+ const e={message:[{type:'face',data:{id:14}},{type:'text',data:{text:'怎么啦'}},{type:'face',data:{id:277}}]};
+ assert.deepEqual(await faces.describe(e,'765432'),{hasFaces:true,text:'〔QQ表情：微笑〕怎么啦〔QQ表情：托腮〕'});
+ await faces.describe(e,'765432');assert.equal(calls,2);await faces.describe(e,'765433');assert.equal(calls,4);
+ const offline=new QQFaces(async()=>{throw Error('unsupported');});
+ assert.match((await offline.describe({message:[{type:'face',data:{id:6}}]},'765432')).text,/害羞/);
+ const unknown=await offline.describe({message:[{type:'face',data:{id:99999}}]},'765432');assert.equal(unknown.hasFaces,true);assert.match(unknown.text,/名称未读取/);
+});
+test('QQ market stickers use bounded trusted image handling and keep accompanying labels',async()=>{
+ const e={message:[{type:'mface',data:{emoji_id:'abcdef0123456789abcdef0123456789',summary:'开心'}}]};
+ assert.match(imageSegments(e)[0].data.url,/^https:\/\/gxh.vip.qq.com\//);
+ const parts=await imageParts(e,async()=>new Response(new Uint8Array([1,2,3]),{headers:{'content-type':'image/gif'}}));assert.equal(parts.length,1);
+ assert.equal((await new QQFaces().describe(e,'765432')).text,'〔QQ表情包标签：开心〕');
+ assert.equal(imageSegments({message:[{type:'mface',data:{emoji_id:'../../private'}}]})[0].data.url,undefined);
+});
 test('follow-up history keeps recent pictures and conversational text within memory limits',()=>{
   const h=trimImageHistory([turn('第一张',100),{role:'assistant',content:'上次的回答'},turn('第二张',100),turn('第三张',100)]);
   assert.equal(h[0].content.filter(p=>p.type==='image_url').length,0);

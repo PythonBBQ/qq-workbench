@@ -38,8 +38,9 @@ class FakeTTS:
 
 class GatewayTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name)
+        folder=Path(__file__).resolve().parents[1]/'build/voice-gateway-tests';folder.mkdir(parents=True,exist_ok=True)
+        self.tmp = tempfile.TemporaryDirectory(dir=folder)
+        self.root = Path(self.tmp.name).resolve()
         ref = self.root / "models/FeiyuVoice-CosyVoice3/reference.wav"
         ref.parent.mkdir(parents=True)
         ref.write_bytes(b"synthetic reference")
@@ -98,9 +99,17 @@ class GatewayTests(unittest.TestCase):
         manifest=folder/'manifest.json';manifest.write_text(json.dumps(record))
         task=self.client.post('/v1/speech',headers=self.headers,json={'voice':'character-daily','emotion':'shy','variant':7,'text':'嗯，我听着呢。'}).json()['id']
         self.assertEqual(self.wait(task)['status'],'success');call=self.studio.tts.calls[-1]
-        self.assertEqual(call['spk_audio_prompt'],str(folder/'0.wav'));self.assertEqual(call['emo_audio_prompt'],str(folder/'2.wav'));self.assertEqual(call['emo_alpha'],.65);self.assertNotIn('emo_vector',call)
+        self.assertEqual(call['spk_audio_prompt'],str(folder/'0.wav'));self.assertEqual(call['emo_audio_prompt'],str(folder/'2.wav'));self.assertEqual(call['emo_alpha'],.45);self.assertNotIn('emo_vector',call)
+        task=self.client.post('/v1/speech',headers=self.headers,json={'voice':'character-daily','emotion':'shy','variant':7,'delivery':'soft','text':'嗯，我听着呢。'}).json()['id']
+        self.assertEqual(self.wait(task)['status'],'success');self.assertEqual(self.studio.tts.calls[-1]['emo_alpha'],.65)
+        self.assertEqual(self.client.post('/v1/speech',headers=self.headers,json={'voice':'character-daily','text':'你好','delivery':'anything'}).status_code,400)
         for bad in [-1,8,True,'1']:
             self.assertEqual(self.client.post('/v1/speech',headers=self.headers,json={'voice':'character-daily','text':'你好','variant':bad}).status_code,400)
+        task=self.client.post('/v1/speech',headers=self.headers,json={'voice':'character-daily','emotion':'shy','text':'嗯，我听着呢。','quality':{'diffusion_steps':48,'emotion_alpha':.25,'inference_cfg_rate':.7,'temperature':.6,'top_p':.7,'speaker_reference':'emotion'}}).json()['id']
+        self.assertEqual(self.wait(task)['status'],'success');call=self.studio.tts.calls[-1]
+        self.assertEqual(call['diffusion_steps'],48);self.assertEqual(call['emo_alpha'],.25);self.assertEqual(call['spk_audio_prompt'],str(folder/'1.wav'))
+        for quality in [{'diffusion_steps':True},{'diffusion_steps':256},{'temperature':float('inf')},{'top_p':0},{'speaker_reference':'../../path'},{'unexpected':1}]:
+            self.assertEqual(self.client.post('/v1/speech',headers=self.headers,content=json.dumps({'voice':'character-daily','text':'你好','quality':quality})).status_code,400)
         (folder/'2.wav').write_bytes(b'changed')
         with self.assertRaises(ValueError):gateway.checked_character_reference(self.root,'shy',7)
         record['speaker']['file']='../../outside.wav';manifest.write_text(json.dumps(record))

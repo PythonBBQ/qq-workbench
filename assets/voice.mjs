@@ -3,6 +3,7 @@ import {qqImage,ok} from './qq-media.mjs';
 import {execFile} from 'node:child_process';import {promisify} from 'node:util';
 import {feiyuSpeech} from './feiyu-voice.mjs';
 import {describeVoicePreferences} from './voice-memory.mjs';
+import {speechGain} from './voice-level.mjs';
 const execute=promisify(execFile);
 export const FEMALE_VOICES=[
   ['zh-CN-XiaoxiaoNeural','晓晓 · 普通话','zh-CN'],['zh-CN-XiaoyiNeural','晓伊 · 普通话','zh-CN'],
@@ -89,11 +90,11 @@ export function speechPlan(text,c={},emotion='neutral'){
   if(['neutral','happy','gentle','shy','sad','serious'].includes(c.voiceEmotionPreset))emotion=c.voiceEmotionPreset;
   return {text:value,emotion:['neutral','happy','gentle','shy','sad','serious'].includes(emotion)?emotion:'neutral',phrasing:c.voiceNatural!==false};
 }
-export function speechDeliveryFilter(soft=false,pitch=0){
-  // Normalize speech before adding the final playback margin. No silence trim,
-  // gate, or fade over the final syllable. Keep quiet delivery softer but audible.
+export function speechDeliveryFilter(soft=false,pitch=0,gain=0){
+  // One constant gain for the complete utterance: no dynamic breath/noise lift.
+  // Preserve quiet consonants, natural dynamics and the final playback margin.
   const ratio=1+clamp(pitch,-30,30,0)/100,prefix=ratio===1?'':`asetrate=${Math.round(24000*ratio)},aresample=24000,atempo=${(1/ratio).toFixed(6)},`;
-  return `${prefix}dynaudnorm=f=200:g=5:p=0.9:m=3:r=${soft?'0.065':'0.1'}:b=1,loudnorm=I=${soft?-23:-19}:LRA=9:TP=-1.5,apad=pad_dur=1.5`;
+  return `${prefix}volume=${clamp(gain,-24,6,0).toFixed(6)}dB,alimiter=limit=0.94:level=0:latency=1,apad=pad_dur=1.5`;
 }
 export function splitSpeechFallback(input){
   const text=String(input||'').trim();if(text.length<30)return [text];
@@ -113,7 +114,7 @@ export async function synthesize(c,text,{key='',feiyuKey='',emotion='neutral',ev
     else{
       if(!native)throw new Error('系统语音接口尚未就绪');
       const adjustments=c.speechProvider==='zipvoice'||c.voiceEmotion===false?[0,0]:({happy:[6,3],gentle:[-7,-2],shy:[-9,1],sad:[-10,-3],serious:[-4,-2]})[emotion]||[0,0];
-      const requestedSteps=c.zipVoiceSteps===8?8:4,steps=c.speechProvider==='zipvoice'&&c.zipVoiceAdaptive!==false&&value.length>60?4:requestedSteps;
+      const requestedSteps=c.zipVoiceSteps===4?4:8,steps=requestedSteps;
       const deliveryStyle=c.speechProvider==='zipvoice'&&c.voiceEmotion!==false?voiceDeliveryStyle(value,event):'normal',referenceMood=deliveryStyle==='soft'&&!['shy','gentle'].includes(emotion)?'gentle':emotion;
       const result=await native('synthesize',{provider:c.speechProvider,speaker:c.kokoroSpeaker||3,text:value,phrasing:plan.phrasing,voice:c.androidVoice||'',language:c.speechLanguage||'zh-CN',emotion:c.voiceEmotion===false?'neutral':referenceMood,deliveryStyle,steps,requestedSteps,rate:clamp(Number(c.speechRate||0)+adjustments[0],-40,60,0),pitch:clamp(Number(c.speechPitch||0)+adjustments[1],-30,30,0)});
       bytes=Buffer.from(result.audio||'','base64');
@@ -130,7 +131,7 @@ export async function synthesize(c,text,{key='',feiyuKey='',emotion='neutral',ev
     }
     if(!stillCurrent())throw new Error('语音已取消');
     fs.mkdirSync(directory,{recursive:true,mode:0o700});const base=path.join(directory,'speech-'+crypto.randomBytes(16).toString('hex')),wav=base+'.wav',file=base+'.mp3';
-    try{fs.writeFileSync(wav,bytes,{mode:0o600});await convert('/usr/bin/ffmpeg',['-v','error','-nostdin','-threads','1','-i',wav,'-af',speechDeliveryFilter(softDelivery,c.speechProvider==='zipvoice'?c.speechPitch:0),'-ac','1','-ar','24000','-b:a','48k',file],{timeout:30000,maxBuffer:65536,env:{PATH:'/usr/bin:/bin',LANG:'C.UTF-8'}});
+    try{fs.writeFileSync(wav,bytes,{mode:0o600});await convert('/usr/bin/ffmpeg',['-v','error','-nostdin','-threads','1','-i',wav,'-af',speechDeliveryFilter(softDelivery,c.speechProvider==='zipvoice'?c.speechPitch:0,speechGain(bytes,softDelivery)),'-ac','1','-ar','24000','-b:a','64k',file],{timeout:30000,maxBuffer:65536,env:{PATH:'/usr/bin:/bin',LANG:'C.UTF-8'}});
       if(!fs.existsSync(file)||fs.statSync(file).size<64||!stillCurrent())throw new Error('语音转换未完成或已取消');
       fs.chmodSync(file,0o600);return {segment:{type:'record',data:{file:'file://'+file}},file,info,cleanup:()=>{try{fs.unlinkSync(file);}catch{}}};
     }catch(e){try{fs.unlinkSync(file);}catch{}throw new Error(e.message==='语音转换未完成或已取消'?e.message:'语音音频转换未完成，请检查解码组件');}finally{try{fs.unlinkSync(wav);}catch{}}

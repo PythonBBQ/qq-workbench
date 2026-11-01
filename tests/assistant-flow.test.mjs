@@ -8,7 +8,7 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const pause=()=>new Promise(r=>setTimeout(r,40));
 test('first-run Key applies without restart; pictures and follow-ups use context in one call, no real QQ or model traffic',async()=>{
   const parent=path.join(root,'build','flow-tests');await fs.mkdir(parent,{recursive:true});const dir=await fs.mkdtemp(path.join(parent,'case-'));
-  for(const name of ['assistant.mjs','account-instances.mjs','delivery-recovery.mjs','request-inspector.mjs','codex-jobs.mjs','shortcuts.mjs','qq-media.mjs','qzone-client.mjs','device-tools.mjs','usage-ledger.mjs','voice-delivery.mjs','voice.mjs','voice-memory.mjs','feiyu-voice.mjs','model-client.mjs','personality-growth.mjs','group-moderation.mjs','conversation-memory.mjs','video.mjs','video-audio.mjs','bili-video.mjs','video-decoder.mjs','native-network.mjs','web-learning.mjs','browse-intent.mjs','learning.mjs','multi-parser.mjs','snowluma-bridge.mjs','images.mjs','chat-style.mjs'])await fs.copyFile(path.join(root,'assets',name),path.join(dir,name));
+  for(const name of ['assistant.mjs','account-instances.mjs','delivery-recovery.mjs','request-inspector.mjs','codex-jobs.mjs','shortcuts.mjs','qq-media.mjs','qzone-client.mjs','device-tools.mjs','usage-ledger.mjs','voice-delivery.mjs','voice-level.mjs','voice.mjs','voice-memory.mjs','feiyu-voice.mjs','model-client.mjs','personality-growth.mjs','group-moderation.mjs','conversation-memory.mjs','video.mjs','video-audio.mjs','bili-video.mjs','video-decoder.mjs','native-network.mjs','web-learning.mjs','browse-intent.mjs','learning.mjs','multi-parser.mjs','snowluma-bridge.mjs','images.mjs','chat-style.mjs'])await fs.copyFile(path.join(root,'assets',name),path.join(dir,name));
   await fs.writeFile(path.join(dir,'settings.json'),JSON.stringify({owner:'123456',enabled:true,others:true,rate:100,apiUrl:'https://api.deepseek.com',model:'deepseek-flash',persona:'温柔，爱吃白饭',maxReplyTokens:400,memoryEnabled:false}));
   await fs.writeFile(path.join(dir,'mock.mjs'),`
 import {SnowLumaBridge} from './snowluma-bridge.mjs';
@@ -21,7 +21,7 @@ globalThis.WebSocket=class extends EventTarget{
   static OPEN=1;static CONNECTING=0;
   constructor(){super();socket=this;this.readyState=0;setImmediate(()=>{this.readyState=1;this.dispatchEvent(new Event('open'));});}
   receive(data){this.dispatchEvent(new MessageEvent('message',{data:JSON.stringify(data)}));}
-  send(raw){const d=JSON.parse(raw);process.send({rpc:d.action});const data=d.action==='get_login_info'?{user_id:765432}:d.action==='get_status'?{online:true}:d.action==='get_cookies'?{cookies:'uin=o765432; p_uin=o765432; p_skey=synthetic-cookie'}:d.action==='add_custom_face'?{emoji_id:'synthetic-face'}:d.action==='fetch_custom_face_detail'?syntheticFaces.map(f=>({...f})):{message_id:Date.now()};
+  send(raw){const d=JSON.parse(raw);process.send({rpc:d.action});const data=d.action==='get_friend_list'?(globalThis.friends||[123456,999999,888888,777777]).map(user_id=>({user_id})):d.action==='fetch_face_entity'?{q_des:'托腮'}:d.action==='get_login_info'?{user_id:765432}:d.action==='get_status'?{online:true}:d.action==='get_cookies'?{cookies:'uin=o765432; p_uin=o765432; p_skey=synthetic-cookie'}:d.action==='add_custom_face'?{emoji_id:'synthetic-face'}:d.action==='fetch_custom_face_detail'?syntheticFaces.map(f=>({...f})):{message_id:Date.now()};
     if(d.action==='modify_custom_face'){const f=syntheticFaces.find(f=>f.emoji_id===d.params.emoji_id);if(f)f.desc=d.params.desc;}
     if(d.action==='send_custom_face')process.send({sent:{...d.params,message:[{type:'image',data:{emoji_id:d.params.emoji_id}}]}});
     if(/^send_(group|private)_msg$/.test(d.action))process.send({sent:d.params});
@@ -30,7 +30,7 @@ globalThis.WebSocket=class extends EventTarget{
     setTimeout(()=>this.receive({echo:d.echo,status:'ok',retcode:0,data}),delay);}
   close(){this.readyState=3;}
 };
-process.on('message',m=>{if(m.bridgeFailure!==undefined)globalThis.bridgeFailure=m.bridgeFailure;if(m.socketClose&&socket){socket.readyState=3;socket.dispatchEvent(new Event('close'));}if(m.control)globalThis.sendControl=m.control;if(m.faces)syntheticFaces=m.faces;if(m.event)socket?.receive(m.event);});
+process.on('message',m=>{if(m.friends)globalThis.friends=m.friends;if(m.bridgeFailure!==undefined)globalThis.bridgeFailure=m.bridgeFailure;if(m.socketClose&&socket){socket.readyState=3;socket.dispatchEvent(new Event('close'));}if(m.control)globalThis.sendControl=m.control;if(m.faces)syntheticFaces=m.faces;if(m.event)socket?.receive(m.event);});
 globalThis.fetch=async(url,options)=>{
   const u=new URL(url);
   if(u.origin==='https://api.deepseek.com'||u.origin==='https://relay.example'){
@@ -81,6 +81,8 @@ globalThis.fetch=async(url,options)=>{
     assert.match(models[0].model.messages[0].content,/温柔，爱吃白饭/);assert.equal(models[0].model.messages.at(-1).content[1].type,'image_url');assert.match(models[0].model.messages.at(-1).content[0].text,/这张图/);
     child.send({event:{...event,message_id:102,message:[{type:'text',data:{text:'要不要加白饭？'}}]}});await until(()=>sent.length===2);
     assert.equal(models.length,2);assert.equal(models[1].model.messages[1].content[1].type,'image_url');assert.equal(sent[1].user_id,123456);
+    // Unknown private senders cannot invoke chat even when subtype claims friendship.
+    child.send({event:{...event,user_id:666666,message_id:1001,sub_type:'friend'}});await pause();await pause();assert.equal(sent.length,2);assert.equal(models.length,2);
     const latest=await(await api('/state')).json();assert.deepEqual(latest.usage,{input:200,output:20,cached:40});
     assert.equal((await api('/context/clear',{},false)).status,401);
     assert.equal((await api('/context/clear',{})).status,200);
@@ -99,6 +101,25 @@ globalThis.fetch=async(url,options)=>{
     const read=await(await api('/learning/read',{kind:'read',value:'https://www.bilibili.com/video/BV1GJ411x7h7',save:true})).json();assert.equal(read.items.length,1);assert.equal((await(await api('/learning/notes')).json()).notes.length,1);
     child.send({event:{...event,message_id:108,message:[{type:'text',data:{text:'只查简介 https://www.bilibili.com/video/BV1GJ411x7h7 你学到了什么'}}]}});await until(()=>sent.length===6);assert.match(models[4].model.messages.at(-1).content,/未观看视频/);
     assert.equal((await api('/learning/delete',{id:'all'})).status,200);assert.equal((await(await api('/learning/notes')).json()).notes.length,0);
+    // A built-in QQ face reaches the model and later history instead of an empty message.
+    let en=sent.length,em=models.length;
+    child.send({event:{...event,message_id:1010,message:[{type:'face',data:{id:277}}]}});await until(()=>sent.length===en+1);
+    assert.match(models.at(-1).model.messages.at(-1).content,/QQ表情：托腮/);assert.ok(!models.at(-1).model.messages.at(-1).content.includes('（空消息）'));
+    child.send({event:{...event,message_id:1011,message:[{type:'text',data:{text:'刚才的表情什么意思'}}]}});await until(()=>sent.length===en+2);
+    assert.match(JSON.stringify(models.at(-1).model.messages.slice(1,-1)),/QQ表情：托腮/);
+    sent.splice(en);models.splice(em);await api('/context/clear',{});
+    // Private blacklist commands are owner-only and do not consume model tokens.
+    let pn=sent.length,pm=models.length;
+    child.send({event:{...event,message_id:1002,message:[{type:'text',data:{text:'#拉黑 888888'}}]}});await until(()=>sent.length===pn+1);assert.match(sent.at(-1).message[0].data.text,/停止私聊/);
+    child.send({event:{...event,user_id:888888,message_id:1003}});await pause();await pause();assert.equal(sent.length,pn+1);assert.equal(models.length,pm);
+    assert.deepEqual((await(await api('/moderation/list')).json()).privateUsers,['888888']);
+    child.send({event:{...event,message_id:1004,message:[{type:'text',data:{text:'#解黑 888888'}}]}});await until(()=>sent.length===pn+2);
+    // Removing an existing friend while a model request is running cancels its unsent answer.
+    child.send({event:{...event,user_id:888888,message_id:1005,message:[{type:'text',data:{text:'等待切换好友'}}]}});await until(()=>models.length===pm+1);
+    child.send({friends:[123456,999999]});await new Promise(r=>setTimeout(r,280));assert.equal(sent.length,pn+2);
+    child.send({friends:[123456,999999,888888,777777]});
+    // Existing assertions use absolute counters; discard local test receipts.
+    sent.splice(pn);models.splice(pm);
     const profile={settings:{apiUrl:'https://relay.example/v1',model:'relay-model',visionMode:'auto',visionUrl:'',visionModel:''},apiKey:'relay-test-key',visionKey:''};
     assert.equal((await api('/model/apply',profile,false)).status,401);
     child.send({event:{...event,message_id:109,message:[{type:'text',data:{text:'等待切换'}}]}});await until(()=>models.length===6);

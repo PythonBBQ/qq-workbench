@@ -20,7 +20,7 @@ final class VoicePanel {
         a.section("音色预设","选择后自动试听“准备好了”。只在本机播放，不发QQ、不消耗聊天模型Token。");
         selected=a.text("当前："+preset,15);a.body.addView(selected);
         presetIndex=preset.equals("第一版肥鱼")?1:preset.startsWith("新原声")?2:provider.equals("android")?0:-1;
-        String[] titles={"系统自带","第一版肥鱼","新原声 · 多情态"},summaries={"使用安卓中文语音引擎","保留第一版六种语气与原参数","本次加入的原声参考与短回应"};
+        String[] titles={"系统自带","第一版肥鱼","新原声 · 多情态"},summaries={"使用安卓中文语音引擎","保留第一版六种语气与原参数","原声多情态参考，整句统一合成"};
         for(int i=0;i<3;i++){final int n=i;a.selectionCard(titles[i],summaries[i],i==presetIndex?"已选择":"点击切换并试听",i==presetIndex,()->selectPreset(n));cards[i]=a.body;}
         a.section("我的声音","");a.button("导入我的声音",()->new AlertDialog.Builder(a).setTitle("导入声音").setItems(new String[]{"单段参考音频","完整语音预设包"},(d,n)->{if(busy){a.toast("正在切换声音，请稍候");return;}if(n==0)VoiceReferences.chooseSingle(a,slot);else VoiceReferences.choosePack(a,slot);}).show());
         library=new LinearLayout(a);library.setOrientation(1);a.body.addView(library);refreshLibrary();
@@ -39,13 +39,13 @@ final class VoicePanel {
         emotion=a.toggle("语气随情境变化",c.optBoolean("voiceEmotion",true));
         natural=a.toggle("自然口语与停顿",c.optBoolean("voiceNatural",true));
         cooldown=a.slider("自动语音间隔",c.optInt("voiceCooldown",45),20,180,"秒");
-        adaptive=a.toggle("长句自动加速",c.optBoolean("zipVoiceAdaptive",true));
-        steps=a.choices(new String[]{"快速合成 · 4步","细致合成 · 8步"},c.optInt("zipVoiceSteps",4)==8?1:0);
+        adaptive=new Switch(a);adaptive.setChecked(false);
+        steps=a.choices(new String[]{"快速合成 · 4步","细致合成 · 8步（推荐）"},c.optInt("zipVoiceSteps",8)==8?1:0);a.note("8步保留更多合成细节；长回复先分段，不自动降为4步。气声仍取决于参考和模型，正常聊天建议语速0、音调0。");
         memory=a.toggle("记住说话偏好",c.optBoolean("voiceMemoryEnabled",true));
         a.button("查看说话偏好",()->request("/voice/memory",null,r->{StringBuilder text=new StringBuilder();JSONArray list=r.optJSONArray("sessions");if(list!=null)for(int i=0;i<list.length();i++){JSONObject item=list.getJSONObject(i);text.append(item.optString("group").isEmpty()?"私聊":"群 "+item.optString("group")).append(" · QQ ").append(item.optString("user")).append("\n").append(item.optString("description")).append("\n\n");}new AlertDialog.Builder(a).setTitle("说话偏好").setMessage(text.length()>0?text.toString():"暂无已学习的说话偏好").setPositiveButton("关闭",null).show();}));
         a.button("清除本账号说话偏好",()->request("/voice/memory/clear",new JSONObject(),r->a.toast(r.optString("message"))));
         a.button("系统文字转语音设置",()->{try{a.startActivity(new Intent("com.android.settings.TTS_SETTINGS"));}catch(Exception e){a.toast("请在系统设置搜索文字转语音");}});
-        a.help("音色说明","第一版肥鱼保持原六语气参考。新原声包含多情态参考与独立原声短回应，均由本机小模型合成新句；没有额外训练新权重。系统自带使用安卓已安装的文字转语音引擎，需有中文语言包。多账号的音色与偏好分别保存。");
+        a.help("音色说明","第一版肥鱼保持原六语气参考。新原声包含多情态参考；语气词与正文整句合成，不拼接独立原录音；没有额外训练新权重。系统自带使用安卓已安装的文字转语音引擎，需有中文语言包。多账号的音色与偏好分别保存。");
         a.body=root;if(provider.equals("zipvoice")&&original.optString("voicePresetName").isEmpty())detectLegacyPreset();
     }
     void detectLegacyPreset(){a.io.submit(()->{try{JSONArray refs=LocalVoiceClient.call(a,"state",new JSONObject().put("slot",slot)).getJSONArray("references");String source="";for(int i=0;i<refs.length();i++)if(refs.getJSONObject(i).optString("mood").equals("neutral"))source=refs.getJSONObject(i).optString("source");final int n=source.startsWith("feiyu-six")?1:source.startsWith("character-daily")?2:-1;a.runOnUiThread(()->{if(a.destroyed||!preset.equals("已保存参考音色")||n<0)return;presetIndex=n;preset=n==1?"第一版肥鱼":"新原声 · 多情态";refreshCards();});}catch(Exception ignored){}});}
@@ -54,7 +54,7 @@ final class VoicePanel {
         if(busy){a.toast("正在切换声音，请稍候");return;}VoicePreview.cancel(a);busy=true;
         a.toast(n==0?"正在切换系统音色…":"正在本机准备声音预设…");
         a.io.submit(()->{try{if(n!=0)LocalVoiceClient.call(a,"install-bundled-references",new JSONObject().put("slot",slot).put("preset",n==1?"feiyu":"character-daily"));
-            a.runOnUiThread(()->{busy=false;if(a.destroyed)return;provider=n==0?"android":"zipvoice";presetId="";presetIndex=n;preset=new String[]{"系统自带","第一版肥鱼","新原声 · 多情态"}[n];enabled.setChecked(true);policy.setSelection(0);emotion.setChecked(true);natural.setChecked(true);steps.setSelection(0);pitch.setProgress(30);mood.setSelection(0);if(n==0)rate.setProgress(40);if(n==1)rate.setProgress(10);if(n==2)rate.setProgress(25);
+            a.runOnUiThread(()->{busy=false;if(a.destroyed)return;provider=n==0?"android":"zipvoice";presetId="";presetIndex=n;preset=new String[]{"系统自带","第一版肥鱼","新原声 · 多情态"}[n];enabled.setChecked(true);policy.setSelection(0);emotion.setChecked(true);natural.setChecked(true);steps.setSelection(n==2?1:0);adaptive.setChecked(false);pitch.setProgress(30);mood.setSelection(0);if(n==0)rate.setProgress(40);if(n==1)rate.setProgress(10);if(n==2)rate.setProgress(40);
                 try{JSONObject c=values();if(slot==0)a.patch(c);else a.toast("参考已切换，请保存此账号配置");refreshCards();refreshLibrary();VoicePreview.ready(a,slot,c,"neutral");}catch(Exception e){a.toast("设置未保存："+e.getMessage());}
             });
         }catch(Exception e){a.runOnUiThread(()->{busy=false;if(!a.destroyed)a.toast("声音未切换："+e.getMessage());});}});

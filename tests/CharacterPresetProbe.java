@@ -29,7 +29,10 @@ public final class CharacterPresetProbe {
         String[] secondTexts={"你回来啦，想先吃饭还是休息一下？","嘿嘿，今天这么顺利，真让人高兴。","今天辛苦了，先照顾好自己再说吧。","嗯，我听见啦，你先让我想一想嘛。","唉，没关系的，我只是想安静一会。","现在先把情况确认清楚，再决定下一步。"};
         String[] acknowledgments={"嗯。","诶？","啊！","啊。","嘿嘿。","嘿嘿。","嘻嘻。","啊。","呜。"};String[] ackMoods={"gentle","neutral","happy","gentle","shy","happy","shy","neutral","sad"};
         JSONObject manifest=new JSONObject(new String(Files.readAllBytes(new File(test,"voice-references/slot-0/pack.json").toPath()),StandardCharsets.UTF_8));
-        if(args.length==3&&args[2].equals("ready")){
+        if(args.length==3&&args[2].equals("quality")){
+            for(int i:new int[]{0,2,3})render(voice,outputs,report,"quality-"+moods[i],new JSONObject().put("slot",0).put("text",i==2?"今天辛苦啦，先坐下来休息一下吧。等你准备好了，我们再慢慢聊。":texts[i]).put("emotion",moods[i]).put("referenceVariant",0).put("steps",8).put("rate",0).put("deliveryStyle","normal").put("phrasing",true),false);
+            render(voice,outputs,report,"quality-long",new JSONObject().put("slot",0).put("text","嗯，你先别着急，我们把最重要的事情做好，剩下的可以慢慢来。你刚才说的话我有认真听，等你休息好了，我们再一起想想下一步。").put("emotion","gentle").put("referenceVariant",0).put("steps",8).put("rate",0).put("deliveryStyle","normal").put("phrasing",true),false);
+        }else if(args.length==3&&args[2].equals("ready")){
             render(voice,outputs,report,"ready",VoicePreview.request(0,new JSONObject().put("speechProvider","zipvoice").put("speechRate",manifest.optString("engine").equals("feiyu-index-rvc")?-30:-15).put("zipVoiceSteps",4),"neutral","准备好了。"),false);
         }else if(args.length==3&&args[2].equals("long")){
             for(int steps:new int[]{4,8}){
@@ -45,7 +48,7 @@ public final class CharacterPresetProbe {
         }else if(args.length==3&&args[2].equals("focus")){
             for(int steps:new int[]{4,8})for(int i:new int[]{3,5})for(int sentence=0;sentence<2;sentence++)render(voice,outputs,report,moods[i]+"-v"+(i==3?7:4)+"-"+steps+(sentence==1?"b":""),new JSONObject().put("slot",0).put("text",sentence==0?texts[i]:secondTexts[i]).put("emotion",moods[i]).put("referenceVariant",i==3?7:4).put("steps",steps).put("requestedSteps",steps).put("rate",-15).put("phrasing",true),false);
         }else{
-            for(int i=0;i<acknowledgments.length;i++)render(voice,outputs,report,"original-"+i,new JSONObject().put("slot",0).put("text",acknowledgments[i]).put("emotion",ackMoods[i]).put("steps",4).put("rate",0),true);
+            for(int i=0;i<acknowledgments.length;i++)render(voice,outputs,report,"original-"+i,new JSONObject().put("slot",0).put("text",acknowledgments[i]).put("skipOriginalAcknowledgment",false).put("emotion",ackMoods[i]).put("steps",4).put("rate",0),true);
             for(int steps:new int[]{4,8})for(int variant=0;variant<(steps==4?8:1);variant++)for(int i=0;i<moods.length;i++){
                 JSONArray variants=manifest.optJSONObject("variants")==null?null:manifest.getJSONObject("variants").optJSONArray(moods[i]);if(variant>=(variants==null?1:variants.length()+1))continue;
                 render(voice,outputs,report,moods[i]+"-v"+variant+"-"+steps,new JSONObject().put("slot",0).put("text",texts[i]).put("emotion",moods[i]).put("referenceVariant",variant).put("steps",steps).put("requestedSteps",steps).put("rate",-15).put("phrasing",true),false);

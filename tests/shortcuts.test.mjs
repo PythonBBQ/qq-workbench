@@ -29,7 +29,8 @@ test('group shortcuts preserve image, reply and at segments and use existing mod
  const m=group('#拉黑');m.message.push({type:'at',data:{qq:999999}});const black=parseShortcut(m);assert.deepEqual(moderationCommand(black.event,'123456'),{action:'block',target:'999999'});
  assert.deepEqual(moderationCommand(parseShortcut(group('#解黑 999999')).event,'123456'),{action:'unblock',target:'999999'});
  assert.equal(moderationCommand(parseShortcut(group('#名单')).event,'123456').action,'list');assert.equal(moderationCommand(black.event,'999999'),null);
- assert.equal(parseShortcut(event('#拉黑 999999')).operation.action,'commandText');
+ assert.deepEqual(moderationCommand(parseShortcut(event('#拉黑 999999')).event,'123456'),{action:'block',target:'999999'});
+ assert.equal(parseShortcut(event('#拉黑')).operation.action,'commandText');
  const image={type:'image',data:{url:'https://qpic.cn/test'}};const imageEvent=group('#搜索 白饭');imageEvent.message.push(image);const parsed=parseShortcut(imageEvent);assert.equal(parsed.event.message.at(-1),image);assert.match(parsed.event.message[0].data.text,/^@deepseek 去搜一下白饭$/);
 });
 
