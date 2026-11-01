@@ -33,7 +33,7 @@ for protocol,proxy in urllib.request.getproxies().items():
     if protocol in ('http','https'):env.setdefault(protocol.upper()+'_PROXY',proxy)
 
 def gh(*parts):return subprocess.check_output([args.gh,*map(str,parts)],env=env,encoding='utf-8',timeout=120)
-def api(path):return json.loads(gh('api','repos/'+args.repo+'/'+path))
+def api(path):return json.loads(gh('api','repos/'+args.repo+'/'+path+('&' if '?' in path else '?')+'qqwb_check='+str(time.time_ns()),'-H','Cache-Control: no-cache'))
 def phase(name,**fields):
     record=dict(phase=name,version=version,sha256=actual,at=datetime.datetime.now().isoformat(),**fields)
     (root/('build/publish-status-'+tag[1:]+'.json')).write_text(json.dumps(record,indent=2),encoding='utf-8')
