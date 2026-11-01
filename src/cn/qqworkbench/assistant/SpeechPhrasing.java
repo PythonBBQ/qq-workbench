@@ -45,14 +45,16 @@ final class SpeechPhrasing {
         if(rate<8000||rate>96000||source.length==0||source.length>rate*100)throw new IOException("语音输出无效或过长");
         float peak=0;for(float x:source){if(!Float.isFinite(x))throw new IOException("语音输出包含无效采样");peak=Math.max(peak,Math.abs(x));}
         if(peak<.0001f)throw new IOException("语音输出没有可听内容");
-        int start=0,end=source.length,edge=Math.min(rate/3,source.length/4),padding=rate/25;
+        int start=0,edge=Math.min(rate/3,source.length/4),padding=rate/25;
         while(start<edge&&Math.abs(source[start])<.0005f)start++;
-        while(source.length-end<edge&&end>start&&Math.abs(source[end-1])<.0005f)end--;
-        start=Math.max(0,start-padding);end=Math.min(source.length,end+padding);
-        float gain=peak>.97f?.97f/peak:1;float[] output=Arrays.copyOfRange(source,start,end);
-        // Short fades avoid clicks at joins; never alter pitch or add synthetic breaths.
-        int fade=Math.min(rate/250,output.length/4);
-        for(int i=0;i<output.length;i++){float envelope=i<fade?i/(float)fade:i>=output.length-fade?(output.length-1-i)/(float)fade:1;output[i]*=gain*envelope;}
+        start=Math.max(0,start-padding);
+        // Preserve every tail sample, including quiet final consonants. Release
+        // only after the original waveform instead of fading its final phoneme.
+        int release=Math.max(1,rate*12/1000),length=source.length-start;
+        float gain=peak>.97f?.97f/peak:1;float[] output=new float[length+release];
+        int fade=Math.min(rate/250,length/4);
+        for(int i=0;i<length;i++)output[i]=source[start+i]*gain*(i<fade?i/(float)fade:1);
+        float last=output[length-1];for(int i=0;i<release;i++)output[length+i]=last*(float)(.5+.5*Math.cos(Math.PI*(i+1)/release));
         return output;
     }
     static void validateDuration(String text,int samples,int rate)throws IOException{
@@ -62,9 +64,27 @@ final class SpeechPhrasing {
         if(samples/(double)rate<Math.max(.22,units/14.0))throw new IOException("语音片段时长异常，可能不完整，本条使用文字");
     }
     static float[] join(List<float[]> parts,List<String> text,int rate)throws IOException{
-        long length=0;for(int i=0;i<parts.size();i++)length+=parts.get(i).length+(i+1<parts.size()?pause(text.get(i),rate):0);
+        if(rate<8000||rate>96000||parts.isEmpty()||parts.size()!=text.size())throw new IOException("语音分段记录不完整");
+        int[] gaps=new int[Math.max(0,parts.size()-1)];long length=0;
+        for(int i=0;i<parts.size();i++){
+            if(parts.get(i)==null||parts.get(i).length==0)throw new IOException("语音分段没有完整返回");
+            length+=parts.get(i).length;
+            if(i+1<parts.size()){
+                // Native synthesis often already ends/starts with quiet padding.
+                // Add only the missing pause, instead of stacking silence twice.
+                // Keep every source sample, including quiet consonants/breaths.
+                gaps[i]=Math.max(0,pause(text.get(i),rate)-quietEdge(parts.get(i),rate,false)-quietEdge(parts.get(i+1),rate,true));
+                length+=gaps[i];
+            }
+        }
         if(length<=0||length>rate*100L)throw new IOException("语音输出过长");float[] result=new float[(int)length];int offset=0;
-        for(int i=0;i<parts.size();i++){float[] samples=parts.get(i);System.arraycopy(samples,0,result,offset,samples.length);offset+=samples.length;if(i+1<parts.size())offset+=pause(text.get(i),rate);}return result;
+        for(int i=0;i<parts.size();i++){float[] samples=parts.get(i);System.arraycopy(samples,0,result,offset,samples.length);offset+=samples.length;if(i<gaps.length)offset+=gaps[i];}return result;
+    }
+    static int quietEdge(float[] samples,int rate,boolean leading)throws IOException{
+        if(samples==null||samples.length==0)throw new IOException("语音分段没有完整返回");
+        int frame=Math.max(1,rate/200),limit=Math.min(rate/3,samples.length/4),quiet=0;
+        while(quiet+frame<=limit){double energy=0;for(int i=0;i<frame;i++){float value=samples[leading?quiet+i:samples.length-1-quiet-i];if(!Float.isFinite(value))throw new IOException("语音输出包含无效采样");energy+=value*value;}if(energy/frame>=.000001)break;quiet+=frame;}
+        return quiet;
     }
     static int pause(String text,int rate){String s=text.trim();return rate*(s.endsWith("，")||s.endsWith(",")?100:s.endsWith("：")||s.endsWith(":")?140:s.endsWith("；")||s.endsWith(";")?180:s.endsWith("？")||s.endsWith("?")?220:s.endsWith("！")||s.endsWith("!")?180:s.endsWith("。")||s.endsWith(".")?240:80)/1000;}
 }

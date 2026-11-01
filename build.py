@@ -12,7 +12,8 @@ if not APK_SOURCE.exists():
     APK_SOURCE = Path('C:/Users/Administrator/Downloads/DSHA.apk.1')
 BUILD = ROOT / 'build'
 ASSETS = ROOT / 'assets'
-OUT = ROOT.parents[1] / 'Exports/七丘QQ工作台-安卓预览版.apk'
+OUT = Path(os.environ.get('QQWB_OUTPUT_APK', str(ROOT.parents[1] / 'Exports/七丘QQ工作台-安卓预览版.apk'))).resolve()
+OUT.relative_to(ROOT.parents[1])
 
 def sha(p):
     with open(p, 'rb') as f:

@@ -1,0 +1,806 @@
+{
+  "schema": 1,
+  "files": [
+    {
+      "repo": "IndexTeam/IndexTTS-2",
+      "revision": "740dcaff396282ffb241903d150ac011cd4b1ede",
+      "name": "LICENSE.txt",
+      "target": "IndexTTS-2/LICENSE.txt",
+      "bytes": 10554,
+      "sha256": null,
+      "git_sha1": "a41d45fac40811452bcb5160877544f22829207b"
+    },
+    {
+      "repo": "IndexTeam/IndexTTS-2",
+      "revision": "740dcaff396282ffb241903d150ac011cd4b1ede",
+      "name": "LICENSE_ZH.txt",
+      "target": "IndexTTS-2/LICENSE_ZH.txt",
+      "bytes": 7336,
+      "sha256": null,
+      "git_sha1": "519ba4429a9404a686990f201e55f9a3b2bc93f6"
+    },
+    {
+      "repo": "IndexTeam/IndexTTS-2",
+      "revision": "740dcaff396282ffb241903d150ac011cd4b1ede",
+      "name": "README.md",
+      "target": "IndexTTS-2/README.md",
+      "bytes": 2511,
+      "sha256": null,
+      "git_sha1": "6cf8c394f39bb5e103270af3195af1ad15050411"
+    },
+    {
+      "repo": "IndexTeam/IndexTTS-2",
+      "revision": "740dcaff396282ffb241903d150ac011cd4b1ede",
+      "name": "bpe.model",
+      "target": "IndexTTS-2/bpe.model",
+      "bytes": 475997,
+      "sha256": "b2a5ce8090d32da3642cc4f81fdc996376bc6dd3f4cd5e3d165f71120d9f2bc8",
+      "git_sha1": "cb5d4abad29d2b1b1fe34b98e1330a523833bdea"
+    },
+    {
+      "repo": "IndexTeam/IndexTTS-2",
+      "revision": "740dcaff396282ffb241903d150ac011cd4b1ede",
+      "name": "config.yaml",
+      "target": "IndexTTS-2/config.yaml",
+      "bytes": 2882,
+      "sha256": null,
+      "git_sha1": "98d16c3892bd2321e7da71a379ecc8e1fa4dd84e"
+    },
+    {
+      "repo": "IndexTeam/IndexTTS-2",
+      "revision": "740dcaff396282ffb241903d150ac011cd4b1ede",
+      "name": "feat1.pt",
+      "target": "IndexTTS-2/feat1.pt",
+      "bytes": 57170,
+      "sha256": "f219cb447d80216ba615666da2ff8d63ac544eee26657f3a7b278692bf7a67c4",
+      "git_sha1": "3efb1545f32405073471a40277094678d7ef40ac"
+    },
+    {
+      "repo": "IndexTeam/IndexTTS-2",
+      "revision": "740dcaff396282ffb241903d150ac011cd4b1ede",
+      "name": "feat2.pt",
+      "target": "IndexTTS-2/feat2.pt",
+      "bytes": 374866,
+      "sha256": "9c4292e96dee535aea9a6206e9a0c856dd578dde9212acdb16dd3ada4d12bf80",
+      "git_sha1": "42b51075f698aea46002f1f503962137b5158130"
+    },
+    {
+      "repo": "IndexTeam/IndexTTS-2",
+      "revision": "740dcaff396282ffb241903d150ac011cd4b1ede",
+      "name": "gpt.pth",
+      "target": "IndexTTS-2/gpt.pth",
+      "bytes": 3484663079,
+      "sha256": "baaaeb8b56328da81731dc540a85a7dee32eca9da28f174b05757cb651c602a4",
+      "git_sha1": "2eea776fb328120e4b91c276e7942d2a749af64a"
+    },
+    {
+      "repo": "IndexTeam/IndexTTS-2",
+      "revision": "740dcaff396282ffb241903d150ac011cd4b1ede",
+      "name": "qwen0.6bemo4-merge/Modelfile",
+      "target": "IndexTTS-2/qwen0.6bemo4-merge/Modelfile",
+      "bytes": 360,
+      "sha256": null,
+      "git_sha1": "b1bed86c7c360343f16d4580b7fb6a19182da273"
+    },
+    {
+      "repo": "IndexTeam/IndexTTS-2",
+      "revision": "740dcaff396282ffb241903d150ac011cd4b1ede",
+      "name": "qwen0.6bemo4-merge/added_tokens.json",
+      "target": "IndexTTS-2/qwen0.6bemo4-merge/added_tokens.json",
+      "bytes": 707,
+      "sha256": null,
+      "git_sha1": "b54f9135e44c1e81047e8d05cb027af8bc039eed"
+    },
+    {
+      "repo": "IndexTeam/IndexTTS-2",
+      "revision": "740dcaff396282ffb241903d150ac011cd4b1ede",
+      "name": "qwen0.6bemo4-merge/chat_template.jinja",
+      "target": "IndexTTS-2/qwen0.6bemo4-merge/chat_template.jinja",
+      "bytes": 550,
+      "sha256": null,
+      "git_sha1": "d153f82f7ba7ddc6bfb46217304f0b5c8cc96044"
+    },
+    {
+      "repo": "IndexTeam/IndexTTS-2",
+      "revision": "740dcaff396282ffb241903d150ac011cd4b1ede",
+      "name": "qwen0.6bemo4-merge/config.json",
+      "target": "IndexTTS-2/qwen0.6bemo4-merge/config.json",
+      "bytes": 727,
+      "sha256": null,
+      "git_sha1": "2b9955706f283df53046c7eaa9bc4137139c11aa"
+    },
+    {
+      "repo": "IndexTeam/IndexTTS-2",
+      "revision": "740dcaff396282ffb241903d150ac011cd4b1ede",
+      "name": "qwen0.6bemo4-merge/generation_config.json",
+      "target": "IndexTTS-2/qwen0.6bemo4-merge/generation_config.json",
+      "bytes": 117,
+      "sha256": null,
+      "git_sha1": "520e468ea8345d57d70ba673ca62c2056c3c616b"
+    },
+    {
+      "repo": "IndexTeam/IndexTTS-2",
+      "revision": "740dcaff396282ffb241903d150ac011cd4b1ede",
+      "name": "qwen0.6bemo4-merge/merges.txt",
+      "target": "IndexTTS-2/qwen0.6bemo4-merge/merges.txt",
+      "bytes": 1671853,
+      "sha256": null,
+      "git_sha1": "31349551d90c7606f325fe0f11bbb8bd5fa0d7c7"
+    },
+    {
+      "repo": "IndexTeam/IndexTTS-2",
+      "revision": "740dcaff396282ffb241903d150ac011cd4b1ede",
+      "name": "qwen0.6bemo4-merge/model.safetensors",
+      "target": "IndexTTS-2/qwen0.6bemo4-merge/model.safetensors",
+      "bytes": 1192135096,
+      "sha256": "11293257a8df593c154a8ecd5fc039f3076de35411e35f06d41b471e136f6641",
+      "git_sha1": "90c4706d7c97351fa91f5645b527b8a53be298e5"
+    },
+    {
+      "repo": "IndexTeam/IndexTTS-2",
+      "revision": "740dcaff396282ffb241903d150ac011cd4b1ede",
+      "name": "qwen0.6bemo4-merge/special_tokens_map.json",
+      "target": "IndexTTS-2/qwen0.6bemo4-merge/special_tokens_map.json",
+      "bytes": 616,
+      "sha256": null,
+      "git_sha1": "17305b3603dfb19ccc0f658ec2cd2cd3adff4a58"
+    },
+    {
+      "repo": "IndexTeam/IndexTTS-2",
+      "revision": "740dcaff396282ffb241903d150ac011cd4b1ede",
+      "name": "qwen0.6bemo4-merge/tokenizer.json",
+      "target": "IndexTTS-2/qwen0.6bemo4-merge/tokenizer.json",
+      "bytes": 11422654,
+      "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+      "git_sha1": "cd71f61a15a522601badb3dc960d800d9cb3766c"
+    },
+    {
+      "repo": "IndexTeam/IndexTTS-2",
+      "revision": "740dcaff396282ffb241903d150ac011cd4b1ede",
+      "name": "qwen0.6bemo4-merge/tokenizer_config.json",
+      "target": "IndexTTS-2/qwen0.6bemo4-merge/tokenizer_config.json",
+      "bytes": 5433,
+      "sha256": null,
+      "git_sha1": "275ab4b74f4d4206ca5dcb2213961d380063ffb2"
+    },
+    {
+      "repo": "IndexTeam/IndexTTS-2",
+      "revision": "740dcaff396282ffb241903d150ac011cd4b1ede",
+      "name": "qwen0.6bemo4-merge/vocab.json",
+      "target": "IndexTTS-2/qwen0.6bemo4-merge/vocab.json",
+      "bytes": 2776833,
+      "sha256": null,
+      "git_sha1": "4783fe10ac3adce15ac8f358ef5462739852c569"
+    },
+    {
+      "repo": "IndexTeam/IndexTTS-2",
+      "revision": "740dcaff396282ffb241903d150ac011cd4b1ede",
+      "name": "s2mel.pth",
+      "target": "IndexTTS-2/s2mel.pth",
+      "bytes": 1202198223,
+      "sha256": "aae1bb12017cbb47e7a5ce537fc82f40b6b1deb71acdb9b8f25686f32714b636",
+      "git_sha1": "f6229e3291aaf1278760e4992e96ddf5ae7a6bb6"
+    },
+    {
+      "repo": "IndexTeam/IndexTTS-2",
+      "revision": "740dcaff396282ffb241903d150ac011cd4b1ede",
+      "name": "wav2vec2bert_stats.pt",
+      "target": "IndexTTS-2/wav2vec2bert_stats.pt",
+      "bytes": 9343,
+      "sha256": "c9c176c2b8850ab2e3ba828bbfa969deaf4566ce55db5f2687b8430b87526ad2",
+      "git_sha1": "1a8ecb924668659f3b1a9c35b02b2f8839fd8c5a"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-CosyVoice3",
+      "revision": "f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2",
+      "name": "CHANGELOG.md",
+      "target": "FeiyuVoice-CosyVoice3/CHANGELOG.md",
+      "bytes": 757,
+      "sha256": null,
+      "git_sha1": "d2e7c5fe885a39900fb20efad512747774f4b09b"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-CosyVoice3",
+      "revision": "f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2",
+      "name": "COPYRIGHT.md",
+      "target": "FeiyuVoice-CosyVoice3/COPYRIGHT.md",
+      "bytes": 1501,
+      "sha256": null,
+      "git_sha1": "204aa095475d6d157961dbc9d47a7a0b9a6fba00"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-CosyVoice3",
+      "revision": "f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2",
+      "name": "NOTICE.md",
+      "target": "FeiyuVoice-CosyVoice3/NOTICE.md",
+      "bytes": 1263,
+      "sha256": null,
+      "git_sha1": "0c801a00692e311afc6b0ac8993bfb2a7c6ccaa8"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-CosyVoice3",
+      "revision": "f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2",
+      "name": "README.md",
+      "target": "FeiyuVoice-CosyVoice3/README.md",
+      "bytes": 3636,
+      "sha256": null,
+      "git_sha1": "56614c7b0d8145fa98b2dd1e3bb44177b1b936ac"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-CosyVoice3",
+      "revision": "f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2",
+      "name": "files_sha256.json",
+      "target": "FeiyuVoice-CosyVoice3/files_sha256.json",
+      "bytes": 4608,
+      "sha256": null,
+      "git_sha1": "c3fbdd55bf6a9bf6c19a4c2b844ca80779662397"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-CosyVoice3",
+      "revision": "f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2",
+      "name": "infer.py",
+      "target": "FeiyuVoice-CosyVoice3/infer.py",
+      "bytes": 5453,
+      "sha256": null,
+      "git_sha1": "78ad80524202f5173295575466f91bdf9392ca8d"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-CosyVoice3",
+      "revision": "f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2",
+      "name": "licenses/LICENSE-CosyVoice-APACHE-2.0.txt",
+      "target": "FeiyuVoice-CosyVoice3/licenses/LICENSE-CosyVoice-APACHE-2.0.txt",
+      "bytes": 11357,
+      "sha256": null,
+      "git_sha1": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-CosyVoice3",
+      "revision": "f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2",
+      "name": "manifest.json",
+      "target": "FeiyuVoice-CosyVoice3/manifest.json",
+      "bytes": 2805,
+      "sha256": null,
+      "git_sha1": "e8057da7b8468ccf7c036bd164badb1a83a68ee4"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-CosyVoice3",
+      "revision": "f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2",
+      "name": "models/Fun-CosyVoice3-0.5B-2512/CosyVoice-BlankEN/config.json",
+      "target": "FeiyuVoice-CosyVoice3/models/Fun-CosyVoice3-0.5B-2512/CosyVoice-BlankEN/config.json",
+      "bytes": 659,
+      "sha256": null,
+      "git_sha1": "463b055262b6c66c4629a74a4b300bfe2ed31d3c"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-CosyVoice3",
+      "revision": "f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2",
+      "name": "models/Fun-CosyVoice3-0.5B-2512/CosyVoice-BlankEN/generation_config.json",
+      "target": "FeiyuVoice-CosyVoice3/models/Fun-CosyVoice3-0.5B-2512/CosyVoice-BlankEN/generation_config.json",
+      "bytes": 242,
+      "sha256": null,
+      "git_sha1": "dfc11073787daf1b0f9c0f1499487ab5f4c93738"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-CosyVoice3",
+      "revision": "f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2",
+      "name": "models/Fun-CosyVoice3-0.5B-2512/CosyVoice-BlankEN/merges.txt",
+      "target": "FeiyuVoice-CosyVoice3/models/Fun-CosyVoice3-0.5B-2512/CosyVoice-BlankEN/merges.txt",
+      "bytes": 1402109,
+      "sha256": null,
+      "git_sha1": "90d3d82d027eadcc6a5e77c38eb82d43fc51b53b"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-CosyVoice3",
+      "revision": "f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2",
+      "name": "models/Fun-CosyVoice3-0.5B-2512/CosyVoice-BlankEN/model.safetensors",
+      "target": "FeiyuVoice-CosyVoice3/models/Fun-CosyVoice3-0.5B-2512/CosyVoice-BlankEN/model.safetensors",
+      "bytes": 988097824,
+      "sha256": "130282af0dfa9fe5840737cc49a0d339d06075f83c5a315c3372c9a0740d0b96",
+      "git_sha1": "3dff8ababe3dbf3bd7a556f5f143503ab2ef3c98"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-CosyVoice3",
+      "revision": "f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2",
+      "name": "models/Fun-CosyVoice3-0.5B-2512/CosyVoice-BlankEN/tokenizer_config.json",
+      "target": "FeiyuVoice-CosyVoice3/models/Fun-CosyVoice3-0.5B-2512/CosyVoice-BlankEN/tokenizer_config.json",
+      "bytes": 1287,
+      "sha256": null,
+      "git_sha1": "ff55d7b9eb1384e5d4d7e75dc0f564c1a8833d6e"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-CosyVoice3",
+      "revision": "f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2",
+      "name": "models/Fun-CosyVoice3-0.5B-2512/CosyVoice-BlankEN/vocab.json",
+      "target": "FeiyuVoice-CosyVoice3/models/Fun-CosyVoice3-0.5B-2512/CosyVoice-BlankEN/vocab.json",
+      "bytes": 2776833,
+      "sha256": null,
+      "git_sha1": "4783fe10ac3adce15ac8f358ef5462739852c569"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-CosyVoice3",
+      "revision": "f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2",
+      "name": "models/Fun-CosyVoice3-0.5B-2512/README.md",
+      "target": "FeiyuVoice-CosyVoice3/models/Fun-CosyVoice3-0.5B-2512/README.md",
+      "bytes": 11982,
+      "sha256": null,
+      "git_sha1": "d816a921470cff1b6926d31c89e4ec7dea185f32"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-CosyVoice3",
+      "revision": "f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2",
+      "name": "models/Fun-CosyVoice3-0.5B-2512/campplus.onnx",
+      "target": "FeiyuVoice-CosyVoice3/models/Fun-CosyVoice3-0.5B-2512/campplus.onnx",
+      "bytes": 28303423,
+      "sha256": "a6ac6a63997761ae2997373e2ee1c47040854b4b759ea41ec48e4e42df0f4d73",
+      "git_sha1": "7b08523b2e28e437cfb1a0312723a5ab0bac287e"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-CosyVoice3",
+      "revision": "f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2",
+      "name": "models/Fun-CosyVoice3-0.5B-2512/config.json",
+      "target": "FeiyuVoice-CosyVoice3/models/Fun-CosyVoice3-0.5B-2512/config.json",
+      "bytes": 2,
+      "sha256": null,
+      "git_sha1": "9e26dfeeb6e641a33dae4961196235bdb965b21b"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-CosyVoice3",
+      "revision": "f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2",
+      "name": "models/Fun-CosyVoice3-0.5B-2512/configuration.json",
+      "target": "FeiyuVoice-CosyVoice3/models/Fun-CosyVoice3-0.5B-2512/configuration.json",
+      "bytes": 47,
+      "sha256": null,
+      "git_sha1": "5e812fae901c12933ac69ebf3eb79d0eb49bbab4"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-CosyVoice3",
+      "revision": "f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2",
+      "name": "models/Fun-CosyVoice3-0.5B-2512/cosyvoice3.yaml",
+      "target": "FeiyuVoice-CosyVoice3/models/Fun-CosyVoice3-0.5B-2512/cosyvoice3.yaml",
+      "bytes": 6934,
+      "sha256": null,
+      "git_sha1": "2eda7e5007d99f6b17fbe7bd751cf54e3cde29ea"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-CosyVoice3",
+      "revision": "f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2",
+      "name": "models/Fun-CosyVoice3-0.5B-2512/flow.pt",
+      "target": "FeiyuVoice-CosyVoice3/models/Fun-CosyVoice3-0.5B-2512/flow.pt",
+      "bytes": 1329116148,
+      "sha256": "a6fab32a7825e5b0bc855ddd948f8db9370b0a786fbc249caa4595e95b608e4b",
+      "git_sha1": "074b96e9cfbf3e511067528bde8e76a308f94904"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-CosyVoice3",
+      "revision": "f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2",
+      "name": "models/Fun-CosyVoice3-0.5B-2512/hift.pt",
+      "target": "FeiyuVoice-CosyVoice3/models/Fun-CosyVoice3-0.5B-2512/hift.pt",
+      "bytes": 83202622,
+      "sha256": "b279d7641eb97ae55b3b540cfba4f953c26492a2df758328a89a4d007ab87a65",
+      "git_sha1": "c5088ac4f7db1314a4efe06ca60e9f47ea2a1900"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-CosyVoice3",
+      "revision": "f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2",
+      "name": "models/Fun-CosyVoice3-0.5B-2512/llm.pt",
+      "target": "FeiyuVoice-CosyVoice3/models/Fun-CosyVoice3-0.5B-2512/llm.pt",
+      "bytes": 2024669519,
+      "sha256": "69f43bd545131c30e98947fb360ea8b4dc9916d8e83dded7757c7ea4f5a24970",
+      "git_sha1": "d9813d1f616910e9117d612e6e725b0350f98115"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-CosyVoice3",
+      "revision": "f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2",
+      "name": "models/Fun-CosyVoice3-0.5B-2512/speech_tokenizer_v3.onnx",
+      "target": "FeiyuVoice-CosyVoice3/models/Fun-CosyVoice3-0.5B-2512/speech_tokenizer_v3.onnx",
+      "bytes": 969451503,
+      "sha256": "23236a74175dbdda47afc66dbadd5bcb41303c467a57c261cb8539ad9db9208d",
+      "git_sha1": "91daac1b6f0bbcb54b8885dc7a1cbf054de22f94"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-CosyVoice3",
+      "revision": "f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2",
+      "name": "models/feiyu_cute_F6_0040.pt",
+      "target": "FeiyuVoice-CosyVoice3/models/feiyu_cute_F6_0040.pt",
+      "bytes": 2024692677,
+      "sha256": "31a87a0f83ae9987285e115dd0d2048a0f52db44fa40d48e8da1cfefea12affc",
+      "git_sha1": "31e382f69cc7046ca981dddd582c4857d3724b0b"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-CosyVoice3",
+      "revision": "f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2",
+      "name": "provenance.json",
+      "target": "FeiyuVoice-CosyVoice3/provenance.json",
+      "bytes": 2713,
+      "sha256": null,
+      "git_sha1": "47d1e404563a0068a84b72d562c59c57bfa60b8f"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-CosyVoice3",
+      "revision": "f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2",
+      "name": "references/cute_N01.wav",
+      "target": "FeiyuVoice-CosyVoice3/references/cute_N01.wav",
+      "bytes": 219244,
+      "sha256": "cefa06b7f45479130169d154f84a32bc89d90585b7de50f96e36533c5ebe819e",
+      "git_sha1": "4d6c19fad8298e9c4abf0dfcf842523926c31cde"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-CosyVoice3",
+      "revision": "f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2",
+      "name": "references/gentle_N10.wav",
+      "target": "FeiyuVoice-CosyVoice3/references/gentle_N10.wav",
+      "bytes": 801644,
+      "sha256": "d6f6365b66bc14f26def0f281beb2bd1db6392b76150b990603d04e34e364356",
+      "git_sha1": "f7e9f50918af23a5eb4176c9e0417276f7585588"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-CosyVoice3",
+      "revision": "f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2",
+      "name": "requirements-lock.local.txt",
+      "target": "FeiyuVoice-CosyVoice3/requirements-lock.local.txt",
+      "bytes": 2708,
+      "sha256": null,
+      "git_sha1": "7b6a2c91b185c99d37eb59cace3dc0c7e4ce542e"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-CosyVoice3",
+      "revision": "f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2",
+      "name": "runtime.template.json",
+      "target": "FeiyuVoice-CosyVoice3/runtime.template.json",
+      "bytes": 290,
+      "sha256": null,
+      "git_sha1": "6a601aaface14f115a642a7c0f89a7dfecc8dff4"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-RVC",
+      "revision": "04e5011b72341a742ef17a718d5da0435343f893",
+      "name": "Applio_CODE_LICENSE.txt",
+      "target": "FeiyuVoice-RVC/Applio_CODE_LICENSE.txt",
+      "bytes": 1088,
+      "sha256": null,
+      "git_sha1": "9293139b5e3995403f1fc31e7ac801b1601ec4b3"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-RVC",
+      "revision": "04e5011b72341a742ef17a718d5da0435343f893",
+      "name": "CHANGELOG.md",
+      "target": "FeiyuVoice-RVC/CHANGELOG.md",
+      "bytes": 746,
+      "sha256": null,
+      "git_sha1": "9d3360d70f1cdd2837c0156cd72caab779f494eb"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-RVC",
+      "revision": "04e5011b72341a742ef17a718d5da0435343f893",
+      "name": "COPYRIGHT.md",
+      "target": "FeiyuVoice-RVC/COPYRIGHT.md",
+      "bytes": 1501,
+      "sha256": null,
+      "git_sha1": "204aa095475d6d157961dbc9d47a7a0b9a6fba00"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-RVC",
+      "revision": "04e5011b72341a742ef17a718d5da0435343f893",
+      "name": "FeiyuVoice-RVC-v1.index",
+      "target": "FeiyuVoice-RVC/FeiyuVoice-RVC-v1.index",
+      "bytes": 32004419,
+      "sha256": "3821de84cf7ad3e2be40475ee06c261da03be25b0583e571f568da2658a0732a",
+      "git_sha1": "5ba00bdacfcbe718737a934c9d8df65059b0381e"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-RVC",
+      "revision": "04e5011b72341a742ef17a718d5da0435343f893",
+      "name": "FeiyuVoice-RVC-v1.pth",
+      "target": "FeiyuVoice-RVC/FeiyuVoice-RVC-v1.pth",
+      "bytes": 55191150,
+      "sha256": "bcc3f4de74f87e102358db704c0fb75fc700fd8f44f491494287cc0b071a1dfe",
+      "git_sha1": "bc14d18363179525fcf45a14a27b52b67df85a7d"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-RVC",
+      "revision": "04e5011b72341a742ef17a718d5da0435343f893",
+      "name": "NOTICE.md",
+      "target": "FeiyuVoice-RVC/NOTICE.md",
+      "bytes": 893,
+      "sha256": null,
+      "git_sha1": "b8ba8ff07cbe41307008c31ccfe4660942777048"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-RVC",
+      "revision": "04e5011b72341a742ef17a718d5da0435343f893",
+      "name": "README.md",
+      "target": "FeiyuVoice-RVC/README.md",
+      "bytes": 5027,
+      "sha256": null,
+      "git_sha1": "ec030ac73604a74dd1d86c67323f4bb337c302dc"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-RVC",
+      "revision": "04e5011b72341a742ef17a718d5da0435343f893",
+      "name": "apply_breath.py",
+      "target": "FeiyuVoice-RVC/apply_breath.py",
+      "bytes": 4937,
+      "sha256": null,
+      "git_sha1": "eada76b5b501ecbb210d902d0db61265e3f67ef0"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-RVC",
+      "revision": "04e5011b72341a742ef17a718d5da0435343f893",
+      "name": "configuration.json",
+      "target": "FeiyuVoice-RVC/configuration.json",
+      "bytes": 146,
+      "sha256": null,
+      "git_sha1": "58e3bf95a379fbfca46bf894fd15b7044249bf63"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-RVC",
+      "revision": "04e5011b72341a742ef17a718d5da0435343f893",
+      "name": "files_sha256.json",
+      "target": "FeiyuVoice-RVC/files_sha256.json",
+      "bytes": 2709,
+      "sha256": null,
+      "git_sha1": "68e81090b03c1c62da8e45ebf96839216c1419a3"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-RVC",
+      "revision": "04e5011b72341a742ef17a718d5da0435343f893",
+      "name": "manifest.json",
+      "target": "FeiyuVoice-RVC/manifest.json",
+      "bytes": 1003,
+      "sha256": null,
+      "git_sha1": "ebf77548946a28e87cde0194263c9fe75effb646"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-RVC",
+      "revision": "04e5011b72341a742ef17a718d5da0435343f893",
+      "name": "provenance.json",
+      "target": "FeiyuVoice-RVC/provenance.json",
+      "bytes": 1057,
+      "sha256": null,
+      "git_sha1": "7a458ea17b96f854ead86fa211a4d1c7dc8facc1"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-RVC",
+      "revision": "04e5011b72341a742ef17a718d5da0435343f893",
+      "name": "regions.example.json",
+      "target": "FeiyuVoice-RVC/regions.example.json",
+      "bytes": 199,
+      "sha256": null,
+      "git_sha1": "61e276796906049d2f998159fedc78cf12c69271"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-RVC",
+      "revision": "04e5011b72341a742ef17a718d5da0435343f893",
+      "name": "requirements-tools.txt",
+      "target": "FeiyuVoice-RVC/requirements-tools.txt",
+      "bytes": 30,
+      "sha256": null,
+      "git_sha1": "e14873e7f084f78b04d59c51476bc371440c9ecb"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-RVC",
+      "revision": "04e5011b72341a742ef17a718d5da0435343f893",
+      "name": "run_rvc.py",
+      "target": "FeiyuVoice-RVC/run_rvc.py",
+      "bytes": 7922,
+      "sha256": null,
+      "git_sha1": "34bbdb1c810dd5416382a10d380e793a8f616aa4"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-RVC",
+      "revision": "04e5011b72341a742ef17a718d5da0435343f893",
+      "name": "runtime.template.json",
+      "target": "FeiyuVoice-RVC/runtime.template.json",
+      "bytes": 373,
+      "sha256": null,
+      "git_sha1": "f623d651badd7676b57bdbeb28ffff614b141fe0"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-RVC",
+      "revision": "04e5011b72341a742ef17a718d5da0435343f893",
+      "name": "runtime_pins.json",
+      "target": "FeiyuVoice-RVC/runtime_pins.json",
+      "bytes": 2038,
+      "sha256": null,
+      "git_sha1": "c6852825eb6a9a450d44f906962a5e6236bb6b43"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-RVC",
+      "revision": "04e5011b72341a742ef17a718d5da0435343f893",
+      "name": "validation.json",
+      "target": "FeiyuVoice-RVC/validation.json",
+      "bytes": 1562,
+      "sha256": null,
+      "git_sha1": "2d321be330ffcfdb450b7f1cd4285c92ff71b69a"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-RVC",
+      "revision": "04e5011b72341a742ef17a718d5da0435343f893",
+      "name": "\u6362\u6c14\u533a\u95f4\u6807\u8bb0.html",
+      "target": "FeiyuVoice-RVC/\u6362\u6c14\u533a\u95f4\u6807\u8bb0.html",
+      "bytes": 8439,
+      "sha256": null,
+      "git_sha1": "54a531f2afe5c3940d27f32134d144a8d07a82ff"
+    },
+    {
+      "repo": "facebook/w2v-bert-2.0",
+      "revision": "da985ba0987f70aaeb84a80f2851cfac8c697a7b",
+      "name": "README.md",
+      "target": "IndexTTS-2/hf_cache/w2v-bert-2.0/README.md",
+      "bytes": 4792,
+      "sha256": null,
+      "git_sha1": "23115b6e9bf0776b4cc3d480fde0a90a2ff33011"
+    },
+    {
+      "repo": "facebook/w2v-bert-2.0",
+      "revision": "da985ba0987f70aaeb84a80f2851cfac8c697a7b",
+      "name": "config.json",
+      "target": "IndexTTS-2/hf_cache/w2v-bert-2.0/config.json",
+      "bytes": 1874,
+      "sha256": null,
+      "git_sha1": "a383a594dac18459628cd2837168cd276342a31a"
+    },
+    {
+      "repo": "facebook/w2v-bert-2.0",
+      "revision": "da985ba0987f70aaeb84a80f2851cfac8c697a7b",
+      "name": "model.safetensors",
+      "target": "IndexTTS-2/hf_cache/w2v-bert-2.0/model.safetensors",
+      "bytes": 2322063736,
+      "sha256": "eb890c9660ed6e3414b6812e27257b8ce5454365d5490d3ad581ea60b93be043",
+      "git_sha1": "cb7c6d08fe4cc20b2748c5525de64964d50190fa"
+    },
+    {
+      "repo": "facebook/w2v-bert-2.0",
+      "revision": "da985ba0987f70aaeb84a80f2851cfac8c697a7b",
+      "name": "preprocessor_config.json",
+      "target": "IndexTTS-2/hf_cache/w2v-bert-2.0/preprocessor_config.json",
+      "bytes": 275,
+      "sha256": null,
+      "git_sha1": "5db61951cdf5edab6337fd84ee619500c27aaa3d"
+    },
+    {
+      "repo": "amphion/MaskGCT",
+      "revision": "265c6cef07625665d0c28d2faafb1415562379dc",
+      "name": "semantic_codec/model.safetensors",
+      "target": "IndexTTS-2/hf_cache/semantic_codec_model.safetensors",
+      "bytes": 177183712,
+      "sha256": "ec947271175d8cad75ec37e83aa487e27c97a0f72a303393772da5ffa84bddf2",
+      "git_sha1": "d8fb89f71594050e263aed319b2440b362e2eeef"
+    },
+    {
+      "repo": "funasr/campplus",
+      "revision": "e4b6ede7ce16997aff4ae69fbca1f0175e2afede",
+      "name": "campplus_cn_common.bin",
+      "target": "IndexTTS-2/hf_cache/campplus_cn_common.bin",
+      "bytes": 28036335,
+      "sha256": "3388cf5fd3493c9ac9c69851d8e7a8badcfb4f3dc631020c4961371646d5ada8",
+      "git_sha1": "ccc729ec7f373f8d2351be91c9efdc7b21c00384"
+    },
+    {
+      "repo": "nvidia/bigvgan_v2_22khz_80band_256x",
+      "revision": "633ff708ed5b74903e86ff1298cf4a98e921c513",
+      "name": "LICENSE",
+      "target": "IndexTTS-2/hf_cache/bigvgan/LICENSE",
+      "bytes": 1076,
+      "sha256": null,
+      "git_sha1": "45b7741b4516c22d7314c5f856b17f713bac91af"
+    },
+    {
+      "repo": "nvidia/bigvgan_v2_22khz_80band_256x",
+      "revision": "633ff708ed5b74903e86ff1298cf4a98e921c513",
+      "name": "bigvgan_generator.pt",
+      "target": "IndexTTS-2/hf_cache/bigvgan/bigvgan_generator.pt",
+      "bytes": 449228171,
+      "sha256": "e95ba25972d3de0628d99cd156e9315a9c018899bf739988959ebe3544080ced",
+      "git_sha1": "8d615250f07a44490d74033318fd330be67f4a86"
+    },
+    {
+      "repo": "nvidia/bigvgan_v2_22khz_80band_256x",
+      "revision": "633ff708ed5b74903e86ff1298cf4a98e921c513",
+      "name": "config.json",
+      "target": "IndexTTS-2/hf_cache/bigvgan/config.json",
+      "bytes": 1405,
+      "sha256": null,
+      "git_sha1": "635bd8975629bd6d4b51c409986944a281cfe7be"
+    },
+    {
+      "repo": "IndexTeam/IndexTTS-2",
+      "revision": "740dcaff396282ffb241903d150ac011cd4b1ede",
+      "name": ".gitattributes",
+      "target": "IndexTTS-2/.gitattributes",
+      "bytes": 1730,
+      "sha256": null,
+      "git_sha1": "509a0d76a611e809c0fa4f66f284af575268eca1"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-CosyVoice3",
+      "revision": "f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2",
+      "name": ".gitattributes",
+      "target": "FeiyuVoice-CosyVoice3/.gitattributes",
+      "bytes": 1519,
+      "sha256": null,
+      "git_sha1": "a6344aac8c09253b3b630fb776ae94478aa0275b"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-CosyVoice3",
+      "revision": "f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2",
+      "name": ".gitignore",
+      "target": "FeiyuVoice-CosyVoice3/.gitignore",
+      "bytes": 66,
+      "sha256": null,
+      "git_sha1": "198a5084bcb4f0077f2f4d705b0791f633ae5ddf"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-CosyVoice3",
+      "revision": "f37e9d1dda26e8b45b4e9f1b4c347c0a07b797e2",
+      "name": "Speak.ps1",
+      "target": "FeiyuVoice-CosyVoice3/Speak.ps1",
+      "bytes": 2994,
+      "sha256": null,
+      "git_sha1": "556da786457c1ce4f8386b525208eba2623ca393"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-RVC",
+      "revision": "04e5011b72341a742ef17a718d5da0435343f893",
+      "name": ".gitattributes",
+      "target": "FeiyuVoice-RVC/.gitattributes",
+      "bytes": 1579,
+      "sha256": null,
+      "git_sha1": "6a8c372ebde9ddd17f920add967bde4019a0a667"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-RVC",
+      "revision": "04e5011b72341a742ef17a718d5da0435343f893",
+      "name": ".gitignore",
+      "target": "FeiyuVoice-RVC/.gitignore",
+      "bytes": 60,
+      "sha256": null,
+      "git_sha1": "dfcdf6d4cb2ef94425abfc404cf7209a00626e6f"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-RVC",
+      "revision": "04e5011b72341a742ef17a718d5da0435343f893",
+      "name": "Apply-Breath.ps1",
+      "target": "FeiyuVoice-RVC/Apply-Breath.ps1",
+      "bytes": 571,
+      "sha256": null,
+      "git_sha1": "45f86fbca91febedad267c91a21310a421b597ac"
+    },
+    {
+      "repo": "Esmerubphire/FeiyuVoice-RVC",
+      "revision": "04e5011b72341a742ef17a718d5da0435343f893",
+      "name": "Convert.ps1",
+      "target": "FeiyuVoice-RVC/Convert.ps1",
+      "bytes": 1267,
+      "sha256": null,
+      "git_sha1": "358d03389d167532558ee0beae148523a64f7a3f"
+    },
+    {
+      "repo": "IAHispano/Applio",
+      "revision": "b81f9708367b124b29a47788e4c89b721166234f",
+      "name": "Resources/predictors/rmvpe.pt",
+      "target": "RVC-assets/rmvpe.pt",
+      "bytes": 181184272,
+      "sha256": "6d62215f4306e3ca278246188607209f09af3dc77ed4232efdd069798c4ec193",
+      "git_sha1": "6362f060846875c3b5d7012adea5f97e47305e7e"
+    },
+    {
+      "repo": "IAHispano/Applio",
+      "revision": "b81f9708367b124b29a47788e4c89b721166234f",
+      "name": "Resources/embedders/contentvec/pytorch_model.bin",
+      "target": "RVC-assets/pytorch_model.bin",
+      "bytes": 378342945,
+      "sha256": "d8dd400e054ddf4e6be75dab5a2549db748cc99e756a097c496c099f65a4854e",
+      "git_sha1": "f03cfb9aa43106344342ef928c119d5ad5f9aa5c"
+    },
+    {
+      "repo": "IAHispano/Applio",
+      "revision": "b81f9708367b124b29a47788e4c89b721166234f",
+      "name": "Resources/embedders/contentvec/config.json",
+      "target": "RVC-assets/config.json",
+      "bytes": 1388,
+      "sha256": "2ddde063b795d38d9051a7215a092fecf4cfe148b54251e38de51d88d356898b",
+      "git_sha1": "5186a71b15933aca2d9942db95e1aff02642d1f0"
+    }
+  ]
+}

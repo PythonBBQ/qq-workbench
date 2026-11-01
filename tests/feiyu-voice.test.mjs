@@ -16,6 +16,16 @@ test('cancelled or timed out voice jobs do not download audio, post twice or cla
   let now=0,posts=0;await assert.rejects(()=>feiyuSpeech(c,'测试',{key:'synthetic',timeout:5,now:()=>now,wait:async ms=>{now+=ms;},fetcher:async(url,options)=>{if(options.method==='POST'){posts++;return Response.json({id});}return Response.json({status:'queued'});}}),/超时/);assert.equal(posts,1);
   await assert.rejects(()=>feiyuSpeech(c,'测试',{key:'synthetic',stillCurrent:()=>false}),/取消/);
 });
+
+test('IndexTTS forwards the existing mood and allows cold loading without duplicate submissions',async()=>{
+  let now=0,posts=0,polls=0;const enhanced={...c,feiyuVoice:'feiyu-index-rvc'};
+  const result=await feiyuSpeech(enhanced,'别着急，我在听。',{key:'test',emotion:'shy',now:()=>now,wait:async ms=>{now+=ms;},fetcher:async(url,o)=>{
+    if(o.method==='POST'){posts++;assert.deepEqual(JSON.parse(o.body),{voice:'feiyu-index-rvc',text:'别着急，我在听。',style:'gentle',emotion:'shy'});return Response.json({id});}
+    if(url.endsWith('/audio'))return new Response(wav());
+    return Response.json({status:++polls>50?'success':'running'});
+  }});
+  assert.equal(posts,1);assert.ok(now>=55000);assert.equal(result.style,'gentle');
+});
 test('emotion markers never reach speech, memory text or QQ text; voice engine capabilities are explicit',async()=>{
   const chosen=extractVoiceChoice('[[voice:shy]] 主人，别逗啦。');assert.equal(chosen.choice,true);assert.equal(chosen.emotion,'shy');assert.equal(chosen.text,'主人，别逗啦。');assert.equal(extractVoiceChoice('[[text]]收到').text,'收到');
   const xml=speechRequest({speechVoice:'zh-CN-XiaoxiaoNeural'},'你好','test-key','happy').options.body;assert.match(xml,/mstts:express-as style="cheerful"/);assert.match(xml,/styledegree="0.7"/);

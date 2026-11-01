@@ -11,6 +11,12 @@ export const FEMALE_VOICES=[
 ];
 const xml=s=>String(s).replace(/[<>&'\"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;',"'":'&apos;','"':'&quot;'}[c]));
 const clamp=(n,min,max,otherwise)=>Number.isFinite(Number(n))?Math.max(min,Math.min(max,Number(n))):otherwise;
+const softRequest=/(?:用|来一段|给我一段|想听|听听).{0,6}(?:ASMR|耳语)|(?:轻声|小声|悄悄)(?:说|聊|讲)|哄我睡/i;
+export function voiceDeliveryStyle(reply,event={}){
+  const incoming=typeof event.raw_message==='string'?event.raw_message:Array.isArray(event.message)?event.message.filter(s=>s.type==='text').map(s=>String(s.data?.text||'')).join(''):typeof event.message==='string'?event.message:'';
+  if(/(?:不要|别|不用|停止|不想听).{0,6}(?:ASMR|耳语|轻声|小声)|正常声音|正常说话/i.test(incoming))return 'normal';
+  return softRequest.test(incoming)||/(?:闭上眼睛|慢慢放松|安心睡|睡个好觉)/.test(reply)?'soft':'normal';
+}
 export function speechRequest(c,text,key,emotion='neutral'){
   const voice=FEMALE_VOICES.find(v=>v[0]===c.speechVoice)||FEMALE_VOICES[0],region=String(c.speechRegion||'eastasia');
   if(!/^[a-z][a-z0-9]{1,30}$/.test(region))throw new Error('请填写正确的 Azure 区域，如 eastasia');
@@ -53,7 +59,7 @@ export function voiceDecision(text,c,{reply='',event={},history=[],lastVoiceAt=0
   if(!c.voiceEnabled)return {voice:false,reason:'语音未开启'};
   if(c.speechProvider==='qq'&&event.message_type!=='group')return {voice:false,reason:'所选QQ音色仅支持群聊'};
   if(refuse.test(text))return {voice:false,reason:'本条要求文字'};
-  if(ask.test(text))return {voice:true,explicit:true,reason:'本条明确要求语音'};
+  if(ask.test(text)||softRequest.test(text)&&!/(?:不要|别|不用|停止).{0,6}(?:ASMR|耳语|轻声|小声)/i.test(text))return {voice:true,explicit:true,reason:'本条明确要求语音'};
   const policy=c.voiceMode|| (c.voiceAlways?'always':'smart');
   if(policy==='request')return {voice:false,reason:'仅在要求时语音'};
   const recentTurns=history.filter(m=>m.role==='user').slice(-4).map(m=>typeof m.content==='string'?m.content:''),recent=recentTurns.join('\n');
@@ -82,6 +88,11 @@ export function speechPlan(text,c={},emotion='neutral'){
   value=value.replace(/(-?\d+(?:\.\d+)?)\s*%/g,(_,n)=>'百分之'+n.replace(/^-/,'负')).replace(/(-?\d+(?:\.\d+)?)\s*℃/g,(_,n)=>n.replace(/^-/,'零下')+'摄氏度');
   return {text:value,emotion:['neutral','happy','gentle','shy','sad','serious'].includes(emotion)?emotion:'neutral',phrasing:c.voiceNatural!==false};
 }
+export function speechDeliveryFilter(soft=false){
+  // Normalize speech before adding the final playback margin. No silence trim,
+  // gate, or fade over the final syllable. Keep quiet delivery softer but audible.
+  return `dynaudnorm=f=200:g=5:p=0.9:m=3:r=${soft?'0.065':'0.1'}:b=1,loudnorm=I=${soft?-23:-19}:LRA=9:TP=-1.5,apad=pad_dur=1.5`;
+}
 export function splitSpeechFallback(input){
   const text=String(input||'').trim();if(text.length<30)return [text];
   const middle=text.length/2,min=text.length*.25,max=text.length*.8;
@@ -95,16 +106,19 @@ export function splitSpeechFallback(input){
 export async function synthesize(c,text,{key='',feiyuKey='',emotion='neutral',event={},rpc,fetcher=fetch,directory,stillCurrent=()=>true,native,convert=execute}={}){
   const plan=speechPlan(text,c,emotion),value=plan.text;emotion=plan.emotion;if(!value||value.length>1200)throw new Error('语音限1200字，长回复继续使用文字');
   if(c.speechProvider==='kokoro'||c.speechProvider==='android'||c.speechProvider==='feiyu'||c.speechProvider==='zipvoice'){
-    let bytes,info=null;
+    let bytes,info=null,softDelivery=voiceDeliveryStyle(value,event)==='soft'&&c.voiceEmotion!==false;
     if(c.speechProvider==='feiyu')bytes=(await feiyuSpeech(c,value,{key:feiyuKey,emotion,fetcher,stillCurrent})).bytes;
     else{
       if(!native)throw new Error('系统语音接口尚未就绪');
       const adjustments=c.speechProvider==='zipvoice'||c.voiceEmotion===false?[0,0]:({happy:[6,3],gentle:[-7,-2],shy:[-9,1],sad:[-10,-3],serious:[-4,-2]})[emotion]||[0,0];
       const requestedSteps=c.zipVoiceSteps===8?8:4,steps=c.speechProvider==='zipvoice'&&c.zipVoiceAdaptive!==false&&value.length>60?4:requestedSteps;
-      const result=await native('synthesize',{provider:c.speechProvider,speaker:c.kokoroSpeaker||3,text:value,phrasing:plan.phrasing,voice:c.androidVoice||'',language:c.speechLanguage||'zh-CN',emotion:c.voiceEmotion===false?'neutral':emotion,steps,requestedSteps,rate:clamp(Number(c.speechRate||0)+adjustments[0],-40,60,0),pitch:clamp(Number(c.speechPitch||0)+adjustments[1],-30,30,0)});
+      const deliveryStyle=c.speechProvider==='zipvoice'&&c.voiceEmotion!==false?voiceDeliveryStyle(value,event):'normal',referenceMood=deliveryStyle==='soft'&&!['shy','gentle'].includes(emotion)?'gentle':emotion;
+      const result=await native('synthesize',{provider:c.speechProvider,speaker:c.kokoroSpeaker||3,text:value,phrasing:plan.phrasing,voice:c.androidVoice||'',language:c.speechLanguage||'zh-CN',emotion:c.voiceEmotion===false?'neutral':referenceMood,deliveryStyle,steps,requestedSteps,rate:clamp(Number(c.speechRate||0)+adjustments[0],-40,60,0),pitch:clamp(Number(c.speechPitch||0)+adjustments[1],-30,30,0)});
       bytes=Buffer.from(result.audio||'','base64');
       if(c.speechProvider==='kokoro')info={provider:'kokoro',speaker:result.speaker||3,elapsedMs:result.elapsedMs||0};
       if(c.speechProvider==='zipvoice')info={provider:'zipvoice',referenceMood:result.referenceMood||'neutral',referenceSource:result.referenceSource||'unknown',elapsedMs:result.elapsedMs||0};
+      if(c.speechProvider==='zipvoice'&&Number.isInteger(result.referenceVariant))info={...info,referenceVariant:result.referenceVariant,deliveryStyle:result.deliveryStyle==='soft'?'soft':'normal'};
+      if(c.speechProvider==='zipvoice'&&typeof result.originalOpening==='string'&&/^[a-z0-9-]{1,32}$/.test(result.originalOpening))info={...info,originalOpening:result.originalOpening};
       if(['zipvoice','kokoro'].includes(c.speechProvider)&&result.segments!==undefined){
         if(!Number.isInteger(result.segments)||result.segments<1||result.segments!==result.completedSegments)throw new Error('语音分段未全部完成，本次使用文字');
         info={...info,segments:result.segments,completedSegments:result.completedSegments,durationMs:result.durationMs||0,characters:result.characters||0,phraseTarget:result.phraseTarget||0,phraseLengths:Array.isArray(result.phraseLengths)?result.phraseLengths:[]};
@@ -114,7 +128,7 @@ export async function synthesize(c,text,{key='',feiyuKey='',emotion='neutral',ev
     }
     if(!stillCurrent())throw new Error('语音已取消');
     fs.mkdirSync(directory,{recursive:true,mode:0o700});const base=path.join(directory,'speech-'+crypto.randomBytes(16).toString('hex')),wav=base+'.wav',file=base+'.mp3';
-    try{fs.writeFileSync(wav,bytes,{mode:0o600});await convert('/usr/bin/ffmpeg',['-v','error','-nostdin','-threads','1','-i',wav,'-t','150','-ac','1','-ar','24000','-b:a','48k',file],{timeout:30000,maxBuffer:65536,env:{PATH:'/usr/bin:/bin',LANG:'C.UTF-8'}});
+    try{fs.writeFileSync(wav,bytes,{mode:0o600});await convert('/usr/bin/ffmpeg',['-v','error','-nostdin','-threads','1','-i',wav,'-af',speechDeliveryFilter(softDelivery),'-ac','1','-ar','24000','-b:a','48k',file],{timeout:30000,maxBuffer:65536,env:{PATH:'/usr/bin:/bin',LANG:'C.UTF-8'}});
       if(!fs.existsSync(file)||fs.statSync(file).size<64||!stillCurrent())throw new Error('语音转换未完成或已取消');
       fs.chmodSync(file,0o600);return {segment:{type:'record',data:{file:'file://'+file}},file,info,cleanup:()=>{try{fs.unlinkSync(file);}catch{}}};
     }catch(e){try{fs.unlinkSync(file);}catch{}throw new Error(e.message==='语音转换未完成或已取消'?e.message:'语音音频转换未完成，请检查解码组件');}finally{try{fs.unlinkSync(wav);}catch{}}

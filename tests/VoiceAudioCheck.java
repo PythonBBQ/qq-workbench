@@ -1,6 +1,17 @@
 package cn.qqworkbench.assistant;
 public final class VoiceAudioCheck {
     static void check(boolean good){if(!good)throw new AssertionError();}
+    static byte[] referencePack(byte[] wav,String problem)throws Exception{
+        org.json.JSONObject refs=new org.json.JSONObject();StringBuilder sha=new StringBuilder();for(byte b:java.security.MessageDigest.getInstance("SHA-256").digest(wav))sha.append(String.format(java.util.Locale.ROOT,"%02x",b&255));
+        for(String mood:LocalVoice.MOODS)refs.put(mood,new org.json.JSONObject().put("file",mood+".wav").put("text","今天也要好好吃饭。").put("bytes",wav.length).put("sha256",sha.toString()));
+        if(problem.equals("missing-mood"))refs.remove("happy");if(problem.equals("empty-text"))refs.getJSONObject("sad").put("text","");if(problem.equals("path"))refs.getJSONObject("shy").put("file","../shy.wav");
+        org.json.JSONObject manifest=new org.json.JSONObject().put("schema",1).put("type",VoiceReferencePack.TYPE).put("references",refs);java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();
+        try(java.util.zip.ZipOutputStream zip=new java.util.zip.ZipOutputStream(bytes)){
+            zip.putNextEntry(new java.util.zip.ZipEntry("manifest.json"));zip.write(manifest.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));zip.closeEntry();
+            for(String mood:LocalVoice.MOODS){if(problem.equals("missing-file")&&mood.equals("happy"))continue;zip.putNextEntry(new java.util.zip.ZipEntry(mood+".wav"));byte[] data=wav.clone();if(problem.equals("tampered")&&mood.equals("sad"))data[44]^=1;zip.write(data);zip.closeEntry();}
+            if(problem.equals("extra-file")){zip.putNextEntry(new java.util.zip.ZipEntry("../settings.json"));zip.write(1);zip.closeEntry();}
+        }return bytes.toByteArray();
+    }
     public static void main(String[] args)throws Exception{
         float[] wave=new float[24000];for(int n=0;n<wave.length;n++)wave[n]=(float)(.2*Math.sin(n*.12));
         byte[] wav=VoiceAudio.wav(wave,24000);java.io.File f=java.io.File.createTempFile("voice-audio-",".wav",new java.io.File("/data/local/tmp"));try{java.nio.file.Files.write(f.toPath(),wav);VoiceAudio decoded=VoiceAudio.decode(f);check(decoded.rate==24000&&decoded.samples.length==wave.length);check(Math.abs(decoded.samples[200]-wave[200])<.001);}finally{f.delete();}
@@ -17,10 +28,46 @@ public final class VoiceAudioCheck {
         }
         check(SpeechPhrasing.pause("慢慢来，",24000)<SpeechPhrasing.pause("慢慢来。",24000));
         float[] loud=wave.clone();for(int i=0;i<loud.length;i++)loud[i]*=6;float[] smooth=SpeechPhrasing.finish(loud,24000);float peak=0;for(float x:smooth)peak=Math.max(peak,Math.abs(x));check(peak<=.971&&smooth[0]==0&&smooth[smooth.length-1]==0);check(SpeechPhrasing.join(java.util.Arrays.asList(smooth,smooth),java.util.Arrays.asList("好。","好。"),24000).length==smooth.length*2+5760);
+        float[] quietTail=wave.clone();for(int i=quietTail.length-2400;i<quietTail.length;i++)quietTail[i]=.0003f;float[] kept=SpeechPhrasing.finish(quietTail,24000);check(kept.length==quietTail.length+288);for(int i=quietTail.length-2400;i<quietTail.length;i++)check(kept[i]==quietTail[i]);check(kept[kept.length-1]==0);
+        float[] voicedEnd=wave.clone();voicedEnd[voicedEnd.length-1]=.08f;float[] released=SpeechPhrasing.finish(voicedEnd,24000);check(released[voicedEnd.length-1]==.08f);check(released.length==voicedEnd.length+288);check(released[released.length-1]==0);
         SpeechPhrasing.validateDuration("你好，先休息一下。",24000,24000);rejected=false;try{SpeechPhrasing.validateDuration("这是一个较长的句子，不能只合成前面两个字。",2400,24000);}catch(java.io.IOException e){rejected=true;}check(rejected);
         check(LocalVoice.slot(0)==0&&LocalVoice.slot(3)==3);rejected=false;try{LocalVoice.slot(4);}catch(java.io.IOException e){rejected=true;}check(rejected);check(LocalVoice.mood("arbitrary").equals("neutral"));check(LocalVoice.StopCallback.class.getMethod("invoke",float[].class).getReturnType()==Integer.class);
         StringBuilder digest=new StringBuilder();for(byte b:java.security.MessageDigest.getInstance("SHA-256").digest(wav))digest.append(String.format(java.util.Locale.ROOT,"%02x",b&255));org.json.JSONObject reference=new org.json.JSONObject().put("bytes",wav.length).put("sha256",digest.toString());FeiyuReferences.checked(wav,reference);byte[] corrupt=wav.clone();corrupt[44]^=1;rejected=false;try{FeiyuReferences.checked(corrupt,reference);}catch(java.io.IOException expected){rejected=true;}check(rejected);
         for(String url:new String[]{"http://huggingface.co/voice.wav","https://evil.example/voice.wav","https://huggingface.co.evil.example/x.wav","https://u:p@huggingface.co/x.wav"}){rejected=false;try{FeiyuReferences.allowed(url);}catch(java.io.IOException expected){rejected=true;}check(rejected);}
-        System.out.println("QQWB_VOICE_AUDIO_OK: bounded PCM/WAV roundtrip, silence and invalid-sample rejection, instance/reference validation");
+        VoiceReferencePack pack=VoiceReferencePack.read(new java.io.ByteArrayInputStream(referencePack(wav,"")));check(pack.audio.size()==6);
+        java.io.File stage=new java.io.File("/data/local/tmp/voice-pack-check-"+java.util.UUID.randomUUID());try{pack.stage(stage);check(stage.listFiles().length==13);for(String mood:LocalVoice.MOODS){org.json.JSONObject meta=new org.json.JSONObject(new String(java.nio.file.Files.readAllBytes(new java.io.File(stage,mood+".json").toPath()),java.nio.charset.StandardCharsets.UTF_8));check(meta.getString("source").equals("feiyu-six-"+mood));check(new java.io.File(stage,meta.getString("file")).isFile());}}finally{VoiceReferencePack.discardStage(stage);}
+        for(String problem:new String[]{"missing-mood","empty-text","path","missing-file","tampered","extra-file"}){rejected=false;try{VoiceReferencePack.read(new java.io.ByteArrayInputStream(referencePack(wav,problem)));}catch(Exception expected){rejected=true;}check(rejected);}
+        richPackCheck(wav);
+        System.out.println("QQWB_VOICE_AUDIO_OK: PCM/WAV, legacy/rich preset staging, original short-response matching, hash/path/content validation");
+    }
+    static byte[] richPack(byte[] wav,String problem)throws Exception{
+        java.util.Map<String,byte[]> files=new java.util.LinkedHashMap<>();org.json.JSONObject refs=new org.json.JSONObject(),variants=new org.json.JSONObject();
+        for(String mood:LocalVoice.MOODS){refs.put(mood,record(mood+".wav",wav,"今天一起好好吃饭。"));files.put(mood+".wav",wav);}
+        variants.put("shy",new org.json.JSONArray().put(record("shy-1.wav",wav,"你想聊点什么？").put("guidanceScale",2).put("tags",new org.json.JSONArray().put("question"))));files.put("shy-1.wav",wav);
+        if(problem.equals("expanded"))for(int i=2;i<8;i++){String name="shy-"+i+".wav";variants.getJSONArray("shy").put(record(name,wav,"嗯，我听着呢。").put("guidanceScale",2).put("tags",new org.json.JSONArray().put(i==7?"soft":"hesitant")));files.put(name,wav);}
+        if(problem.equals("guidance-low"))refs.getJSONObject("shy").put("guidanceScale",0);if(problem.equals("guidance-high"))refs.getJSONObject("shy").put("guidanceScale",5);if(problem.equals("guidance-string"))refs.getJSONObject("shy").put("guidanceScale","2");
+        float[] shortSamples=new float[7200];for(int i=0;i<shortSamples.length;i++)shortSamples[i]=(float)(.1*Math.sin(i*.1));byte[] shortWav=VoiceAudio.wav(shortSamples,24000);files.put("ack-hmm.wav",shortWav);
+        org.json.JSONObject ack=record("ack-hmm.wav",shortWav,"嗯").put("id","hmm").put("aliases",new org.json.JSONArray().put("嗯")).put("moods",new org.json.JSONArray().put("shy"));
+        org.json.JSONObject manifest=new org.json.JSONObject().put("schema",2).put("type",VoiceReferencePack.TYPE).put("id","test-character").put("references",refs).put("variants",variants).put("acknowledgments",new org.json.JSONArray().put(ack));
+        if(problem.equals("alias"))ack.getJSONArray("aliases").put("删除文件");if(problem.equals("extra"))files.put("sad-3.wav",wav);if(problem.equals("path"))ack.put("file","../ack-hmm.wav");if(problem.equals("id"))manifest.put("id","../../other");if(problem.equals("hash"))files.put("ack-hmm.wav",wav);
+        java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();try(java.util.zip.ZipOutputStream zip=new java.util.zip.ZipOutputStream(bytes)){zip.putNextEntry(new java.util.zip.ZipEntry("manifest.json"));zip.write(manifest.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));zip.closeEntry();for(String name:files.keySet()){zip.putNextEntry(new java.util.zip.ZipEntry(name));zip.write(files.get(name));zip.closeEntry();}}return bytes.toByteArray();
+    }
+    static org.json.JSONObject record(String name,byte[] bytes,String text)throws Exception{StringBuilder sha=new StringBuilder();for(byte b:java.security.MessageDigest.getInstance("SHA-256").digest(bytes))sha.append(String.format(java.util.Locale.ROOT,"%02x",b&255));return new org.json.JSONObject().put("file",name).put("text",text).put("bytes",bytes.length).put("sha256",sha.toString());}
+    static void richPackCheck(byte[] wav)throws Exception{
+        VoiceReferencePack rich=VoiceReferencePack.read(new java.io.ByteArrayInputStream(richPack(wav,"")));check(rich.audio.size()==8);check(VoiceReferencePack.read(new java.io.ByteArrayInputStream(richPack(wav,"expanded"))).audio.size()==14);java.io.File dir=new java.io.File("/data/local/tmp/rich-voice-check-"+java.util.UUID.randomUUID());
+        try{rich.stage(dir);org.json.JSONObject primary=new org.json.JSONObject(new String(java.nio.file.Files.readAllBytes(new java.io.File(dir,"shy.json").toPath()),java.nio.charset.StandardCharsets.UTF_8));check(primary.getString("source").equals("test-character"));check(primary.getJSONArray("alternatives").length()==2);check(VoicePresetBank.select(primary,"想吃什么？",0,-1).getDouble("guidanceScale")==2);check(VoicePresetBank.select(primary,"想吃什么？",0,-1).getString("text").equals("你想聊点什么？"));check(VoicePresetBank.select(primary,"你好。",0,0).getString("text").equals("今天一起好好吃饭。"));check(VoicePresetBank.select(primary,"你好。",1,-1).getString("text").equals("你想聊点什么？"));
+            org.json.JSONObject ack=VoicePresetBank.acknowledgment(dir,"嗯。","shy",0);check(ack!=null);check(VoicePresetBank.acknowledgment(dir,"嗯，我知道了。","shy",0)==null);check(VoicePresetBank.acknowledgment(dir,"嗯？","shy",0)==null);check(VoicePresetBank.acknowledgment(dir,"嗯","neutral",0)==null);VoiceAudio shortVoice=VoiceAudio.decode(new java.io.File(dir,ack.getString("file")),180,2500);check(shortVoice.samples.length==7200);
+            VoicePresetBank.Opening opening=VoicePresetBank.opening(dir,"嗯，我在认真听你说。","shy",0);check(opening!=null);check((opening.prefix+opening.remainder).equals("嗯，我在认真听你说。"));check(opening.record.getString("id").equals("hmm"));
+            for(String input:new String[]{"嗯？我在认真听你说。","嗯嗯，我在认真听你说。","我在认真听你说。","嗯，你好。","嗯我在认真听你说。","（嗯），我在认真听你说。"})check(VoicePresetBank.opening(dir,input,"shy",0)==null);
+            org.json.JSONObject expanded=new org.json.JSONObject(primary.toString());org.json.JSONArray choices=expanded.getJSONArray("alternatives");for(int i=2;i<8;i++)choices.put(new org.json.JSONObject().put("text",primary.getString("text")).put("tags",new org.json.JSONArray().put("calm")));
+            // Replace the final entry with a quiet reference; it must remain out
+            // of ordinary conversation and be selected for sleep/ASMR wording.
+            choices.put(7,new org.json.JSONObject().put("text","闭上眼睛，慢慢放松。").put("tags",new org.json.JSONArray().put("soft")));
+            for(int i=0;i<12;i++)check(!VoicePresetBank.select(expanded,"今天聊点什么。",i,-1).getString("text").equals("闭上眼睛，慢慢放松。"));
+            check(VoicePresetBank.select(expanded,"晚安，闭上眼睛吧。",0,-1).getString("text").equals("闭上眼睛，慢慢放松。"));check(VoicePresetBank.select(expanded,"ASMR，轻声说。",0,-1).getString("text").equals("闭上眼睛，慢慢放松。"));
+            check(VoicePresetBank.select(expanded,"我在这里陪你。",0,-1,true).getString("text").equals("闭上眼睛，慢慢放松。"));check(!VoicePresetBank.select(expanded,"晚安，闭上眼睛吧。",0,-1,false).getString("text").equals("闭上眼睛，慢慢放松。"));
+            java.io.File meta=new java.io.File(dir,"shy.json");java.nio.file.Files.write(meta.toPath(),new org.json.JSONObject(primary.toString()).put("source","imported").toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));check(VoicePresetBank.acknowledgment(dir,"嗯","shy",0)==null);check(VoicePresetBank.opening(dir,"嗯，我在认真听你说。","shy",0)==null);meta.delete();check(VoicePresetBank.acknowledgment(dir,"嗯","shy",0)==null);VoicePresetBank.discardReferences(dir,primary);for(int i=0;i<primary.getJSONArray("alternatives").length();i++)check(!new java.io.File(dir,primary.getJSONArray("alternatives").getJSONObject(i).getString("file")).exists());
+        }finally{VoiceReferencePack.discardStage(dir);}
+        for(String problem:new String[]{"alias","extra","path","id","hash","guidance-low","guidance-high","guidance-string"}){boolean failed=false;try{VoiceReferencePack.read(new java.io.ByteArrayInputStream(richPack(wav,problem)));}catch(Exception expected){failed=true;}check(failed);}
     }
 }

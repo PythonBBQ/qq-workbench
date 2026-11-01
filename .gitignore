@@ -15,3 +15,12 @@ assets/zipvoice-models.zip
 
 assets/kokoro-models.zip
 *.qqpatch
+
+assets/asset-receipt.json
+.voice-studio/
+voice-runtime/
+**/gateway-key.local.txt
+**/launcher.local.json
+**/*-profile.local.json
+assets/feiyu-six-references.zip
+assets/character-daily-references.zip

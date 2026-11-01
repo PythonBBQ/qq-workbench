@@ -81,7 +81,7 @@ B站视频路径通过固定官方API选择最低码率视频轨，安卓受限�
 
 构建从 `tools/zipvoice-deps.json` 下载并校验固定的 sherpa-onnx 2.0.1 AAR、Kotlin 1.9.24、ZipVoice-Distill INT8、Vocos 声码器和中英文词典，缓存于 `build/zipvoice-deps`。`tools/zipvoice_deps.py` 仅提取所需的六个文件生成 `assets/zipvoice-models.zip` 和逐文件 SHA-256 清单；不包含上游人物参考录音。模型压缩包不提交 Git，首次构建需要联网；APK 内置模型，设备首次使用自动本机解压。Java 和 D8 均加载固定依赖，ARM64 JNI 库随包加入。
 
-模型许可与源码许可不同：ZipVoice 代码 Apache-2.0，当前 Emilia 预训练权重 CC-BY-NC 非商业；Vocos 权重 MIT。来源及上游模型卡保留于 `assets/licenses`。不要用本仓库源码许可替代第三方权重条款。语音默认参考由设备系统 TTS 生成；本项目未捆绑肥鱼人物声库。运行 `python tests/run-native-settings.py` 可检查 JNI 所需的具体 typed callback 方法签名；实际推理需要已安装 APK 的 Android Application 上下文。
+模型许可与源码许可不同：ZipVoice 代码 Apache-2.0，当前 Emilia 预训练权重 CC-BY-NC 非商业；Vocos 权重 MIT。来源及上游模型卡保留于 `assets/licenses`。不要用本仓库源码许可替代第三方权重条款。语音默认参考由设备系统 TTS 生成；完整肥鱼人物声库不捆绑。1.0.1 支持在个人构建中加入生成的六种合成参考，或从本机 ZIP 导入，详见 [声音工作台](docs/VOICE-STUDIO.md)。参考包不等于人物声库权重。运行 `python tests/run-native-settings.py` 可检查 JNI 所需的具体 typed callback 方法签名和六语气包校验；实际推理需要已安装 APK 的 Android Application 上下文。
 
 
 ## 固定的离线QQ环境
@@ -98,3 +98,7 @@ B站视频路径通过固定官方API选择最低码率视频轨，安卓受限�
 构建时tools/kokoro_deps.py下载固定SHA256的Kokoro v1.1-zh INT8模型，打入APK并保存逐文件清单及Apache-2.0许可。首次实际合成自动展开校验，无需系统TTS参考；CPU推理两个线程，闲置释放。ZipVoice克隆保留，许可独立。
 
 运行python tests/apk-patch-test.py验证差分重建及损坏拒绝。Android的ApkPatchCheck使用同一批fixture验证Java重建实现；完整签名APK的真实重建还须核对输出SHA256并通过AppUpdates.verify，不以fixture测试冒充安装验收。
+
+## 1.0.2参考预设
+
+个人参考二进制不提交源码仓库。需要随本地或明确授权的发行包内置时，在assets放置经过校验的feiyu-six-references.zip和character-daily-references.zip；没有这些可选包时隐藏对应一键按钮，Kokoro、系统TTS和手动参考导入仍保留。参考库格式与处理工具见docs/character-daily-voice-preset.md。签名补丁发行版仅上传.qqpatch与校验和，基于1.0.0基础整包重建；检查与下载上限均为1900MiB。

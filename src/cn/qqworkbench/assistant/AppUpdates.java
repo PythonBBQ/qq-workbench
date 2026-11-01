@@ -22,7 +22,7 @@ final class AppUpdates {
     }
     static int compare(String a,String b){String[] x=a.replaceFirst("^[vV]","").split("[.-]"),y=b.replaceFirst("^[vV]","").split("[.-]");for(int i=0;i<3;i++){int n=i<x.length&&x[i].matches("[0-9]{1,6}")?Integer.parseInt(x[i]):0,m=i<y.length&&y[i].matches("[0-9]{1,6}")?Integer.parseInt(y[i]):0;if(n!=m)return Integer.compare(n,m);}return 0;}
     static byte[] read(InputStream input,int limit)throws Exception{try(InputStream in=input;ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] b=new byte[16384];int n;while((n=in.read(b))!=-1){if(out.size()+n>limit)throw new IOException("更新信息过大");out.write(b,0,n);}return out.toByteArray();}}
-    static HttpURLConnection connection(URL url)throws Exception{HttpURLConnection c=(HttpURLConnection)url.openConnection();c.setConnectTimeout(15000);c.setReadTimeout(20000);c.setInstanceFollowRedirects(false);c.setRequestProperty("User-Agent","QQWorkbench-Updater");c.setRequestProperty("Accept","application/vnd.github+json");return c;}
+    static HttpURLConnection connection(URL url)throws Exception{HttpURLConnection c=(HttpURLConnection)url.openConnection();c.setConnectTimeout(15000);c.setReadTimeout(20000);c.setInstanceFollowRedirects(false);c.setUseCaches(false);c.setRequestProperty("Cache-Control","no-cache");c.setRequestProperty("User-Agent","QQWorkbench-Updater");c.setRequestProperty("Accept","application/vnd.github+json");return c;}
     static JSONObject check(Context context)throws Exception{
         HttpURLConnection c=connection(releaseUrl(feed(context)));JSONObject release;
         try{int status=c.getResponseCode();if(status==404)return new JSONObject().put("available",false).put("message","此项目暂无可用发行版；可在设置中更换更新源");if(status!=200)throw new IOException("更新源暂不可用（"+status+"）");release=new JSONObject(new String(read(c.getInputStream(),512*1024),"UTF-8"));}finally{c.disconnect();}
@@ -45,22 +45,19 @@ final class AppUpdates {
     }
     static URL assetUrl(String value)throws Exception{URL u=NativeNetwork.publicUrl(value);String h=u.getHost();if(!(h.equals("github.com")||h.equals("objects.githubusercontent.com")||h.equals("release-assets.githubusercontent.com"))||u.getPort()!=-1)throw new IOException("更新包必须来自 GitHub 发行版");return u;}
     static File file(Context c){return new File(new File(c.getCacheDir(),"updates"),"latest.apk");}
-    static File download(Context context,JSONObject release)throws Exception{
-        long expected=release.getLong("bytes");if(!validApkSize(expected))throw new IOException("更新包大小无效");File target=file(context);target.getParentFile().mkdirs();File temporary=new File(target.getParentFile(),"download.part");URL url=assetUrl(release.getString("url"));MessageDigest hash=MessageDigest.getInstance("SHA-256");
-        try{boolean complete=false;for(int hops=0;hops<5;hops++){
-            HttpURLConnection c=connection(url);c.setRequestProperty("Accept","application/octet-stream");
-            try{int status=c.getResponseCode();if(status>=300&&status<400){url=assetUrl(new URL(url,c.getHeaderField("Location")).toString());continue;}if(status!=200)throw new IOException("更新下载失败（"+status+"）");
-                long count=0;try(InputStream in=c.getInputStream();OutputStream out=new FileOutputStream(temporary)){byte[] b=new byte[65536];int n;while((n=in.read(b))!=-1){if(Thread.currentThread().isInterrupted())throw new InterruptedIOException();count+=n;if(count>expected||count>MAX_APK_BYTES)throw new IOException("更新包超过预期大小");hash.update(b,0,n);out.write(b,0,n);}}
-                if(count!=expected)throw new IOException("更新下载不完整，请重试");complete=true;break;
-            }finally{c.disconnect();}
-        }if(!complete)throw new IOException("更新下载跳转过多");
-            String digest=release.optString("digest");if(!digest.isEmpty()){StringBuilder actual=new StringBuilder();for(byte b:hash.digest())actual.append(String.format(Locale.ROOT,"%02x",b&255));if(!digest.equals("sha256:"+actual))throw new IOException("更新包哈希校验失败");}
+    static File download(Context context,JSONObject release)throws Exception{return download(context,release,ResumableDownload.NONE);}
+    static File download(Context context,JSONObject release,ResumableDownload.Progress progress)throws Exception{
+        File target=file(context),dir=target.getParentFile();dir.mkdirs();
+        try(java.nio.channels.FileChannel channel=new RandomAccessFile(new File(dir,"download.lock"),"rw").getChannel();java.nio.channels.FileLock lock=channel.tryLock()){
+            if(lock==null)throw new IOException("已有更新正在下载");
+            File temporary=ResumableDownload.fetch(dir,release,url->connection(assetUrl(url.toString())),progress);
             if(release.optString("kind").equals("patch")){
-                File rebuilt=new File(target.getParentFile(),"reconstructed.part");
-                try{ApkPatch.apply(new File(context.getApplicationInfo().sourceDir),temporary,rebuilt,release.getString("version"));verify(context,rebuilt);if(target.exists()&&!target.delete())throw new IOException("无法替换旧更新包");if(!rebuilt.renameTo(target))throw new IOException("无法保存更新包");return target;}finally{rebuilt.delete();}
+                File rebuilt=new File(dir,"reconstructed.part");progress.update("reconstructing",release.getLong("bytes"),release.getLong("bytes"));
+                try{ResumableDownload.check(progress);ApkPatch.apply(new File(context.getApplicationInfo().sourceDir),temporary,rebuilt,release.getString("version"));ResumableDownload.check(progress);verify(context,rebuilt);if(target.exists()&&!target.delete())throw new IOException("无法替换旧更新包");if(!rebuilt.renameTo(target))throw new IOException("无法保存更新包");ResumableDownload.clear(dir);return target;}finally{rebuilt.delete();}
             }
-            verify(context,temporary);if(target.exists()&&!target.delete())throw new IOException("无法替换旧更新包");if(!temporary.renameTo(target))throw new IOException("无法保存更新包");return target;
-        }finally{temporary.delete();}
+            ResumableDownload.check(progress);try{verify(context,temporary);}catch(Exception e){ResumableDownload.clear(dir);throw e;}
+            if(target.exists()&&!target.delete())throw new IOException("无法替换旧更新包");if(!temporary.renameTo(target))throw new IOException("无法保存更新包");ResumableDownload.meta(dir).delete();return target;
+        }
     }
     static void verify(Context c,File f)throws Exception{
         PackageManager pm=c.getPackageManager();PackageInfo apk=pm.getPackageArchiveInfo(f.getAbsolutePath(),PackageManager.GET_SIGNING_CERTIFICATES),installed=pm.getPackageInfo(c.getPackageName(),PackageManager.GET_SIGNING_CERTIFICATES);

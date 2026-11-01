@@ -1,8 +1,19 @@
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import os from 'node:os';import path from 'node:path';
 import {VoiceMemory,voiceScope,speakingFeedback,speakingConfig} from '../assets/voice-memory.mjs';
-import {voicePrompt,voiceCapability,voiceFormatHint,voiceDecision,speechPlan,speechText,splitSpeechFallback,synthesize} from '../assets/voice.mjs';
+import {voicePrompt,voiceCapability,voiceFormatHint,voiceDecision,voiceDeliveryStyle,speechDeliveryFilter,speechPlan,speechText,splitSpeechFallback,synthesize} from '../assets/voice.mjs';
 import {ConversationMemory,conversationScope} from '../assets/conversation-memory.mjs';
 const c={owner:'123456',voiceEnabled:true,voiceMode:'smart',speechProvider:'zipvoice'},event={message_type:'private',user_id:'123456'},scope=voiceScope(c,event,'654321');
+
+test('explicit quiet speech is routed locally without a second model call; unrelated ASMR discussion and refusals stay ordinary',async()=>{
+ for(const incoming of ['来一段ASMR','用耳语陪我聊聊','小声说给我听','哄我睡']){
+  assert.equal(voiceDeliveryStyle('好呀。',{raw_message:incoming}),'soft');assert.equal(voiceDecision(incoming,{...c,voiceMode:'request'},{reply:'好呀。',event}).voice,true);
+ }
+ for(const incoming of ['什么是ASMR','不要ASMR，正常声音','别轻声说，正常说话'])assert.equal(voiceDeliveryStyle('好呀。',{raw_message:incoming}),'normal');
+ assert.equal(voiceDeliveryStyle('好呀。',{message:[{type:'text',data:{text:'用耳语说'}},{type:'image',data:{text:'不要ASMR'}}]}),'soft');
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'quiet-voice-'));try{let calls=0;const wav=Buffer.alloc(128);wav.write('RIFF');
+ const audio=await synthesize(c,'我在这里陪你。',{directory,event:{raw_message:'用ASMR陪我聊聊'},native:async(route,data)=>{calls++;assert.equal(data.emotion,'gentle');assert.equal(data.deliveryStyle,'soft');return {ok:true,audio:wav.toString('base64'),referenceVariant:6,deliveryStyle:'soft'};},convert:async(bin,args)=>fs.writeFileSync(args.at(-1),Buffer.alloc(100))});assert.equal(calls,1);assert.equal(audio.info.deliveryStyle,'soft');audio.cleanup();
+ }finally{fs.rmSync(directory,{recursive:true,force:true});}
+});
 test('only explicit voice feedback is learned, temporary requests, quotes and unrelated conversation are ignored',()=>{
  assert.deepEqual(speakingFeedback('以后语音短一点，语速慢一点，别撒娇，少用语气词'),{pace:'slower',length:'short',tone:'plain',particles:'less'});
  for(const value of ['今晚语音说慢一点','例如“以后语音短一点”','我很喜欢温柔的人','帮我把音乐慢一点','语音太快了'])assert.deepEqual(speakingFeedback(value),{},value);
@@ -40,6 +51,13 @@ test('spoken text removes control/acting markup but preserves substantive parent
 test('synthesis receives spoken forms and phrasing controls once and keeps per-account rate, never adds a rewrite call',async()=>{
  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'voice-plan-'));try{let calls=0;const wav=Buffer.alloc(128);wav.write('RIFF');
  const audio=await synthesize(speakingConfig({...c,speechRate:2},{pace:'slower'}),'（轻声）主人，进度50%了。',{directory,emotion:'gentle',native:async(route,data)=>{calls++;assert.equal(data.text,'主人，进度百分之50了。');assert.equal(data.phrasing,true);assert.equal(data.rate,-6);return {ok:true,audio:wav.toString('base64')};},convert:async(bin,args)=>fs.writeFileSync(args.at(-1),Buffer.alloc(100))});assert.equal(calls,1);audio.cleanup();assert.equal(fs.readdirSync(directory).length,0);
+ }finally{fs.rmSync(directory,{recursive:true,force:true});}
+});
+
+test('voice delivery preserves the full source and adds 1.5 seconds only after speech normalization, with a quieter ASMR target',async()=>{
+ assert.match(speechDeliveryFilter(),/loudnorm=I=-19/);assert.match(speechDeliveryFilter(true),/loudnorm=I=-23/);assert.ok(speechDeliveryFilter().endsWith('apad=pad_dur=1.5'));assert.ok(!/silenceremove|afade|agate/.test(speechDeliveryFilter()));
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'tail-margin-'));try{const wav=Buffer.alloc(128);wav.write('RIFF');let encoded=0;
+ const audio=await synthesize(c,'先把最后几个字完整说完。',{directory,native:async()=>({ok:true,audio:wav.toString('base64')}),convert:async(bin,args)=>{assert.equal(args.includes('-t'),false);assert.equal(args[args.indexOf('-af')+1],speechDeliveryFilter(false));encoded++;fs.writeFileSync(args.at(-1),Buffer.alloc(100));}});assert.equal(encoded,1);audio.cleanup();
  }finally{fs.rmSync(directory,{recursive:true,force:true});}
 });
 
