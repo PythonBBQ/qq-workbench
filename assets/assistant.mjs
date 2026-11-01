@@ -1,3 +1,4 @@
+import {prepareSpeech} from './voice-delivery.mjs';
 import {RequestInspector} from './request-inspector.mjs';
 import {DeliveryRecovery} from './delivery-recovery.mjs';
 import {AccountInstances,instanceLayout} from './account-instances.mjs';
@@ -134,7 +135,7 @@ async function main() {
   function config() {
     let saved={};try{saved=JSON.parse(fs.readFileSync(path.join(here,'settings.json'),'utf8'));}catch{}
     if(saved.visionMode==null&&saved.visionUrl&&saved.visionModel)saved.visionMode='separate';
-    const next={...defaults,...saved},owner=JSON.stringify([String(next.owner),next.characterName||'',next.persona||'',next.worldBook||'',next.voiceEnabled,next.voiceAlways,next.voiceMode,next.voicePreference,next.voiceCooldown,next.voiceNatural,next.voiceMemoryEnabled,next.voiceEmotion,next.zipVoiceSteps,next.zipVoiceAdaptive,next.feiyuStyle,next.feiyuVoice,next.feiyuUrl,next.androidVoice,next.speechProvider,next.kokoroSpeaker,next.speechVoice,next.speechRate,next.speechPitch,next.emojiEnabled,next.emojiAutoLabel,next.autoCollectEmoji,next.speechRegion,next.qqVoiceId]);
+    const next={...defaults,...saved},owner=JSON.stringify([String(next.owner),next.characterName||'',next.persona||'',next.worldBook||'',next.voiceEnabled,next.voiceAlways,next.voiceMode,next.voicePreference,next.voiceCooldown,next.voiceNatural,next.voiceMemoryEnabled,next.voiceEmotion,next.voiceEmotionPreset,next.zipVoiceSteps,next.zipVoiceAdaptive,next.feiyuStyle,next.feiyuVoice,next.feiyuUrl,next.androidVoice,next.speechProvider,next.kokoroSpeaker,next.speechVoice,next.speechRate,next.speechPitch,next.emojiEnabled,next.emojiAutoLabel,next.autoCollectEmoji,next.speechRegion,next.qqVoiceId]);
     if(ownerSnapshot!==null&&ownerSnapshot!==owner){ownerStickers.clear();connectionEpoch++;contexts.clear();videoContexts.clear();sourceContexts.clear();sessions.clear();groupContext.clear();queue=[];queuedCodexResults.clear();}
     ownerSnapshot=owner;return next;
   }
@@ -325,7 +326,7 @@ async function main() {
     let answer,face=null,speech=null,speechFallback=false,faceOnly=false,modelVoice=null,replyEmotion='neutral';
     if(operation?.action==='endChat'){sessions.delete(`${event.group_id||'private'}:${event.user_id}`);contexts.delete(key);videoContexts.delete(key);sourceContexts.delete(key);memory.end(scope);history=[];answer='这段聊天结束啦，需要时发＃搜索或再叫我。';}
     else if(operation?.action==='sources')answer=sourceReply(sourceContexts.get(key));
-    else if(operation?.action==='speak'){answer=operation.text;try{if(!c.voiceEnabled)throw new Error('语音尚未开启，请在能力页选择音色并开启');speech=await synthesize(speechConfig,answer,{key:speechKey,feiyuKey,emotion:replyEmotion,event,rpc,native:speechNative,directory:speechDirectory,stillCurrent:()=>epoch===connectionEpoch&&String(config().owner)===String(event.user_id)});}catch(e){speechFallback=true;voiceStatus={status:'fallback',message:e.message+'；本次按句意分段发送文字',at:Date.now()};record('语音',voiceStatus.message);}}
+    else if(operation?.action==='speak'){answer=operation.text;try{if(!c.voiceEnabled)throw new Error('语音尚未开启，请在能力页选择音色并开启');speech=prepareSpeech(speechConfig,answer,{key:speechKey,feiyuKey,emotion:replyEmotion,event,rpc,native:speechNative,directory:speechDirectory,stillCurrent:()=>epoch===connectionEpoch&&String(config().owner)===String(event.user_id)});}catch(e){speechFallback=true;voiceStatus={status:'fallback',message:e.message+'；本次按句意分段发送文字',at:Date.now()};record('语音',voiceStatus.message);}}
     else if(operation){answer=await operate(operation,event,()=>epoch===connectionEpoch&&String(config().owner)===String(event.user_id));if(['setting','voice','prosody','replyControl'].includes(operation.action)&&String(config().owner)===String(event.user_id))epoch=connectionEpoch;}
     else if(mode==='admin'){answer=adminAnswer||(/^(?:#sl|#status|\/status)\s*$/i.test(text)?`七丘 QQ 工作台正在运行\nQQ ${identity} 在线，接入组件 SnowLuma 1.14.22\n自动回复${c.enabled?'开启':'暂停'}\n本次输入 ${usage.input} Token，输出 ${usage.output} Token`:'此管理指令未开放远程执行，请在工作台中操作。当前可用 #sl 或 #status 查看运行状态。');}
     else if(mode==='end'){contexts.delete(key);videoContexts.delete(key);sourceContexts.delete(key);answer='好呀，这段聊天先结束啦，有事再叫我。';}
@@ -430,20 +431,20 @@ async function main() {
     const voiceChoice=voiceDecision(text,c,{reply:answer,event,history:fullHistory,modelChoice:modelVoice,lastVoiceAt:voiceActivity.get(key)||0,mode,preferences:speakingPreferences});
     if(!faceOnly&&['reply','ambient'].includes(mode)){voiceStatus={...voiceStatus,decision:voiceChoice.reason};}
     if(!faceOnly&&!speech&&!speechFallback&&['reply','ambient'].includes(mode)&&voiceChoice.voice){
-      try{speech=await synthesize(speechConfig,answer,{key:speechKey,feiyuKey,emotion:replyEmotion,event,rpc,native:speechNative,directory:speechDirectory,stillCurrent:()=>epoch===connectionEpoch});}
+      try{speech=prepareSpeech(speechConfig,answer,{key:speechKey,feiyuKey,emotion:replyEmotion,event,rpc,native:speechNative,directory:speechDirectory,stillCurrent:()=>epoch===connectionEpoch});}
       catch(e){speechFallback=true;voiceStatus={status:'fallback',message:e.message+'；本次按句意分段发送文字',at:Date.now()};record('语音',voiceStatus.message);}
     }
     if(speechFallback)answer=splitSpeechFallback(answer).join('\n\n');
     if(!connected||epoch!==connectionEpoch||moderation.blocked(event,config().owner,identity)){speech?.cleanup();journal[id]='cancelled';saveJournal();return;}
-    const message=faceOnly?[{type:'image',data:{file:face.url,sub_type:1,summary:'[动画表情]'}}]:speech?[speech.segment]:[{type:'text',data:{text:answer}},...(face&&config().emojiEnabled?[{type:'image',data:{file:face.url,sub_type:1,summary:'[动画表情]'}}]:[])];
+    const message=faceOnly?[{type:'image',data:{file:face.url,sub_type:1,summary:'[动画表情]'}}]:speech?[]:[{type:'text',data:{text:answer}},...(face&&config().emojiEnabled?[{type:'image',data:{file:face.url,sub_type:1,summary:'[动画表情]'}}]:[])];
     const params={message,...(event.message_type==='group'?{group_id:event.group_id}:{user_id:event.user_id})};
     if(codexDelivery)codexJobs.delivery(codexDelivery,'delivering');
     journal[id]='sending';saveJournal();
     if(speech)rememberVoiceDelivery(key,'uncertain');
-    let result;try{result=faceOnly?await rpc('send_custom_face',{emoji_id:face.id,...(event.message_type==='group'?{group_id:event.group_id}:{user_id:event.user_id})}):await rpc(event.message_type==='group'?'send_group_msg':'send_private_msg',params);}catch(e){if(speech)voiceStatus={status:'uncertain',message:'QQ语音发送超时，不重发',at:Date.now()};throw e;}finally{speech?.cleanup();}
+    let result;try{result=speech?await speech.deliver({send:message=>rpc(event.message_type==='group'?'send_group_msg':'send_private_msg',{...params,message}),confirmed,current:()=>connected&&epoch===connectionEpoch&&!moderation.blocked(event,config().owner,identity),progress:p=>{voiceStatus={status:p.phase,message:p.phase==='fallback'?'本段合成未完成，剩余内容转为文字':(p.phase==='synthesizing'?'正在合成':'正在发送')+'第 '+p.part+' / '+p.total+' 段语音',at:Date.now()};}}):faceOnly?await rpc('send_custom_face',{emoji_id:face.id,...(event.message_type==='group'?{group_id:event.group_id}:{user_id:event.user_id})}):await rpc(event.message_type==='group'?'send_group_msg':'send_private_msg',params);}catch(e){if(speech)voiceStatus={status:'uncertain',message:'QQ语音发送超时，不重发',at:Date.now()};throw e;}finally{speech?.cleanup();}
     if(!confirmed(result)){speech?.cleanup();if(speech)voiceStatus={status:'uncertain',message:'QQ语音发送未获得完整回执，不重发',at:Date.now()};throw new Error('QQ 没有返回完整发送凭据，结果不确定；不自动重发');}
-    if(speech){voiceActivity.delete(key);voiceActivity.set(key,Date.now());if(voiceActivity.size>200)voiceActivity.delete(voiceActivity.keys().next().value);voiceStatus={status:'accepted',message:'QQ接口已接受语音，对方实际收到以QQ显示为准',decision:voiceChoice.reason,emotion:replyEmotion,audio:speech.info||null,expressionControl:c.speechProvider==='kokoro'?'本机中文女声与轻微语速调整':c.speechProvider==='zipvoice'?'同一音色的参考语气（未导入则自然）':c.speechProvider==='android'?'系统语速音高轻微调整':c.speechProvider==='feiyu'?'可爱或温柔声线':c.speechProvider==='azure'?'所选音色支持的情绪样式':'QQ音色',at:Date.now()};}
-    if(speech||speechFallback)rememberVoiceDelivery(key,speech?'accepted':'fallback');
+    if(speech?.acceptedVoiceCount){voiceActivity.delete(key);voiceActivity.set(key,Date.now());if(voiceActivity.size>200)voiceActivity.delete(voiceActivity.keys().next().value);voiceStatus={status:'accepted',message:'QQ接口已接受 '+speech.acceptedVoiceCount+' 段语音'+(speech.fallback?'，剩余已转文字':'')+'，实际收到以QQ显示为准',decision:voiceChoice.reason,emotion:replyEmotion,audio:speech.info||null,expressionControl:c.speechProvider==='kokoro'?'本机中文女声与轻微语速调整':c.speechProvider==='zipvoice'?'同一音色的参考语气（未导入则自然）':c.speechProvider==='android'?'系统语速音高轻微调整':c.speechProvider==='feiyu'?'可爱或温柔声线':c.speechProvider==='azure'?'所选音色支持的情绪样式':'QQ音色',at:Date.now()};}
+    if(speech||speechFallback)rememberVoiceDelivery(key,speech?.acceptedVoiceCount?'accepted':'fallback');
     journal[id]='accepted';deliveryRecovery.success(event);saveJournal();speech?.cleanup();if(codexDelivery)codexJobs.delivery(codexDelivery,'accepted');
     // A setting change or deletion may happen while QQ acknowledges the send.
     // Its reply is already sent; do not restore the discarded history.

@@ -71,7 +71,7 @@ public final class RuntimeService extends Service {
     private void checkHealth(){if(stopped)return;long now=SystemClock.elapsedRealtime();
         if(RuntimePolicy.schedulingGap(lastHealthTick,now)){record("后台检查曾暂停超过90秒，可能被系统冻结或休眠；返回后已继续检查");getSharedPreferences("runtime",0).edit().putLong("lastSchedulingGap",System.currentTimeMillis()).apply();resumeConnection("wake");}lastHealthTick=now;
         if(background!=null)background.refresh();
-        try{JSONObject s=localState();assistantReady=true;healthFailures=0;if(!s.optBoolean("connected")&&background!=null&&background.online())resumeConnection("health");getSharedPreferences("runtime",0).edit().putLong("lastHealthy",System.currentTimeMillis()).putBoolean("qqConnected",s.optBoolean("connected")).putString("healthStatus",s.optBoolean("connected")?"后台服务与QQ在线核验通过":"后台服务可达，QQ等待重新连接").apply();
+        try{JSONObject s=localState();UpdateFlow.finished(this);assistantReady=true;healthFailures=0;if(!s.optBoolean("connected")&&background!=null&&background.online())resumeConnection("health");getSharedPreferences("runtime",0).edit().putLong("lastHealthy",System.currentTimeMillis()).putBoolean("qqConnected",s.optBoolean("connected")).putString("healthStatus",s.optBoolean("connected")?"后台服务与QQ在线核验通过":"后台服务可达，QQ等待重新连接").apply();
             NotificationManager manager=getSystemService(NotificationManager.class);manager.notify(17,notification(s.optBoolean("connected")?"QQ在线 · 后台检查正常":"后台运行 · QQ正在连接"));
         }catch(Exception ignored){if(!assistantReady){healthFailures=0;getSharedPreferences("runtime",0).edit().putString("healthStatus","正在初始化，尚未进入后台连接检查").apply();return;}healthFailures++;if(healthFailures==3){record("连续三次本机健康检查未响应；保留仍运行的进程，避免重复启动QQ");getSharedPreferences("runtime",0).edit().putString("healthStatus","本机检查未响应，请检查省电限制或诊断").apply();}}
     }
@@ -83,7 +83,11 @@ public final class RuntimeService extends Service {
         Secrets vault=new Secrets(this);network=new NativeNetwork(vault.ensure("internal"),this);
         // If Android recreated this service while the isolated session survived,
         // adopt it instead of starting a second QQ. Tokens remain in Keystore.
+        boolean sync=UpdateFlow.needsSync(UpdateFlow.version(this),getSharedPreferences("runtime",0).getLong("resourceVersion",0));
         try{localState();adopted=true;}catch(Exception ignored){}
+        if(adopted&&sync){UpdateFlow.begin(this);update("更新后正在停止旧会话并整合资源…");requestShutdown();boolean exited=false;for(int i=0;i<25&&!stopped;i++){Thread.sleep(1000);try{localState();}catch(Exception e){exited=true;break;}}if(!exited)throw new IOException("旧会话尚未退出，未覆盖运行中的资源");
+            adopted=false;}
+        if(sync){UpdateFlow.begin(this);Container old=new Container(this);if(new File(old.root,".qq-rootfs-v1").isFile()){java.lang.Process guard=old.start("exec flock -w 15 /opt/qq-workbench/.runtime.lock true",new HashMap<>());if(!guard.waitFor(18,TimeUnit.SECONDS)){guard.destroy();throw new IOException("等待旧会话释放资源超时");}if(guard.exitValue()!=0)throw new IOException("旧会话尚未释放资源，未覆盖运行中的文件");}}
         if(adopted){update("已接管仍在运行的本机QQ会话");while(!stopped)Thread.sleep(15000);return;}
         int exit;
         do{
@@ -92,14 +96,14 @@ public final class RuntimeService extends Service {
             int attempt=getSharedPreferences("runtime",0).getInt("recoveryAttempts",1);update("本机进程异常退出，稍后自动恢复（最多三次/十分钟）…");Thread.sleep(RuntimePolicy.retryDelay(attempt));
         }while(!stopped);
         if(!stopped&&exit==75)update("已有本机会话持有运行锁，未重复启动QQ；请到诊断检查");
-    }catch(Exception|LinkageError e){if(!stopped)update("启动失败："+e.getClass().getSimpleName()+" · "+e.getMessage());}
+    }catch(Exception|LinkageError e){if(!stopped){update("启动失败："+e.getClass().getSimpleName()+" · "+e.getMessage());UpdateFlow.problem(this,state);}}
     finally{
         java.lang.Process survivor=process;
         if(!stopped&&survivor!=null&&survivor.isAlive()){requestShutdown();survivor.destroy();try{if(!survivor.waitFor(3,TimeUnit.SECONDS))survivor.destroyForcibly();}catch(InterruptedException ignored){Thread.currentThread().interrupt();}}
         if(network!=null){network.close();network=null;}running=false;process=null;if(!stopped)stopSelf();}}
     private int launchOnce()throws Exception{
         assistantReady=false;healthFailures=0;
-        Container container=new Container(this);container.prepare(this::update);if(stopped||Thread.currentThread().isInterrupted())return 0;
+        Container container=new Container(this);container.prepare(this::update);UpdateFlow.resourcesReady(this);if(stopped||Thread.currentThread().isInterrupted())return 0;
         container.selectRuntimeMode(this::update);if(stopped||Thread.currentThread().isInterrupted())return 0;Secrets vault=new Secrets(this);
         JSONObject selected=new ApiProfiles(this).active();
         File configFile=new File(getFilesDir(),"linux/rootfs/opt/qq-workbench/settings.json");JSONObject current=configFile.isFile()?new JSONObject(new String(java.nio.file.Files.readAllBytes(configFile.toPath()),java.nio.charset.StandardCharsets.UTF_8)):new JSONObject();JSONObject apiSettings=ApiProfiles.settings(selected);for(java.util.Iterator<String> it=apiSettings.keys();it.hasNext();){String k=it.next();current.put(k,apiSettings.get(k));}Container.writePrivate(configFile,current.toString());

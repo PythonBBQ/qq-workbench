@@ -1,4 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="cn.qqworkbench.assistant" android:versionCode="10002" android:versionName="1.0.2">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="cn.qqworkbench.assistant" android:versionCode="10003" android:versionName="1.0.3">
   <uses-sdk android:minSdkVersion="30" android:targetSdkVersion="35"/>
   <uses-permission android:name="android.permission.INTERNET"/>
   <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
@@ -19,6 +19,7 @@
     <activity android:name=".MainActivity" android:exported="true" android:windowSoftInputMode="adjustResize">
       <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
     </activity>
+    <receiver android:name=".UpdateReceiver" android:exported="false"><intent-filter><action android:name="android.intent.action.MY_PACKAGE_REPLACED"/></intent-filter></receiver>
     <activity android:name=".BiliLoginActivity" android:exported="false" android:windowSoftInputMode="adjustResize"/>
     <service android:name=".LocalVoiceService" android:exported="false" android:process=":speech"/>
     <service android:name=".UpdateDownloadService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="dataSync"/>

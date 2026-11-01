@@ -52,10 +52,10 @@ final class AppUpdates {
             if(lock==null)throw new IOException("已有更新正在下载");
             File temporary=ResumableDownload.fetch(dir,release,url->connection(assetUrl(url.toString())),progress);
             if(release.optString("kind").equals("patch")){
-                File rebuilt=new File(dir,"reconstructed.part");progress.update("reconstructing",release.getLong("bytes"),release.getLong("bytes"));
-                try{ResumableDownload.check(progress);ApkPatch.apply(new File(context.getApplicationInfo().sourceDir),temporary,rebuilt,release.getString("version"));ResumableDownload.check(progress);verify(context,rebuilt);if(target.exists()&&!target.delete())throw new IOException("无法替换旧更新包");if(!rebuilt.renameTo(target))throw new IOException("无法保存更新包");ResumableDownload.clear(dir);return target;}finally{rebuilt.delete();}
+                File rebuilt=new File(dir,"reconstructed.part");progress.update("base-check",0,0);
+                try{ResumableDownload.check(progress);ApkPatch.apply(new File(context.getApplicationInfo().sourceDir),temporary,rebuilt,release.getString("version"),progress);ResumableDownload.check(progress);progress.update("signing",0,0);verify(context,rebuilt);if(target.exists()&&!target.delete())throw new IOException("无法替换旧更新包");if(!rebuilt.renameTo(target))throw new IOException("无法保存更新包");ResumableDownload.clear(dir);return target;}finally{rebuilt.delete();}
             }
-            ResumableDownload.check(progress);try{verify(context,temporary);}catch(Exception e){ResumableDownload.clear(dir);throw e;}
+            ResumableDownload.check(progress);progress.update("signing",0,0);try{verify(context,temporary);}catch(Exception e){ResumableDownload.clear(dir);throw e;}
             if(target.exists()&&!target.delete())throw new IOException("无法替换旧更新包");if(!temporary.renameTo(target))throw new IOException("无法保存更新包");ResumableDownload.meta(dir).delete();return target;
         }
     }

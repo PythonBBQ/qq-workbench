@@ -29,7 +29,9 @@ public final class CharacterPresetProbe {
         String[] secondTexts={"你回来啦，想先吃饭还是休息一下？","嘿嘿，今天这么顺利，真让人高兴。","今天辛苦了，先照顾好自己再说吧。","嗯，我听见啦，你先让我想一想嘛。","唉，没关系的，我只是想安静一会。","现在先把情况确认清楚，再决定下一步。"};
         String[] acknowledgments={"嗯。","诶？","啊！","啊。","嘿嘿。","嘿嘿。","嘻嘻。","啊。","呜。"};String[] ackMoods={"gentle","neutral","happy","gentle","shy","happy","shy","neutral","sad"};
         JSONObject manifest=new JSONObject(new String(Files.readAllBytes(new File(test,"voice-references/slot-0/pack.json").toPath()),StandardCharsets.UTF_8));
-        if(args.length==3&&args[2].equals("long")){
+        if(args.length==3&&args[2].equals("ready")){
+            render(voice,outputs,report,"ready",VoicePreview.request(0,new JSONObject().put("speechProvider","zipvoice").put("speechRate",manifest.optString("engine").equals("feiyu-index-rvc")?-30:-15).put("zipVoiceSteps",4),"neutral","准备好了。"),false);
+        }else if(args.length==3&&args[2].equals("long")){
             for(int steps:new int[]{4,8}){
                 render(voice,outputs,report,"long-shy-"+steps,new JSONObject().put("slot",0).put("text","嗯，你这样说，我会有一点不好意思的。不过我有认真听你讲，刚才那件事情不用着急，我们可以慢慢把它做好。").put("emotion","shy").put("referenceVariant",0).put("steps",steps).put("rate",-15).put("phrasing",true),false);
                 render(voice,outputs,report,"long-gentle-"+steps,new JSONObject().put("slot",0).put("text","今天辛苦啦，先坐下来休息一下吧。想吃什么可以告诉我，等你休息好了，我们再一起想想明天要做的事情，好不好？").put("emotion","gentle").put("referenceVariant",2).put("steps",steps).put("rate",-15).put("phrasing",true),false);

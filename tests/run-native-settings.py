@@ -20,7 +20,7 @@ from tools.shizuku_deps import sdk_jars
 shizuku_jars=sdk_jars(root)
 from tools.zipvoice_deps import sdk_jars as voice_jars
 shizuku_jars+=voice_jars(root)
-sources=list((root/'src').rglob('*.java'))+[root/'tests/NativeSettingsCheck.java',root/'tests/PhotoBackgroundCheck.java',root/'tests/CharacterCardCheck.java',root/'tests/VideoFramesCheck.java',root/'tests/PythonBootstrapCheck.java',root/'tests/NavigationUpdateCheck.java',root/'tests/InstalledUpdateCheck.java',root/'tests/UnixTextCheck.java',root/'tests/UsageAgreementCheck.java',root/'tests/VoiceAudioCheck.java',root/'tests/QqWindowProbeCheck.java',root/'tests/BundledPythonRepairCheck.java',root/'tests/ApkPatchCheck.java',root/'tests/ResumableDownloadCheck.java']
+sources=list((root/'src').rglob('*.java'))+[root/'tests/NativeSettingsCheck.java',root/'tests/PhotoBackgroundCheck.java',root/'tests/CharacterCardCheck.java',root/'tests/VideoFramesCheck.java',root/'tests/PythonBootstrapCheck.java',root/'tests/NavigationUpdateCheck.java',root/'tests/InstalledUpdateCheck.java',root/'tests/UnixTextCheck.java',root/'tests/UsageAgreementCheck.java',root/'tests/VoiceAudioCheck.java',root/'tests/QqWindowProbeCheck.java',root/'tests/BundledPythonRepairCheck.java',root/'tests/ApkPatchCheck.java',root/'tests/ResumableDownloadCheck.java',root/'tests/VoiceLibraryCheck.java']
 if '--relay-profiles' in sys.argv:sources.append(root/'tests/RelayProfilesCheck.java')
 if '--device-tools' in sys.argv:sources.append(root/'tests/DeviceRuntimeCheck.java')
 if '--character-preset' in sys.argv:sources.append(root/'tests/CharacterPresetProbe.java')
@@ -41,7 +41,7 @@ run(adb,'-s',SERIAL,'shell',f'if [ -f {remote} ]; then chmod 644 {remote}; fi')
 print(run(adb,'-s',SERIAL,'push',check,remote).stdout)
 # Xiaomi shell media services differ from the installed Application context.
 # Opt in for this diagnostic; FFmpeg decoding is verified separately.
-tests=['NativeSettingsCheck','PhotoBackgroundCheck','CharacterCardCheck','PythonBootstrapCheck','NavigationUpdateCheck','UnixTextCheck','UsageAgreementCheck','VoiceAudioCheck','QqWindowProbeCheck','BundledPythonRepairCheck','ResumableDownloadCheck']
+tests=['NativeSettingsCheck','PhotoBackgroundCheck','CharacterCardCheck','PythonBootstrapCheck','NavigationUpdateCheck','UnixTextCheck','UsageAgreementCheck','VoiceAudioCheck','QqWindowProbeCheck','BundledPythonRepairCheck','ResumableDownloadCheck','VoiceLibraryCheck']
 if '--native-video' in sys.argv:tests.append('VideoFramesCheck')
 else:print('Native video shell probe NOT RUN: requires real Application context; use FFmpeg device verification')
 for test in tests:

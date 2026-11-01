@@ -55,7 +55,13 @@ final class LocalVoice {
         String name=UUID.randomUUID()+".wav";Files.write(new File(dir,name).toPath(),VoiceAudio.wav(audio.samples,audio.rate));JSONObject data=new JSONObject().put("file",name).put("text",text).put("seconds",audio.samples.length/(double)audio.rate).put("source",source);File temp=new File(dir,mood+".json.next");Files.write(temp.toPath(),data.toString().getBytes(StandardCharsets.UTF_8));Files.move(temp.toPath(),old.toPath(),StandardCopyOption.REPLACE_EXISTING);if(previous!=null)VoicePresetBank.discardReferences(dir,previous);}
     synchronized void removeReference(int n,String style)throws Exception{File dir=profile(n),meta=new File(dir,mood(style)+".json");if(meta.isFile()){JSONObject old=new JSONObject(new String(Files.readAllBytes(meta.toPath()),StandardCharsets.UTF_8));meta.delete();VoicePresetBank.discardReferences(dir,old);}}
     JSONObject installPack(int n,InputStream input)throws Exception{
-        slot(n);VoiceReferencePack pack=VoiceReferencePack.read(input);
+        return installPreset(n,VoiceReferencePack.read(input));
+    }
+    JSONObject installSingle(int n,File file,String text)throws Exception{
+        if(text.trim().isEmpty()||text.length()>200)throw new IOException("请填写准确的参考文字");VoiceAudio decoded=VoiceAudio.decode(file);return installPreset(n,VoiceReferencePack.single(VoiceAudio.wav(decoded.samples,decoded.rate),text.trim()));
+    }
+    JSONObject installPreset(int n,VoiceReferencePack pack)throws Exception{
+        slot(n);
         if(!inference.tryLock(8,TimeUnit.SECONDS))throw new IOException("语音正在合成，请稍后导入");
         File stage=null,backup=null,live=null;
         try{live=profile(n);stage=new File(refs,"slot-"+n+".import-"+UUID.randomUUID());pack.stage(stage);

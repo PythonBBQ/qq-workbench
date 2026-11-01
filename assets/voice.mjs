@@ -41,7 +41,7 @@ export function voicePrompt(c,{preferences={},explicit=false,format='auto'}={}){
   // Pace is applied by the local synthesizer; don't spend model input describing it.
   const {pace,...languagePreferences}=preferences,remembered=describeVoicePreferences(languagePreferences);
   return '\n[回复形式]结合当前话题、情绪和上下文选择。'+selection+'不方便听、代码链接、数字清单和长解释用文字；群聊克制。开头只加[[text]]或[[voice:neutral]]，语音的neutral可换happy/gentle/shy/sad/serious；随后直接给正文，不解释标记。'+
-    (c.voiceNatural===false?'':'文字先回应重点，短段落，保留准确细节；语音像当面接话，一到三句、通常20到90字，关键答案不省略，长解释改文字。短句用正常标点停顿；开心轻快，安慰温和，严肃直接。少套话、复述、反问和重复称呼；不堆语气词、不机械撒娇。不写动作旁白、笑声呼吸标签、SSML或表情，不拉长拼音或滥用省略号；必要英文数字照常。')+
+    (c.voiceNatural===false?'':'文字先回应重点，短段落，保留准确细节；语音像当面接话，一到三句、通常20到90字，关键答案不省略，长语音由软件分条朗读。短句用正常标点停顿；开心轻快，安慰温和，严肃直接。少套话、复述、反问和重复称呼；不堆语气词、不机械撒娇。不写动作旁白、笑声呼吸标签、SSML或表情，不拉长拼音或滥用省略号；必要英文数字照常。')+
     (remembered?'说话偏好：'+remembered+'；本条明确要求优先。':'')+
     '只写要说的话，不宣称已发送，不冒充真人，不编造现实活动。';
 }
@@ -66,7 +66,7 @@ export function voiceDecision(text,c,{reply='',event={},history=[],lastVoiceAt=0
   const preference=recentTurns.slice().reverse().find(value=>refuse.test(value)||ask.test(value));
   if(preference&&refuse.test(preference))return {voice:false,reason:'近期不方便听语音'};
   if(preferences.delivery==='text')return {voice:false,reason:'本会话记住了优先文字'};
-  if(/```|https?:\/\/|(?:\b[A-Z]:\\|\/[a-z]+\/)|\|.+\||(?:API.?Key|验证码|密码|命令|代码|端口|配置步骤)/i.test(reply)||speechText(reply).length>220)return {voice:false,reason:'内容适合阅读或复制'};
+  if(/```|https?:\/\/|(?:\b[A-Z]:\\|\/[a-z]+\/)|\|.+\||(?:API.?Key|验证码|密码|命令|代码|端口|配置步骤)/i.test(reply))return {voice:false,reason:'内容适合阅读或复制'};
   if(!reply.trim())return {voice:false,reason:'没有可朗读内容'};
   if(policy==='always')return {voice:true,reason:'优先语音'};
   if(mode==='ambient')return {voice:false,reason:'主动接话使用文字'};
@@ -86,12 +86,14 @@ export function speechPlan(text,c={},emotion='neutral'){
   let value=speechText(text);
   // Conservative spoken forms; identifiers, versions and ordinary numbers are left intact.
   value=value.replace(/(-?\d+(?:\.\d+)?)\s*%/g,(_,n)=>'百分之'+n.replace(/^-/,'负')).replace(/(-?\d+(?:\.\d+)?)\s*℃/g,(_,n)=>n.replace(/^-/,'零下')+'摄氏度');
+  if(['neutral','happy','gentle','shy','sad','serious'].includes(c.voiceEmotionPreset))emotion=c.voiceEmotionPreset;
   return {text:value,emotion:['neutral','happy','gentle','shy','sad','serious'].includes(emotion)?emotion:'neutral',phrasing:c.voiceNatural!==false};
 }
-export function speechDeliveryFilter(soft=false){
+export function speechDeliveryFilter(soft=false,pitch=0){
   // Normalize speech before adding the final playback margin. No silence trim,
   // gate, or fade over the final syllable. Keep quiet delivery softer but audible.
-  return `dynaudnorm=f=200:g=5:p=0.9:m=3:r=${soft?'0.065':'0.1'}:b=1,loudnorm=I=${soft?-23:-19}:LRA=9:TP=-1.5,apad=pad_dur=1.5`;
+  const ratio=1+clamp(pitch,-30,30,0)/100,prefix=ratio===1?'':`asetrate=${Math.round(24000*ratio)},aresample=24000,atempo=${(1/ratio).toFixed(6)},`;
+  return `${prefix}dynaudnorm=f=200:g=5:p=0.9:m=3:r=${soft?'0.065':'0.1'}:b=1,loudnorm=I=${soft?-23:-19}:LRA=9:TP=-1.5,apad=pad_dur=1.5`;
 }
 export function splitSpeechFallback(input){
   const text=String(input||'').trim();if(text.length<30)return [text];
@@ -128,7 +130,7 @@ export async function synthesize(c,text,{key='',feiyuKey='',emotion='neutral',ev
     }
     if(!stillCurrent())throw new Error('语音已取消');
     fs.mkdirSync(directory,{recursive:true,mode:0o700});const base=path.join(directory,'speech-'+crypto.randomBytes(16).toString('hex')),wav=base+'.wav',file=base+'.mp3';
-    try{fs.writeFileSync(wav,bytes,{mode:0o600});await convert('/usr/bin/ffmpeg',['-v','error','-nostdin','-threads','1','-i',wav,'-af',speechDeliveryFilter(softDelivery),'-ac','1','-ar','24000','-b:a','48k',file],{timeout:30000,maxBuffer:65536,env:{PATH:'/usr/bin:/bin',LANG:'C.UTF-8'}});
+    try{fs.writeFileSync(wav,bytes,{mode:0o600});await convert('/usr/bin/ffmpeg',['-v','error','-nostdin','-threads','1','-i',wav,'-af',speechDeliveryFilter(softDelivery,c.speechProvider==='zipvoice'?c.speechPitch:0),'-ac','1','-ar','24000','-b:a','48k',file],{timeout:30000,maxBuffer:65536,env:{PATH:'/usr/bin:/bin',LANG:'C.UTF-8'}});
       if(!fs.existsSync(file)||fs.statSync(file).size<64||!stillCurrent())throw new Error('语音转换未完成或已取消');
       fs.chmodSync(file,0o600);return {segment:{type:'record',data:{file:'file://'+file}},file,info,cleanup:()=>{try{fs.unlinkSync(file);}catch{}}};
     }catch(e){try{fs.unlinkSync(file);}catch{}throw new Error(e.message==='语音转换未完成或已取消'?e.message:'语音音频转换未完成，请检查解码组件');}finally{try{fs.unlinkSync(wav);}catch{}}

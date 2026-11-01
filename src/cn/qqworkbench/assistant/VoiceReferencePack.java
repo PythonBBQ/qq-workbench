@@ -13,6 +13,13 @@ final class VoiceReferencePack {
     static final int MAX_BYTES=12*1024*1024;
     final JSONObject manifest;final Map<String,byte[]> audio;
     VoiceReferencePack(JSONObject manifest,Map<String,byte[]> audio){this.manifest=manifest;this.audio=audio;}
+    static VoiceReferencePack single(byte[] wav,String text)throws Exception{return single(wav,text,"我的导入音色");}
+    static VoiceReferencePack single(byte[] wav,String text,String name)throws Exception{
+        name=name.replaceAll("[\\p{Cntrl}]","").trim();if(name.isEmpty())name="我的导入音色";if(name.length()>60)name=name.substring(0,60);
+        if(text.trim().isEmpty()||text.length()>200)throw new IOException("参考文字无效");StringBuilder sha=new StringBuilder();for(byte b:java.security.MessageDigest.getInstance("SHA-256").digest(wav))sha.append(String.format(java.util.Locale.ROOT,"%02x",b&255));
+        JSONObject refs=new JSONObject();Map<String,byte[]> audio=new LinkedHashMap<>();for(String mood:LocalVoice.MOODS){String file=mood+".wav";audio.put(file,wav);refs.put(mood,new JSONObject().put("file",file).put("text",text).put("bytes",wav.length).put("sha256",sha.toString()));}
+        return new VoiceReferencePack(new JSONObject().put("schema",1).put("type",TYPE).put("id","custom-single").put("name",name).put("references",refs),audio);
+    }
     static boolean permittedName(String name){return name.matches("(?:neutral|happy|gentle|shy|sad|serious)(?:-[1-7])?\\.wav")||name.matches("ack-[a-z0-9-]{1,32}\\.wav")||name.equals("manifest.json")||name.equals("NOTICE.txt");}
     static void reference(JSONObject ref,String expected,Map<String,byte[]> files,Set<String> used)throws Exception{
         String text=ref.getString("text");if(!text.equals(text.trim())||text.isEmpty()||text.length()>200||!expected.equals(ref.getString("file")))throw new IOException("语气参考文字或文件名无效");
