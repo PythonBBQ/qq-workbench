@@ -17,6 +17,12 @@ final class ApiProfiles {
     void activate(JSONObject profile)throws Exception {vault.put("active-api",validated(profile).toString());}
     JSONArray list()throws Exception {String text=vault.get("api-profiles");return text.isEmpty()?new JSONArray():new JSONArray(text);}
     JSONObject get(String id)throws Exception {JSONArray all=list();for(int i=0;i<all.length();i++)if(all.getJSONObject(i).optString("id").equals(id))return all.getJSONObject(i);throw new IOException("配置卡片不存在");}
+    static boolean sameConfiguration(JSONObject a,JSONObject b){
+        for(String key:new String[]{"apiUrl","model","apiProtocol","apiKey","visionMode","visionUrl","visionModel","visionKey"}){
+            String fallback=key.equals("apiProtocol")?"chat":key.equals("visionMode")?"auto":"";
+            if(!a.optString(key,fallback).equals(b.optString(key,fallback)))return false;
+        }return true;
+    }
     static boolean sameOrigin(String a,String b){try{URI x=ModelCatalog.uri(a),y=ModelCatalog.uri(b);return x.getScheme().equals(y.getScheme())&&x.getHost().equalsIgnoreCase(y.getHost())&&(x.getPort()==-1?443:x.getPort())==(y.getPort()==-1?443:y.getPort());}catch(Exception e){return false;}}
     static JSONObject validated(JSONObject card)throws Exception {
         JSONObject c=new JSONObject(card.toString());String name=c.optString("name").trim(),model=c.optString("model").trim();

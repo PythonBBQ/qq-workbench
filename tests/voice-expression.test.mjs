@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import os from 'node:os';import path from 'node:path';
 import {VoiceMemory,voiceScope,speakingFeedback,speakingConfig} from '../assets/voice-memory.mjs';
-import {voicePrompt,voiceFormatHint,voiceDecision,speechPlan,speechText,splitSpeechFallback,synthesize} from '../assets/voice.mjs';
+import {voicePrompt,voiceCapability,voiceFormatHint,voiceDecision,speechPlan,speechText,splitSpeechFallback,synthesize} from '../assets/voice.mjs';
 import {ConversationMemory,conversationScope} from '../assets/conversation-memory.mjs';
 const c={owner:'123456',voiceEnabled:true,voiceMode:'smart',speechProvider:'zipvoice'},event={message_type:'private',user_id:'123456'},scope=voiceScope(c,event,'654321');
 test('only explicit voice feedback is learned, temporary requests, quotes and unrelated conversation are ignored',()=>{
@@ -78,4 +78,17 @@ test('failed speech splits full text into two balanced paragraphs at punctuation
  assert.deepEqual(splitSpeechFallback('短句不用硬拆。'),['短句不用硬拆。']);
  const chinese='继续完整保留这些内容'.repeat(8);assert.equal(splitSpeechFallback(chinese).join(''),chinese);
  const english='A sentence that should stay complete. Another sentence with version 1.42 and 2.5 percent.';assert.equal(splitSpeechFallback(english).join(' '),english);
+});
+
+
+test('model receives current voice capability even on text turns; group-only timbre and previous results stay truthful',()=>{
+ const active=voiceCapability(c,event);assert.match(active,/已开启/);assert.match(active,/本机参考音色/);assert.match(active,/不等于没有语音能力/);assert.ok(!active.includes('已发送语音'));
+ assert.match(voiceCapability({...c,voiceEnabled:false},event),/未开启/);
+ assert.match(voiceCapability({...c,speechProvider:'qq'},event),/仅支持群聊/);
+ assert.match(voiceCapability({...c,speechProvider:'qq'},{message_type:'group'}),/已开启/);
+ assert.match(voiceCapability(c,event,{status:'accepted'}),/QQ接口受理/);
+ assert.match(voiceCapability(c,event,{status:'fallback'}),/不能当成永久/);
+ assert.match(voiceCapability(c,event,{status:'uncertain'}),/不能声称送达/);
+ const privateQQ={...c,speechProvider:'qq'};assert.equal(voiceDecision('语音说说',privateQQ,{event,reply:'好的'}).voice,false);
+ assert.equal(voiceDecision('语音说说',privateQQ,{event:{message_type:'group'},reply:'好的'}).voice,true);
 });

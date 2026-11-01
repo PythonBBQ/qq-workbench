@@ -8,7 +8,7 @@ import {runDeviceTask} from './device-tools.mjs';
 import {QzoneClient} from './qzone-client.mjs';
 import http from 'node:http';
 import {QQStickers,RecentOwnerStickers,QzonePosts,mediaCommand,stickerRequest,stickerReceipt,stickerModelHistory,stripStickerNarration,checkQzone,ok} from './qq-media.mjs';
-import {synthesize,splitSpeechFallback,voiceDecision,voiceFormatHint,voicePrompt,extractVoiceChoice,clearSpeech,FEMALE_VOICES} from './voice.mjs';
+import {synthesize,splitSpeechFallback,voiceDecision,voiceFormatHint,voicePrompt,voiceCapability,extractVoiceChoice,clearSpeech,FEMALE_VOICES} from './voice.mjs';
 import {chatBudget,systemPrompt,worldContext,requestHistory,addUsage,sourceReply,withoutSourceFooter,capabilityPrompt} from './chat-style.mjs';
 import {ConversationMemory,conversationScope} from './conversation-memory.mjs';
 import {VoiceMemory,voiceScope,speakingConfig} from './voice-memory.mjs';
@@ -121,7 +121,7 @@ async function main() {
   const ownerStickers=new RecentOwnerStickers();
   const stickers=new QQStickers(rpc,{directory:here}),posts=new QzonePosts(here),qzone=new QzoneClient(rpc,()=>connected?identity:''),qzoneRpc=(...args)=>qzone.request(...args),speechDirectory=path.join(here,'speech-temp');clearSpeech(speechDirectory);
   let autoPosting=false;
-  let voiceStatus={status:'idle',message:'尚未发送语音',at:0};const voiceActivity=new Map();let voiceTestBusy=false;const deliveryRecovery=new DeliveryRecovery();
+  let voiceStatus={status:'idle',message:'尚未发送语音',at:0};const voiceActivity=new Map(),voiceDeliveries=new Map();let voiceTestBusy=false;const deliveryRecovery=new DeliveryRecovery();
   const summarizing=new Set();
   const reflecting=new Set();
   let journal = {};
@@ -139,6 +139,7 @@ async function main() {
     ownerSnapshot=owner;return next;
   }
   function record(role, text) { recent.push(`${role}：${String(text).slice(0,180)}`); if (recent.length > 20) recent.shift(); }
+  function rememberVoiceDelivery(key,status){voiceDeliveries.delete(key);voiceDeliveries.set(key,{status,at:Date.now()});if(voiceDeliveries.size>200)voiceDeliveries.delete(voiceDeliveries.keys().next().value);}
   function disconnect(message) {
     ownerStickers.clear();connectionEpoch++;connected=false;connectionMessage=message;sessions.clear();ambientActivity.clear();groupContext.clear();queue=[];queuedCodexResults.clear();
     for(const entry of pending.values())entry.reject(new Error('连接断开，结果不确定；不自动重发'));
@@ -279,10 +280,10 @@ async function main() {
     const response=await fetch('http://127.0.0.1:13481/speech/'+route,{method:'POST',headers:{Authorization:'Bearer '+nativeToken,'Content-Type':'application/json'},body:JSON.stringify({...data,slot:instanceSlot}),signal:AbortSignal.timeout(130000)});
     const result=await response.json();if(!response.ok||!result.ok)throw new Error(result.message||'系统语音接口未完成');return result;
   }
-  async function decodeNativeClip(name){
+  async function decodeNativeClip(name,fps=1){
     if(!/^clip-[a-f0-9]{32}\.bin$/.test(name))throw new Error('视频暂存标识无效');
     const file=path.join(sourceDirectory,'video-imports',name);
-    try{return await decodeClip(file,here);}finally{try{fs.unlinkSync(file);}catch{}}
+    try{return await decodeClip(file,here,fps);}finally{try{fs.unlinkSync(file);}catch{}}
   }
   async function transcribeRemoteAudio(url){
     const r=await fetch('http://127.0.0.1:13481/video-frames',{method:'POST',headers:{Authorization:'Bearer '+nativeToken,'Content-Type':'application/json'},body:JSON.stringify({url,source:'bilibili'}),signal:AbortSignal.timeout(45000)});
@@ -302,7 +303,7 @@ async function main() {
     const voiceScopeKey=voiceScope(c,event,identity),recentVoice=!!voiceActivity.get(key)&&Date.now()-voiceActivity.get(key)<600000;
     const speakingPreferences=c.voiceMemoryEnabled===false?{}:voiceMemory.preferences(voiceScopeKey,text,{recentVoice});
     const speechFormat=voiceFormatHint(text,c,{history:fullHistory,event,mode,preferences:speakingPreferences});
-    const speechConfig=speakingConfig(c,speakingPreferences),speechPrompt=voicePrompt(c,{preferences:speakingPreferences,explicit:speechFormat==='voice',format:speechFormat});
+    const speechConfig=speakingConfig(c,speakingPreferences),speechPrompt=voiceCapability(c,event,Date.now()-(voiceDeliveries.get(key)?.at||0)<600000?voiceDeliveries.get(key):null)+voicePrompt(c,{preferences:speakingPreferences,explicit:speechFormat==='voice',format:speechFormat});
     let answer,face=null,speech=null,speechFallback=false,faceOnly=false,modelVoice=null,replyEmotion='neutral';
     if(operation?.action==='endChat'){sessions.delete(`${event.group_id||'private'}:${event.user_id}`);contexts.delete(key);videoContexts.delete(key);sourceContexts.delete(key);memory.end(scope);history=[];answer='这段聊天结束啦，需要时发＃搜索或再叫我。';}
     else if(operation?.action==='sources')answer=sourceReply(sourceContexts.get(key));
@@ -349,8 +350,8 @@ async function main() {
         if(c.videoEnabled===false){videoFailure='视频理解已关闭，请在能力→图片·视频中开启；本次没有读取视频。';message+='\n['+videoFailure+']';}
         else if(!target){videoFailure='未配置可看图的模型，请在API卡片启用图片能力或单独视觉服务；本次未读取视频画面。';message+='\n['+videoFailure+']';}
         else try{
-          const videoOptions={mode:biliIntent?.mode,creatorMid:biliIntent?.creatorMid||'',exclude:biliIntent?.exclude||[],onSelection:selected=>{videoState={...videoState,...selected,status:'selected'};},cookie:siteCookies.bilibili_cookies||'',audio:transcribeRemoteAudio,decode:decodeNativeClip,onStatus:value=>{summary=value;record('视频',value);}};
-          const video=biliIntent?(biliIntent.kind==='search'?await readBiliSearchFrames(biliIntent.query,nativeToken,fetch,videoOptions):await readBiliFrames(biliIntent.url,nativeToken,fetch,videoOptions)):await qqVideo(event,nativeToken,fetch,url=>downloadClip(url,fetch,here),decodeNativeClip);videoState={...videoState,title:video.title||'',url:video.reference||'',bvid:video.bvid||'',audio:video.audio||{status:'unavailable'}};record('视频','音轨状态：'+audioEvidence(video.audio,{includeTags:true}));parts=video.parts;message+='\n['+video.scope+']'+audioFocusContext(video.audio,text)+(video.sheets<=15?video.audioText||'':'');
+          const videoOptions={mode:biliIntent?.mode,creatorMid:biliIntent?.creatorMid||'',exclude:biliIntent?.exclude||[],onSelection:selected=>{videoState={...videoState,...selected,status:'selected'};},cookie:siteCookies.bilibili_cookies||'',fps:c.videoFps||1,audio:transcribeRemoteAudio,decode:name=>decodeNativeClip(name,c.videoFps||1),onStatus:value=>{summary=value;record('视频',value);}};
+          const video=biliIntent?(biliIntent.kind==='search'?await readBiliSearchFrames(biliIntent.query,nativeToken,fetch,videoOptions):await readBiliFrames(biliIntent.url,nativeToken,fetch,videoOptions)):await qqVideo(event,nativeToken,fetch,url=>downloadClip(url,fetch,here,c.videoFps||1),name=>decodeNativeClip(name,c.videoFps||1));videoState={...videoState,title:video.title||'',url:video.reference||'',bvid:video.bvid||'',audio:video.audio||{status:'unavailable'}};record('视频','音轨状态：'+audioEvidence(video.audio,{includeTags:true}));parts=video.parts;message+='\n['+video.scope+']'+audioFocusContext(video.audio,text)+(video.sheets<=15?video.audioText||'':'');
           if(biliIntent){videoReceipt={title:video.title,url:video.reference,bvid:video.bvid,frames:video.frameCount,query:video.search?.query||'',author:video.search?.author||'',audio:video.audio?.status||'unavailable'};record('视频','实际读取：'+video.bvid+' · '+video.title+' · '+video.frameCount+'帧');}
           if(video.sheets>15){
             const observation=await observeVideo(video,text,async(messages,max_tokens,index,total)=>{
@@ -363,7 +364,7 @@ async function main() {
           }
         }catch(e){parts=[];videoFailure=e.message;videoError=e;message+='\n['+e.message+'；视频分析未完成，不得编造画面或声称看完。]';record('视频',e.message);}
       }
-      if(voiceDecision(text,c).explicit)message+='\n[工作台已开启语音，请直接生成要朗读的口语正文。合成和QQ发送由工作台完成，不要在尝试前说无法发语音；不要预先宣称已发送。]';
+      if(voiceDecision(text,c,{event}).explicit)message+='\n[工作台已开启语音，请直接生成要朗读的口语正文。合成和QQ发送由工作台完成，不要在尝试前说无法发语音；不要预先宣称已发送。]';
       let content=message,endpoint={url:c.apiUrl,model:c.model,key:chatKey};
       if(hasImages&&!target)content+='\n[本次没有配置可用的视觉模型，无法看到图片，请如实说明，结合文字继续交流。]';
       else if(hasImages&&!parts.length)content+='\n[本次图片读取失败，不能编造画面内容，请如实说明。]';
@@ -420,9 +421,11 @@ async function main() {
     const params={message,...(event.message_type==='group'?{group_id:event.group_id}:{user_id:event.user_id})};
     if(codexDelivery)codexJobs.delivery(codexDelivery,'delivering');
     journal[id]='sending';saveJournal();
+    if(speech)rememberVoiceDelivery(key,'uncertain');
     let result;try{result=faceOnly?await rpc('send_custom_face',{emoji_id:face.id,...(event.message_type==='group'?{group_id:event.group_id}:{user_id:event.user_id})}):await rpc(event.message_type==='group'?'send_group_msg':'send_private_msg',params);}catch(e){if(speech)voiceStatus={status:'uncertain',message:'QQ语音发送超时，不重发',at:Date.now()};throw e;}finally{speech?.cleanup();}
     if(!confirmed(result)){speech?.cleanup();if(speech)voiceStatus={status:'uncertain',message:'QQ语音发送未获得完整回执，不重发',at:Date.now()};throw new Error('QQ 没有返回完整发送凭据，结果不确定；不自动重发');}
     if(speech){voiceActivity.delete(key);voiceActivity.set(key,Date.now());if(voiceActivity.size>200)voiceActivity.delete(voiceActivity.keys().next().value);voiceStatus={status:'accepted',message:'QQ接口已接受语音，对方实际收到以QQ显示为准',decision:voiceChoice.reason,emotion:replyEmotion,audio:speech.info||null,expressionControl:c.speechProvider==='zipvoice'?'同一音色的参考语气（未导入则自然）':c.speechProvider==='android'?'系统语速音高轻微调整':c.speechProvider==='feiyu'?'可爱或温柔声线':c.speechProvider==='azure'?'所选音色支持的情绪样式':'QQ音色',at:Date.now()};}
+    if(speech||speechFallback)rememberVoiceDelivery(key,speech?'accepted':'fallback');
     journal[id]='accepted';deliveryRecovery.success(event);saveJournal();speech?.cleanup();if(codexDelivery)codexJobs.delivery(codexDelivery,'accepted');
     // A setting change or deletion may happen while QQ acknowledges the send.
     // Its reply is already sent; do not restore the discarded history.
@@ -628,11 +631,11 @@ async function main() {
           if(typeof data.bili==='string'){
             const reference=biliReference(data.bili);if(!reference)throw new Error('请填写有效B站视频链接或BV号');
             if(!visionTarget(c,videoChatKey,videoVisionKey))throw new Error('请先启用支持看图的模型或视觉服务');
-            preparedVideo=await readBiliFrames(reference,nativeToken,fetch,{cookie:siteCookies.bilibili_cookies||'',audio:transcribeRemoteAudio,decode:decodeNativeClip,onStatus:value=>{summary=value;}});
+            preparedVideo=await readBiliFrames(reference,nativeToken,fetch,{cookie:siteCookies.bilibili_cookies||'',fps:c.videoFps||1,audio:transcribeRemoteAudio,decode:name=>decodeNativeClip(name,c.videoFps||1),onStatus:value=>{summary=value;}});
           }
           if(typeof data.clip==='string'){
             if(!/^clip-[a-f0-9]{32}\.bin$/.test(data.clip))throw new Error('视频暂存标识无效');
-            temporary=path.join(sourceDirectory,'video-imports',data.clip);sample=await decodeClip(temporary,here);
+            temporary=path.join(sourceDirectory,'video-imports',data.clip);sample=await decodeClip(temporary,here,c.videoFps||1);
           }
           if(videoEpoch!==connectionEpoch)throw new Error('模型或账号已切换，请重新分析视频');
           const frames=preparedVideo||sampledVideo(sample),target=visionTarget(c,videoChatKey,videoVisionKey);if(!target)throw new Error('请在API卡片启用支持图片的模型或单独视觉服务');

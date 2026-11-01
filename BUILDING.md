@@ -82,3 +82,12 @@ B站视频路径通过固定官方API选择最低码率视频轨，安卓受限�
 构建从 `tools/zipvoice-deps.json` 下载并校验固定的 sherpa-onnx 2.0.1 AAR、Kotlin 1.9.24、ZipVoice-Distill INT8、Vocos 声码器和中英文词典，缓存于 `build/zipvoice-deps`。`tools/zipvoice_deps.py` 仅提取所需的六个文件生成 `assets/zipvoice-models.zip` 和逐文件 SHA-256 清单；不包含上游人物参考录音。模型压缩包不提交 Git，首次构建需要联网；APK 内置模型，设备首次使用自动本机解压。Java 和 D8 均加载固定依赖，ARM64 JNI 库随包加入。
 
 模型许可与源码许可不同：ZipVoice 代码 Apache-2.0，当前 Emilia 预训练权重 CC-BY-NC 非商业；Vocos 权重 MIT。来源及上游模型卡保留于 `assets/licenses`。不要用本仓库源码许可替代第三方权重条款。语音默认参考由设备系统 TTS 生成；本项目未捆绑肥鱼人物声库。运行 `python tests/run-native-settings.py` 可检查 JNI 所需的具体 typed callback 方法签名；实际推理需要已安装 APK 的 Android Application 上下文。
+
+
+## 固定的离线QQ环境
+
+0.1.45新增 tools/qq-environment-lock.json，记录Ubuntu24.04 ARM64的252个包、精确版本、HTTPS地址、大小与SHA256。tools/build-qq-environment.py只复用核验通过的缓存，缺失时下载锁定文件，并生成确定性tar.gz；不读取或打包实机rootfs、QQ资料或个人配置。缓存可用QQWB_ENV_CACHE指定。
+
+运行时先校验全部内置DEB，先配置Python的固定前置依赖链，再由dpkg展开和配置其余组件，保留包管理数据库及现有配置，不自动降级、不联网取包；检查实际Python、桌面、QQ库等后才继续启动。APK保留Ubuntu包内许可证及版权文件，包清单和上游地址另见assets/licenses/UBUNTU-PACKAGES.json；各包源代码与原许可可从Ubuntu对应版本源包获取，不能把本项目许可当作第三方包的重新授权。可选FFmpeg仍从系统软件源按需准备。
+
+构建检查APK不得超过正式更新器的1GiB上限；当前约915MB。测试使用独立空白目录，绝不清空现有用户容器。

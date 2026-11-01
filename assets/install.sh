@@ -51,6 +51,15 @@ if [ ! -x /opt/QQ/qq ]; then
   if ! dpkg-deb -x /opt/qq-workbench/linuxqq.deb / > environment-install.log 2>&1; then repair_failure;exit 1;fi
 fi
 scan_environment || true
+if [ -d qq-environment ] && [ -f qq-environment-lock.json ]; then
+  # Fixed packages from the signed APK, verified again before dpkg runs.
+  # A partial attempt retains dpkg state; the network fallback can finish it.
+  if timeout 900 /usr/bin/python3 -I /opt/qq-workbench/offline-environment.py 2>> environment-offline.log && scan_environment; then
+    phase '环境复检通过，内置组件已就绪，无需下载基础环境'
+    : > environment-problem.txt
+    flock -u 9;prepare_video_later;exit 0
+  fi
+fi
 all_packages='python3 python3-minimal python3.12 libpython3.12-stdlib xvfb x11vnc novnc websockify dbus-x11 libnss3 libatk-bridge2.0-0 libgtk-3-0 libasound2t64 libgbm1 libxss1 libsecret-1-0 libnotify4 libdrm2 libxdamage1 libxrandr2 libxcomposite1 libxtst6 libxkbcommon0 fonts-noto-cjk ca-certificates'
 if ! packages=$(/usr/bin/python3 -I -c 'import json; r=json.load(open("environment-status.json"));assert r["schema"]==1;print(" ".join(r["packages"]))' 2>/dev/null); then
   packages="$all_packages";phase 'Python检测器暂不可用，正在通过系统包管理器恢复基础环境…'

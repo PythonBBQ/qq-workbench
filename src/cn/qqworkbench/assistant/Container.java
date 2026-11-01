@@ -43,6 +43,13 @@ final class Container {
             progress.update("导入已验证的 SnowLuma 1.14.22 接入组件…");bridgeRuntime.mkdirs();extract("snowluma-bridge.tar.gz",bridgeRuntime);Files.write(new File(bridgeRuntime,".bundle-1.14.22").toPath(),new byte[]{1});
         }
         File qq=new File(root,"opt/qq-workbench/linuxqq.deb");if(!qq.isFile())copyAsset("linuxqq.deb",qq);
+        File packages=new File(root,"opt/qq-workbench/qq-environment");
+        if(!new File(packages,".bundle-noble-20261101-v1").isFile()){
+            progress.update("正在准备内置QQ图形与登录组件，无需联网下载…");packages.mkdirs();extract("qq-environment.tar.gz",packages);
+            Files.write(new File(packages,".bundle-noble-20261101-v1").toPath(),new byte[]{1});
+        }
+        copyAsset("qq-environment-lock.json",new File(root,"opt/qq-workbench/qq-environment-lock.json"));
+        copyAsset("offline-environment.py",new File(root,"opt/qq-workbench/offline-environment.py"));
           for(String name:new String[]{"install.sh","session.sh","window-ready.sh","environment-check.py","assistant.mjs","account-instances.mjs","delivery-recovery.mjs","request-inspector.mjs","instance-session.sh","codex-jobs.mjs","shortcuts.mjs","qq-media.mjs","qzone-client.mjs","device-tools.mjs","usage-ledger.mjs","voice.mjs","voice-memory.mjs","feiyu-voice.mjs","model-client.mjs","personality-growth.mjs","group-moderation.mjs","conversation-memory.mjs","video.mjs","video-audio.mjs","video-decoder.mjs","native-network.mjs","web-learning.mjs","browse-intent.mjs","learning.mjs","images.mjs","chat-style.mjs","proc-locks-compat.mjs","snow-setup.py","snowluma-bridge.mjs","login.html","login.js"})copyAsset(name,new File(root,"opt/qq-workbench/"+name));
         File asr=new File(root,"opt/qq-workbench/asr");
         if(!new File(asr,".bundle-sensevoice-audio-v3").isFile()){

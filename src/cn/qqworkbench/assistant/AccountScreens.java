@@ -19,7 +19,7 @@ final class AccountScreens {
             JSONArray profiles=new AccountProfiles(a).list();final android.widget.LinearLayout requested=a.page;
             java.util.Map<Integer,TextView> states=new java.util.HashMap<>();
             for(int i=0;i<profiles.length();i++){JSONObject p=profiles.getJSONObject(i);int slot=p.getInt("slot");
-                a.section(p.optString("name"),"QQ "+p.optString("bot")+" · 模型 "+p.optString("model"));TextView state=a.text("正在检查…",14);a.body.addView(state);states.put(slot,state);
+                a.selectionCard(p.optString("name"),"QQ "+p.optString("bot")+" · "+p.optString("model"),"独立账号 · 点卡片打开QQ",false,()->window(a,slot));TextView state=a.text("正在检查…",14);a.body.addView(state);states.put(slot,state);
                 a.button("查看此账号模型输入",()->{RequestScreens.slot=slot;a.go("requests");});
                 a.button("配置此账号",()->{a.editingSlot=slot;a.clearDraft();a.go("instanceEdit");});
                 a.button("启动此账号",()->action(a,"/multi/start",slot,true));a.button("打开此账号QQ",()->window(a,slot));a.button("停止此账号",()->action(a,"/multi/stop",slot,false));

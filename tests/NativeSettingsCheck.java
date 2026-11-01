@@ -8,6 +8,11 @@ public final class NativeSettingsCheck {
     public static void main(String[] args)throws Exception{
         org.json.JSONObject accountProfile=new org.json.JSONObject().put("slot",1).put("name","独立测试").put("bot","765432").put("owner","123456").put("apiUrl","https://example.com/v1").put("apiKey","synthetic-key").put("model","test").put("speechProvider","android");
         check(AccountProfiles.validate(accountProfile).optString("apiKey").equals("synthetic-key"));
+        JSONObject card=new JSONObject().put("apiUrl","https://example.com/v1").put("model","demo").put("apiKey","synthetic-key");
+        check(ApiProfiles.sameConfiguration(card,new JSONObject(card.toString())));
+        check(!ApiProfiles.sameConfiguration(card,new JSONObject(card.toString()).put("apiKey","synthetic-changed")));
+        check(!ApiProfiles.sameConfiguration(card,new JSONObject(card.toString()).put("visionModel","other")));
+
         for(String key:new String[]{"bot","apiKey"}){org.json.JSONObject invalid=new org.json.JSONObject(accountProfile.toString());invalid.put(key,"");boolean rejected=false;try{AccountProfiles.validate(invalid);}catch(Exception e){rejected=true;}check(rejected);}
 
         check(BiliLoginActivity.allowed("https://passport.bilibili.com/h5-app/passport/login"));

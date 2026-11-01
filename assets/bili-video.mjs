@@ -205,7 +205,7 @@ export async function resolveBiliVideo(value,fetcher=fetch,{cookie='',signal:out
   return {urls,audioUrls,url:'https://www.bilibili.com/video/'+info.bvid+(p>1?'?p='+p:''),bvid:info.bvid,durationSeconds:duration,title:String(info.title||'B站视频').replace(/[\u0000-\u001f]/g,' ').slice(0,160),part:p};
 }
 export async function readBiliFrames(reference,token,fetcher=fetch,options={}){
-  const resolved=await resolveBiliVideo(reference,fetcher,options);options.onStatus?.('已取得B站视频，正在下载最低画质画面并每秒抽帧');
+  const resolved=await resolveBiliVideo(reference,fetcher,options);options.onStatus?.('已取得B站视频，正在下载低画质画面，按设置采样分析');
   let failure;
   for(const url of resolved.urls){
     let sample;

@@ -19,6 +19,13 @@ export function speechRequest(c,text,key,emotion='neutral'){
   const style=voice[0]==='zh-CN-XiaoxiaoNeural'?({happy:'cheerful',gentle:'gentle',shy:'gentle',sad:'sad',serious:'serious'})[emotion]:null,spoken=`<prosody rate="${signed(rate)}" pitch="${signed(pitch)}">${xml(text)}</prosody>`;
   return {url:`https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`,options:{method:'POST',redirect:'error',headers:{'Ocp-Apim-Subscription-Key':key,'Content-Type':'application/ssml+xml','X-Microsoft-OutputFormat':'audio-24khz-48kbitrate-mono-mp3','User-Agent':'QQWorkbench'},body:`<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="${voice[2]}"><voice name="${voice[0]}">${style?'<mstts:express-as style="'+style+'" styledegree="0.7">'+spoken+'</mstts:express-as>':spoken}</voice></speak>`,signal:AbortSignal.timeout(30000),networkTimeoutMs:30000}};
 }
+export function voiceCapability(c,event={},delivery=null){
+  if(!c.voiceEnabled)return '\n[语音能力]当前语音回复未开启；可在能力→语音开启。本条使用文字。';
+  const engine=({android:'系统TTS',zipvoice:'本机参考音色',feiyu:'肥鱼服务',azure:'Azure语音',qq:'QQ群音色'})[c.speechProvider||'android']||'所选引擎';
+  if(c.speechProvider==='qq'&&event.message_type!=='group')return '\n[语音能力]所选QQ群音色仅支持群聊，本私聊暂用文字；切换为系统或本机音色可发私聊语音。';
+  return '\n[语音能力]已开启，由工作台用'+engine+'合成并发送QQ语音；你生成正文即可，不要因自己是文字模型就否认语音通道。本条用文字不等于没有语音能力。此状态优先于旧聊天及记忆的能力判断；仅发送回执成功后可称已发送。'+
+    (delivery?.status==='accepted'?'本会话最近一条语音已被QQ接口受理，不代表对方已听到。':delivery?.status==='fallback'?'本会话上次合成失败、已改发文字；不能当成永久无语音能力。':delivery?.status==='uncertain'?'上次语音发送未确认，不能声称送达，不自动重发。':'');
+}
 export function voicePrompt(c,{preferences={},explicit=false,format='auto'}={}){
   if(!c.voiceEnabled)return '';
   if(format==='text')return '\n[回复形式]本条使用文字，开头加[[text]]，随后直接自然回应。保留必要细节和可复制内容，不加语音动作或合成说明。';
@@ -44,6 +51,7 @@ export function voiceDecision(text,c,{reply='',event={},history=[],lastVoiceAt=0
   const refuse=/(?:不要|别|不用|关闭|停止|不方便听|不能听).{0,6}(?:语音|声音)|(?:文字|打字)回[复答]|(?:在开会|在上课|不方便听)/;
   const ask=/(?:用语音|语音回[复答]|语音说说|语音聊聊|说给我听|读给我听|继续语音|(?:想听|听听)你的声音|(?:发|来)(?:一)?[条段个]?语音|说句(?:话)?(?:给我)?听听|用声音回[复答])/;
   if(!c.voiceEnabled)return {voice:false,reason:'语音未开启'};
+  if(c.speechProvider==='qq'&&event.message_type!=='group')return {voice:false,reason:'所选QQ音色仅支持群聊'};
   if(refuse.test(text))return {voice:false,reason:'本条要求文字'};
   if(ask.test(text))return {voice:true,explicit:true,reason:'本条明确要求语音'};
   const policy=c.voiceMode|| (c.voiceAlways?'always':'smart');
@@ -54,7 +62,6 @@ export function voiceDecision(text,c,{reply='',event={},history=[],lastVoiceAt=0
   if(preferences.delivery==='text')return {voice:false,reason:'本会话记住了优先文字'};
   if(/```|https?:\/\/|(?:\b[A-Z]:\\|\/[a-z]+\/)|\|.+\||(?:API.?Key|验证码|密码|命令|代码|端口|配置步骤)/i.test(reply)||speechText(reply).length>220)return {voice:false,reason:'内容适合阅读或复制'};
   if(!reply.trim())return {voice:false,reason:'没有可朗读内容'};
-  if(c.speechProvider==='qq'&&event.message_type!=='group')return {voice:false,reason:'所选QQ音色仅支持群聊'};
   if(policy==='always')return {voice:true,reason:'优先语音'};
   if(mode==='ambient')return {voice:false,reason:'主动接话使用文字'};
   if(lastVoiceAt&&now-lastVoiceAt<Math.max(20,Math.min(180,Number(c.voiceCooldown)||45))*1000)return {voice:false,reason:'避免连续发语音'};

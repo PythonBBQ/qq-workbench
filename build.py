@@ -26,6 +26,8 @@ OUT.parent.mkdir(exist_ok=True)
 import sys
 run(sys.executable, ROOT/'tools/build-multi-parser.py')
 run(sys.executable, ROOT/'tools/build-video-asr.py')
+run(sys.executable, ROOT/'tools/build-qq-environment.py')
+shutil.copyfile(ROOT/'tools/qq-environment-lock.json',ASSETS/'qq-environment-lock.json')
 # A Windows checkout must not ship CRLF shell scripts into the Linux container.
 for script in ASSETS.glob('*.sh'):
     if b'\r' in script.read_bytes():
@@ -117,6 +119,7 @@ if not keystore.exists():
 run(JAVA/'java.exe','-jar',TOOLS/'lib/apksigner.jar','sign','--ks',keystore,'--ks-key-alias','qqworkbench','--ks-pass','file:'+str(password),'--out',OUT,aligned)
 run(JAVA/'java.exe','-jar',TOOLS/'lib/apksigner.jar','verify','--print-certs',OUT)
 run(TOOLS/'zipalign.exe','-c','-p','4',OUT)
+assert OUT.stat().st_size<=1024**3, 'APK exceeds the production updater 1GiB limit'
 with zipfile.ZipFile(OUT) as z:
     for p in sorted(ASSETS.rglob('*')):
         if p.is_file():
