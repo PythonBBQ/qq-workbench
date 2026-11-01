@@ -9,6 +9,7 @@ parser.add_argument('--notes',type=Path,required=True)
 parser.add_argument('--gh',default=shutil.which('gh') or str(root.parent/'research/android/toolchain/github-cli/gh.exe'))
 parser.add_argument('--upload-attempts',type=int,default=3)
 parser.add_argument('--upload-timeout',type=int,default=3600)
+parser.add_argument('--direct-upload',action='store_true',help='直连 uploads.github.com，不改变系统代理')
 args=parser.parse_args()
 if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+',args.repo):parser.error('Invalid repository')
 if not 1<=args.upload_attempts<=5 or not 60<=args.upload_timeout<=7200:parser.error('Invalid upload limits')
@@ -78,7 +79,7 @@ try:
                 config='header = "Authorization: Bearer '+token+'"\nheader = "Content-Type: application/octet-stream"\n'
                 progress=release/(path.name+'.upload-progress.log')
                 with (release/(path.name+'.upload-response.json')).open('wb') as output,progress.open('wb') as log:
-                    result=subprocess.run([shutil.which('curl.exe') or shutil.which('curl') or 'curl','--config','-','--request','POST',
+                    result=subprocess.run([shutil.which('curl.exe') or shutil.which('curl') or 'curl',*(['--noproxy','uploads.github.com'] if args.direct_upload else []),'--config','-','--request','POST',
                         '--upload-file',str(path),'--url',upload_url+'?name='+path.name,'--fail-with-body','--connect-timeout','30',
                         '--max-time',str(args.upload_timeout),'--speed-limit','1024','--speed-time','120'],
                         input=config.encode(),env=env,stdout=output,stderr=log,timeout=args.upload_timeout+30)

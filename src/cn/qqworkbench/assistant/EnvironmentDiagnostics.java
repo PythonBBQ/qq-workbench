@@ -11,7 +11,8 @@ final class EnvironmentDiagnostics {
         try{
             File file=new File(root,"environment-status.json");if(file.length()>65536)throw new IOException();
             JSONObject result=new JSONObject(new String(java.nio.file.Files.readAllBytes(file.toPath()),StandardCharsets.UTF_8));
-            text.append("上次基础环境检测：").append(result.optBoolean("ok")?"通过":"有待补齐项").append("\n");JSONArray checks=result.optJSONArray("checks");
+            text.append("上次基础环境检测：").append(result.optBoolean("ok")?"通过":"有待补齐项").append("\n");
+            if(!result.optBoolean("ok"))text.append("以下为上次检查结果；补齐尚未执行或中断时会保留，点击自动补齐后复检。加密配置异常请看单独提示。\n");JSONArray checks=result.optJSONArray("checks");
             if(checks!=null)for(int i=0;i<checks.length();i++){JSONObject item=checks.getJSONObject(i);text.append(item.optBoolean("ok")?"✓ ":"待修复 · ").append(item.optString("label")).append('\n');}
             long at=result.optLong("checkedAt")*1000;if(at>0)text.append("检测时间：").append(android.text.format.DateFormat.format("MM-dd HH:mm:ss",at));
         }catch(Exception e){text.append("尚无环境检测结果。启动服务后会自动检查Python、网页/桌面组件与QQ运行库。");}

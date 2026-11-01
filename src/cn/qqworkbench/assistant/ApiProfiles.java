@@ -12,7 +12,7 @@ final class ApiProfiles {
     JSONObject active()throws Exception {
         String saved=vault.get("active-api");if(!saved.isEmpty())return new JSONObject(saved);
         android.content.SharedPreferences prefs=context.getSharedPreferences("settings",0);JSONObject p=new JSONObject();
-        p.put("apiUrl",prefs.getString("apiUrl","https://api.deepseek.com")).put("model",prefs.getString("model","deepseek-flash")).put("visionMode",prefs.getString("visionMode",prefs.getString("visionUrl","").isEmpty()?"auto":"separate")).put("visionUrl",prefs.getString("visionUrl","")).put("visionModel",prefs.getString("visionModel","")).put("apiKey",vault.get("deepseek")).put("visionKey",vault.get("vision"));p.put("apiProtocol",prefs.getString("apiProtocol","chat"));return p;
+        p.put("apiUrl",prefs.getString("apiUrl","https://api.deepseek.com")).put("model",prefs.getString("model","deepseek-flash")).put("visionMode",prefs.getString("visionMode",prefs.getString("visionUrl","").isEmpty()?"auto":"separate")).put("visionUrl",prefs.getString("visionUrl","")).put("visionModel",prefs.getString("visionModel","")).put("apiKey",vault.unavailable("active-api")?"":vault.get("deepseek")).put("visionKey",vault.unavailable("active-api")?"":vault.get("vision"));p.put("apiProtocol",prefs.getString("apiProtocol","chat"));return p;
     }
     void activate(JSONObject profile)throws Exception {vault.put("active-api",validated(profile).toString());}
     JSONArray list()throws Exception {String text=vault.get("api-profiles");return text.isEmpty()?new JSONArray():new JSONArray(text);}

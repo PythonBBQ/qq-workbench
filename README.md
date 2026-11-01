@@ -2,9 +2,11 @@
 
 安卓本机运行的 QQ AI 助手。无需让电脑一直开机；适用 Android 11 及以上、ARM64 设备。首次启动会准备容器、Linux QQ 与图形环境，需联网和数 GB 可用空间。不同厂商的后台限制仍需在系统设置放行。
 
-[下载最新 APK](https://github.com/PythonBBQ/qq-workbench/releases/latest) · [0.1.43 更新说明](docs/RELEASE-0.1.43.md) · [构建和发布](BUILDING.md)
+[下载最新 APK](https://github.com/PythonBBQ/qq-workbench/releases/latest) · [0.1.44 更新说明](docs/RELEASE-0.1.44.md) · [构建和发布](BUILDING.md)
 
-当前版本 **0.1.43** 修复QQ登录页在本地服务未就绪时直接报连接拒绝的问题。进入后先检测网页与桌面服务，准备好后显示QQ窗口；初始化进度、失败状态和重试入口直接可见。每次启动检查Python、websockify、noVNC及QQ运行库，缺失时优先离线恢复，再按需从系统软件源下载并复检。诊断页可查看逐项结果及自动补齐重启。保留0.1.42的短语合成、独立说话偏好和精简提示词。详见[更新说明](docs/RELEASE-0.1.43.md)。
+当前版本 **0.1.44** 修复旧加密配置出现 `AEADBadTagException` 后直接阻断启动的问题，隔离失效项并提示重新填写；本机临时凭据可重新生成，原密文与QQ数据保留。不可读的旧记忆暂停持久化，不声称密钥丢失后仍能恢复。APK已完成构建核对，报告问题的手机尚未通过ADB连接，实机安装与启动未验证。详见[更新说明](docs/RELEASE-0.1.44.md)。
+
+保留 **0.1.43** 的QQ登录窗口就绪检测及环境实际补齐：网页与桌面准备好后才显示窗口，启动时检查Python、websockify、noVNC和QQ运行库，缺失时先离线恢复再按需下载。详见[0.1.43说明](docs/RELEASE-0.1.43.md)。
 
 ## 使用
 
