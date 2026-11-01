@@ -26,14 +26,18 @@ final class ResumableDownload {
         try{
             IOException problem=null;
             for(int attempt=0;attempt<3&&part.length()<size;attempt++){
-                check(progress);long offset=part.length();progress.update(attempt==0?"downloading":"retrying",offset,size);URL url=new URL(release.getString("url"));
+                check(progress);long offset=part.length();String api=release.optString("apiUrl");
+                // Prefer GitHub's public asset API; github.com itself is unreachable on some networks.
+                // Both routes identify the same digest and share the exact same Range/resume cache.
+                boolean useApi=!api.isEmpty()&&attempt!=1;
+                progress.update(attempt==0?"downloading":!api.isEmpty()?"switching":"retrying",offset,size);URL url=new URL(useApi?api:release.getString("url"));
                 try{
                     boolean complete=false;
                     for(int hops=0;hops<6;hops++){
                         check(progress);HttpURLConnection c=factory.open(url);c.setRequestProperty("Accept","application/octet-stream");c.setRequestProperty("Accept-Encoding","identity");if(offset>0)c.setRequestProperty("Range","bytes="+offset+"-");
                         try{
                             int status=c.getResponseCode();if(status>=300&&status<400){String location=c.getHeaderField("Location");if(location==null)throw new InvalidDownload("更新地址跳转无效");url=new URL(url,location);continue;}
-                            if(status!=200&&status!=206){if(status==429||status>=500)throw new IOException("更新服务器暂不可用（"+status+"），进度已保留");throw new InvalidDownload("更新下载失败（"+status+"）");}
+                            if(status!=200&&status!=206){if(status==403||status==404||status==429||status>=500)throw new IOException("更新服务器暂不可用（"+status+"），进度已保留");throw new InvalidDownload("更新下载失败（"+status+"）");}
                             if(status==206&&!rangeMatches(c.getHeaderField("Content-Range"),offset,size))throw new InvalidDownload("服务器返回的续传范围不匹配，进度已保留");
                             // A server without Range support restarts this file instead of appending twice.
                             if(status==200)offset=0;

@@ -1,5 +1,6 @@
 package cn.qqworkbench.assistant;
 import java.io.File;
+import java.io.IOException;
 public final class NavigationUpdateCheck {
     static void check(boolean value){if(!value)throw new AssertionError();}
     public static void main(String[] args)throws Exception{
@@ -12,6 +13,10 @@ public final class NavigationUpdateCheck {
         check(AppUpdates.validApkSize(729947243));check(AppUpdates.validApkSize(1024L*1024*1024));check(!AppUpdates.validApkSize(0));check(!AppUpdates.validApkSize(-1));check(AppUpdates.validApkSize(1024L*1024*1024+1));check(!AppUpdates.validApkSize(1900L*1024*1024+1));
         check(AppUpdates.assetUrl("https://github.com/PythonBBQ/qq-workbench/releases/download/v0.1.20/app.apk").getHost().equals("github.com"));
         check(AppUpdates.releaseUrl(AppUpdates.DEFAULT_FEED).getHost().equals("api.github.com"));
+        check(AppUpdates.assetAddress("https://api.github.com/repos/PythonBBQ/qq-workbench/releases/assets/12345").getHost().equals("api.github.com"));
+        for(String value:new String[]{"https://api.github.com/repos/PythonBBQ/qq-workbench/releases/latest","https://api.github.com/repos/PythonBBQ/qq-workbench/releases/assets/123?token=x","https://api.github.com/repos/PythonBBQ/qq-workbench/releases/assets/0","https://api.github.com/repos/PythonBBQ/qq-workbench/releases/assets/%31","https://api.github.com/repos/PythonBBQ/qq-workbench/releases/assets/123#x","https://api.github.com:443/repos/PythonBBQ/qq-workbench/releases/assets/123","https://user@api.github.com/repos/PythonBBQ/qq-workbench/releases/assets/123"}){
+            try{AppUpdates.assetAddress(value);throw new AssertionError(value);}catch(IOException expected){}
+        }
         for(String value:new String[]{"file:///secret","https://evil.example/update.apk","https://github.com.evil.example/update.apk","http://github.com/app.apk","https://user:pass@github.com/app.apk","https://github.com:8443/app.apk"}){
             try{AppUpdates.assetUrl(value);throw new AssertionError();}catch(Exception expected){check(!(expected instanceof RuntimeException));}
         }

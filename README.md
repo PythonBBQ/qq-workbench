@@ -2,9 +2,9 @@
 
 安卓本机运行的 QQ AI 助手。无需让电脑一直开机；适用 Android 11 及以上、ARM64 设备。首次启动会准备内置容器、Linux QQ 与图形环境，需要数 GB 可用空间；基础组件优先离线安装，QQ登录和模型聊天需要联网。不同厂商的后台限制仍需在系统设置放行。
 
-[下载1.0基础安装包](https://github.com/PythonBBQ/qq-workbench/releases/tag/v1.0.0) · [最新补丁/发行版](https://github.com/PythonBBQ/qq-workbench/releases/latest) · [1.0.3 更新说明](docs/RELEASE-1.0.3.md) · [构建和发布](BUILDING.md)
+[下载1.0基础安装包](https://github.com/PythonBBQ/qq-workbench/releases/tag/v1.0.0) · [最新补丁/发行版](https://github.com/PythonBBQ/qq-workbench/releases/latest) · [1.0.4 更新说明](docs/RELEASE-1.0.4.md) · [构建和发布](BUILDING.md)
 
-当前版本 **1.0.3** 将语音页收敛为系统自带、第一版肥鱼、新原声三个卡片，支持自导入并保存本地预设；切换后本机试听“准备好了”。长回复按句意分为多条语音，逐条合成发送，合成失败只补发剩余文字，发送不确定则停止。更新在应用内显示下载与资源重建进度，再衔接系统安装、资源同步和服务恢复。1.0.x发布差分补丁，新用户先安装1.0.0基础包；1.1等大更新再发整包。详见[本版更新](docs/RELEASE-1.0.3.md)与[补丁机制](docs/PATCH-UPDATES.md)。
+当前版本 **1.0.4** 修复部分网络能检查更新却无法下载的问题，优先通过GitHub官方资源API下载，失败时切换官方发行地址并续传。点击更新后留在软件内显示进度；下载完成、补丁重建和签名校验通过后才进入系统安装。旧版本需先覆盖安装修复版，才具备新下载通道。语音页收敛为系统自带、第一版肥鱼、新原声三个卡片，支持自导入并保存本地预设；切换后本机试听“准备好了”。长回复按句意分为多条语音，逐条合成发送，合成失败只补发剩余文字，发送不确定则停止。更新在应用内显示下载与资源重建进度，再衔接系统安装、资源同步和服务恢复。1.0.x发布差分补丁，新用户先安装1.0.0基础包；1.1等大更新再发整包。详见[本版更新](docs/RELEASE-1.0.4.md)与[补丁机制](docs/PATCH-UPDATES.md)。
 
 保留 **0.1.44** 对旧加密配置故障的恢复：隔离无法解密的记录并提示重填，保留原密文与QQ数据。密钥确实丢失的旧记忆无法凭空恢复。手机此前安装包与GitHub下载包SHA256相同；已实测越过加密错误，九项环境检查通过，登录网页返回HTTP200。详见[0.1.44说明](docs/RELEASE-0.1.44.md)。
 
@@ -32,7 +32,7 @@
 
 0.1.20 起，设置 → 软件更新会读取本仓库 GitHub Releases，检查并下载同包名、同签名的新 APK。账号及配置保留，系统安装按钮需要在设备确认。维护者需构建并发布下一版本，上传源码不会自动生成已签名的安装包。签名私钥不上传 GitHub。
 
-更新源填写 `https://api.github.com/repos/PythonBBQ/qq-workbench/releases/latest`；浏览器下载入口为 [最新发行版](https://github.com/PythonBBQ/qq-workbench/releases/latest)。当前版本号是 `1.0.3`，对应标签 `v1.0.3`；基础整包为 `v1.0.0`。草稿不提供公开下载；维护工具现在先补传并校验 APK 与校验和，完成后才公开发布，中断可以重新运行。
+更新源填写 `https://api.github.com/repos/PythonBBQ/qq-workbench/releases/latest`；浏览器下载入口为 [最新发行版](https://github.com/PythonBBQ/qq-workbench/releases/latest)。当前版本号是 `1.0.4`，对应标签 `v1.0.4`；基础整包为 `v1.0.0`。草稿不提供公开下载；维护工具现在先补传并校验 APK 与校验和，完成后才公开发布，中断可以重新运行。
 
 卸载后安装旧版仍提示“更高版本”时，见[安装记录检查与保留数据回退](docs/ANDROID-REINSTALL.md)。电脑工具可检查多用户/分身的包记录，并对指定官方同签名 APK 请求保留数据安装；不会自动卸载或清空数据。尚未在报告问题的手机上完成实测。
 

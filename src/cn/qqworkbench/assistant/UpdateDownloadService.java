@@ -19,7 +19,7 @@ public final class UpdateDownloadService extends Service {
     static JSONObject pendingRelease(Context c)throws Exception{File file=pending(c);if(!file.isFile()||file.length()>8192)throw new IOException("暂无可继续的下载，请先检查版本");return new JSONObject(new String(Files.readAllBytes(file.toPath()),StandardCharsets.UTF_8));}
     static synchronized void start(Context c,JSONObject release)throws Exception{
         if(active.get()||!starting.compareAndSet(false,true))return;
-        try{AppUpdates.assetUrl(release.getString("url"));if(!release.getString("digest").matches("sha256:[a-f0-9]{64}"))throw new IOException("更新包缺少校验值");
+        try{AppUpdates.assetAddress(release.getString("url"));if(!release.optString("apiUrl").isEmpty())AppUpdates.assetAddress(release.getString("apiUrl"));if(!release.getString("digest").matches("sha256:[a-f0-9]{64}"))throw new IOException("更新包缺少校验值");
             c.getSharedPreferences("update-flow",0).edit().remove("promptedFile").apply();
             phase="starting";message="正在准备下载";received=0;total=release.optLong("bytes");
             Files.write(pending(c).toPath(),release.toString().getBytes(StandardCharsets.UTF_8));c.startForegroundService(new Intent(c,UpdateDownloadService.class));
@@ -39,11 +39,11 @@ public final class UpdateDownloadService extends Service {
             try{wake=getSystemService(PowerManager.class).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"qqworkbench:update");wake.setReferenceCounted(false);wake.acquire(30*60*1000L);
                 JSONObject release=pendingRelease(this);total=release.getLong("bytes");
                 AppUpdates.download(this,release,new ResumableDownload.Progress(){public boolean cancelled(){return paused.get();}public void update(String next,long n,long size){
-                    phase=next;received=n;total=size;message=next.equals("verifying")?"正在校验下载内容":next.equals("base-check")?"正在检查已安装版本":next.equals("signing")?"正在校验安装包与签名":next.equals("reconstructing")?"正在整合补丁与内置资源 · "+amount(n)+" / "+amount(size):(next.equals("retrying")?"网络中断，正在续传 · ":"正在下载 · ")+amount(n)+" / "+amount(size);
+                    phase=next;received=n;total=size;message=next.equals("verifying")?"下载完成，正在校验内容":next.equals("base-check")?"正在检查已安装版本":next.equals("signing")?"正在校验安装包与签名":next.equals("reconstructing")?"下载完成，正在整合补丁与内置资源 · "+amount(n)+" / "+amount(size):(next.equals("switching")?"正在切换官方下载通道并续传 · ":next.equals("retrying")?"网络中断，正在续传 · ":"正在下载 · ")+amount(n)+" / "+amount(size);
                     long now=SystemClock.elapsedRealtime();if(now-notified>750){notified=now;persist();getSystemService(NotificationManager.class).notify(18,notification(message,false));}
                 }});
                 phase="ready";message="资源重建与签名校验完成，等待系统安装确认";received=total;pending(this).delete();
-            }catch(Exception e){phase=paused.get()?"paused":"interrupted";message=paused.get()?"下载已暂停，点击继续可保留进度":e.getMessage()==null?"下载未完成，点击继续下载":e.getMessage();}
+            }catch(Exception e){phase=paused.get()?"paused":"interrupted";message=paused.get()?"下载已暂停，点击继续可保留进度":e instanceof java.net.SocketTimeoutException||e instanceof java.net.UnknownHostException||e instanceof java.net.ConnectException?"官方下载连接超时或不可达，已保留进度；检查网络后点击继续下载":e.getMessage()==null?"下载未完成，点击继续下载":e.getMessage();}
             finally{if(wake!=null&&wake.isHeld())wake.release();persist();active.set(false);stopForeground(STOP_FOREGROUND_DETACH);getSystemService(NotificationManager.class).notify(18,notification(message,true));stopSelf();}
         },"app-update-download");worker.start();return START_NOT_STICKY;
     }
@@ -52,7 +52,7 @@ public final class UpdateDownloadService extends Service {
         Intent open=new Intent(this,MainActivity.class).putExtra("openUpdates",true).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent tap=PendingIntent.getActivity(this,18,open,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
         Notification.Builder n=new Notification.Builder(this,"updates").setSmallIcon(android.R.drawable.stat_sys_download).setContentTitle("七丘 QQ 工作台 · 更新").setContentText(text).setContentIntent(tap).setOnlyAlertOnce(true).setOngoing(!finished).setAutoCancel(finished);
-        if(!finished){boolean indeterminate=total<=0||!(phase.equals("downloading")||phase.equals("reconstructing"));n.setProgress(1000,total>0?(int)Math.min(1000,received*1000/total):0,indeterminate);Intent pause=new Intent(this,UpdateDownloadService.class).setAction("pause");n.addAction(new Notification.Action.Builder(null,"暂停",PendingIntent.getService(this,19,pause,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE)).build());}
+        if(!finished){boolean indeterminate=total<=0||!(phase.equals("downloading")||phase.equals("retrying")||phase.equals("switching")||phase.equals("reconstructing"));n.setProgress(1000,total>0?(int)Math.min(1000,received*1000/total):0,indeterminate);Intent pause=new Intent(this,UpdateDownloadService.class).setAction("pause");n.addAction(new Notification.Action.Builder(null,"暂停",PendingIntent.getService(this,19,pause,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE)).build());}
         return n.build();
     }
     public void onTimeout(int startId,int type){paused.set(true);if(worker!=null)worker.interrupt();stopSelf();}

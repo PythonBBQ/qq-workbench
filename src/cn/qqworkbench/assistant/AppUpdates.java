@@ -36,14 +36,22 @@ final class AppUpdates {
         }
         if(patch!=null)asset=patch;
         if(asset==null)return new JSONObject().put("available",false).put("message",hasPatches?"此版本暂无适配当前安装包的补丁，请查看发行页；不会自动下载完整包":"新发行版尚未提供安卓安装包").put("version",tag);
-        assetUrl(asset.optString("browser_download_url"));long size=asset.optLong("size");if(!validApkSize(size))throw new IOException("更新包大小无效");
+        assetAddress(asset.optString("browser_download_url"));long size=asset.optLong("size");if(!validApkSize(size))throw new IOException("更新包大小无效");
+        String apiUrl=asset.optString("url");
+        if(!apiUrl.isEmpty()){
+            URL api=assetAddress(apiUrl),source=new URL(feed(context));
+            String prefix=source.getPath().replaceFirst("/latest$", "/assets/");
+            if(!api.getHost().equals("api.github.com")||!api.getPath().equals(prefix+asset.optLong("id")))throw new IOException("更新资源与发行版不匹配");
+        }
         if(!asset.optString("digest").matches("sha256:[a-f0-9]{64}"))throw new IOException("发行版缺少更新包校验值");
-        return new JSONObject().put("available",true).put("version",tag).put("kind",patch!=null?"patch":"full").put("baseSha256",baseHash).put("url",asset.getString("browser_download_url")).put("bytes",size).put("digest",asset.optString("digest")).put("message","发现"+(patch!=null?"节流补丁 ":"新版本 ")+tag+(patch!=null?"；本机重建后安装，保留配置":""));
+        return new JSONObject().put("available",true).put("version",tag).put("kind",patch!=null?"patch":"full").put("baseSha256",baseHash).put("url",asset.getString("browser_download_url")).put("apiUrl",apiUrl).put("bytes",size).put("digest",asset.optString("digest")).put("message","发现"+(patch!=null?"节流补丁 ":"新版本 ")+tag+(patch!=null?"；本机重建后安装，保留配置":""));
     }
     static String installedHash(Context c)throws Exception{
         File apk=new File(c.getApplicationInfo().sourceDir);String key=apk.getPath()+":"+apk.length()+":"+apk.lastModified();android.content.SharedPreferences p=c.getSharedPreferences("update-hashes",0);String hash=p.getString(key,"");if(!hash.matches("[a-f0-9]{64}")){hash=ApkPatch.sha(apk);p.edit().clear().putString(key,hash).apply();}return hash;
     }
-    static URL assetUrl(String value)throws Exception{URL u=NativeNetwork.publicUrl(value);String h=u.getHost();if(!(h.equals("github.com")||h.equals("objects.githubusercontent.com")||h.equals("release-assets.githubusercontent.com"))||u.getPort()!=-1)throw new IOException("更新包必须来自 GitHub 发行版");return u;}
+    // Syntax only, safe on the UI thread. DNS/private-address checks run when opening a connection.
+    static URL assetAddress(String value)throws Exception{URI uri=new URI(value);String h=uri.getHost();boolean api="api.github.com".equals(h)&&uri.getRawPath().matches("/repos/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/releases/assets/[1-9][0-9]*")&&uri.getRawQuery()==null;if(!"https".equals(uri.getScheme())||uri.getRawUserInfo()!=null||uri.getRawFragment()!=null||uri.getPort()!=-1||!(api||"github.com".equals(h)||"objects.githubusercontent.com".equals(h)||"release-assets.githubusercontent.com".equals(h)))throw new IOException("更新包必须来自 GitHub 发行版");return uri.toURL();}
+    static URL assetUrl(String value)throws Exception{return NativeNetwork.publicUrl(assetAddress(value).toString());}
     static File file(Context c){return new File(new File(c.getCacheDir(),"updates"),"latest.apk");}
     static File download(Context context,JSONObject release)throws Exception{return download(context,release,ResumableDownload.NONE);}
     static File download(Context context,JSONObject release,ResumableDownload.Progress progress)throws Exception{

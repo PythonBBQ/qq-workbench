@@ -16,7 +16,7 @@ final class UpdateScreens {
         Button resume=a.plainButton("继续下载",()->{try{UpdateDownloadService.start(a,UpdateDownloadService.pendingRelease(a));}catch(Exception e){a.toast(e.getMessage());}});a.body.addView(resume);
         Button pause=a.plainButton("暂停",()->{try{UpdateDownloadService.pause(a);}catch(Exception e){a.toast("暂停未完成，请稍后重试");}});a.body.addView(pause);
         Button install=a.plainButton("继续安装",a::installUpdate);a.body.addView(install);
-        a.note("完成下载后自动进入系统安装确认；安装后整合资源并恢复服务。系统若拦截自动打开，点击更新通知即可返回。");
+        a.note("下载期间留在软件内显示进度，不打开浏览器、不停止聊天。下载完成后整合补丁并校验，再进入系统安装确认；安装后同步资源并恢复服务。");
         LinearLayout parent=a.body,advanced=new LinearLayout(a);advanced.setOrientation(1);advanced.setVisibility(View.GONE);a.button("更新设置 ▾",()->advanced.setVisibility(advanced.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE));parent.addView(advanced);a.body=advanced;
         EditText feed=a.input("更新源",AppUpdates.feed(a),false);Switch automatic=a.toggle("打开时检查更新",a.prefs().getBoolean("autoUpdateCheck",true));
         a.button("保存更新设置",()->{try{AppUpdates.releaseUrl(feed.getText().toString().trim());a.prefs().edit().putString("updateFeed",feed.getText().toString().trim()).putBoolean("autoUpdateCheck",automatic.isChecked()).apply();a.clearDraft();a.toast("已保存");}catch(Exception e){a.toast(e.getMessage());}});
@@ -26,7 +26,7 @@ final class UpdateScreens {
         a.handler.post(new Runnable(){public void run(){if(a.destroyed||!a.screen.equals("updates")||a.page!=page)return;
             JSONObject state=UpdateDownloadService.state(a);boolean busy=state.optBoolean("active"),integrating=UpdateFlow.integrating(a);String phase=state.optString("phase");long n=state.optLong("received"),total=state.optLong("total");
             String message=integrating?UpdateFlow.prefs(a).getString("integrationMessage","正在整合资源")+"\n"+RuntimeService.state:state.optString("message");
-            boolean measured=busy&&(phase.equals("downloading")||phase.equals("retrying")||phase.equals("reconstructing"));
+            boolean measured=busy&&(phase.equals("downloading")||phase.equals("retrying")||phase.equals("switching")||phase.equals("reconstructing"));
             text.setText(message+(measured&&total>0?"\n"+(int)Math.min(100,n*100/total)+"%":""));bar.setIndeterminate(integrating||(busy&&!measured));bar.setProgress(total>0?(int)Math.min(1000,n*1000/total):phase.equals("ready")||phase.equals("complete")?1000:0);
             pause.setVisibility(busy?View.VISIBLE:View.GONE);resume.setVisibility(!busy&&UpdateDownloadService.pending(a).isFile()?View.VISIBLE:View.GONE);install.setVisibility(!busy&&!integrating&&AppUpdates.file(a).isFile()?View.VISIBLE:View.GONE);
             UpdateFlow.offerInstall(a);a.handler.postDelayed(this,750);
