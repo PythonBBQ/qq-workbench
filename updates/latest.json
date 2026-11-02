@@ -1,0 +1,23 @@
+{
+  "tag_name": "v1.0.7",
+  "assets": [
+    {
+      "name": "QQWorkbench-from-161bdcded81b79a0d5f959f4f39777e47019be1a39781021602331dbfa451a28.qqpatch",
+      "size": 464600646,
+      "digest": "sha256:0ba000310f1493b1babc7ac9702f19b755314004a18528b9315555a1aeff3943",
+      "browser_download_url": "https://github.com/PythonBBQ/qq-workbench/releases/download/v1.0.7/QQWorkbench-from-161bdcded81b79a0d5f959f4f39777e47019be1a39781021602331dbfa451a28.qqpatch"
+    },
+    {
+      "name": "QQWorkbench-from-9c7e29e5759cde89d57e3ceb519c557aea376eeff5a32f33a66404999872979d.qqpatch",
+      "size": 463758032,
+      "digest": "sha256:58375ac21e1e06b3263293394b844bda016f9cec3874bf94517138eb8e31fa32",
+      "browser_download_url": "https://github.com/PythonBBQ/qq-workbench/releases/download/v1.0.7/QQWorkbench-from-9c7e29e5759cde89d57e3ceb519c557aea376eeff5a32f33a66404999872979d.qqpatch"
+    },
+    {
+      "name": "QQWorkbench-from-63c63c1e0b5f1aab401e549dc8c02739787d8905f6649063489601687c61baba.qqpatch",
+      "size": 1021286,
+      "digest": "sha256:e2a85734cae88d88ded058c797824966a0d85127f1c2ca3514bfe1034e99e0d5",
+      "browser_download_url": "https://github.com/PythonBBQ/qq-workbench/releases/download/v1.0.7/QQWorkbench-from-63c63c1e0b5f1aab401e549dc8c02739787d8905f6649063489601687c61baba.qqpatch"
+    }
+  ]
+}
