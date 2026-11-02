@@ -137,7 +137,7 @@ async function main() {
   function config() {
     let saved={};try{saved=JSON.parse(fs.readFileSync(path.join(here,'settings.json'),'utf8'));}catch{}
     if(saved.visionMode==null&&saved.visionUrl&&saved.visionModel)saved.visionMode='separate';
-    const next={...defaults,...saved},owner=JSON.stringify([String(next.owner),next.characterName||'',next.persona||'',next.worldBook||'',next.voiceEnabled,next.voiceAlways,next.voiceMode,next.voicePreference,next.voiceCooldown,next.voiceNatural,next.voiceMemoryEnabled,next.voiceEmotion,next.voiceEmotionPreset,next.zipVoiceSteps,next.zipVoiceAdaptive,next.feiyuStyle,next.feiyuVoice,next.feiyuUrl,next.androidVoice,next.speechProvider,next.kokoroSpeaker,next.speechVoice,next.speechRate,next.speechPitch,next.emojiEnabled,next.emojiAutoLabel,next.autoCollectEmoji,next.speechRegion,next.qqVoiceId]);
+    const next={...defaults,...saved},owner=JSON.stringify([String(next.owner),next.characterName||'',next.persona||'',next.worldBook||'',next.voiceEnabled,next.voiceAlways,next.voiceMode,next.voicePreference,next.voiceCooldown,next.voiceNatural,next.voiceMemoryEnabled,next.voiceEmotion,next.voiceEmotionPreset,next.zipVoiceModel,next.zipVoiceDeliveryPreset,next.zipVoiceSteps,next.zipVoiceAdaptive,next.feiyuStyle,next.feiyuVoice,next.feiyuUrl,next.androidVoice,next.speechProvider,next.kokoroSpeaker,next.speechVoice,next.speechRate,next.speechPitch,next.emojiEnabled,next.emojiAutoLabel,next.autoCollectEmoji,next.speechRegion,next.qqVoiceId]);
     if(ownerSnapshot!==null&&ownerSnapshot!==owner){ownerStickers.clear();connectionEpoch++;contexts.clear();videoContexts.clear();sourceContexts.clear();sessions.clear();groupContext.clear();queue=[];queuedCodexResults.clear();}
     ownerSnapshot=owner;return next;
   }

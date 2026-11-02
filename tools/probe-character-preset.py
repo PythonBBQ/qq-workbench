@@ -12,7 +12,7 @@ import sys
 
 ROOT=Path(__file__).resolve().parents[1]
 def main():
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--pack',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--serial',default='1987aee5');p.add_argument('--long-only',action='store_true');p.add_argument('--focus',action='store_true');p.add_argument('--calibrate',action='store_true');p.add_argument('--calibrate-second',action='store_true');p.add_argument('--fragile',action='store_true');p.add_argument('--quality',action='store_true')
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--pack',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--serial',default='1987aee5');p.add_argument('--long-only',action='store_true');p.add_argument('--focus',action='store_true');p.add_argument('--calibrate',action='store_true');p.add_argument('--calibrate-second',action='store_true');p.add_argument('--fragile',action='store_true');p.add_argument('--quality',action='store_true');p.add_argument('--tablet',action='store_true')
     args=p.parse_args();args.output=args.output.resolve();args.output.relative_to(ROOT.parents[1]);args.output.mkdir(parents=True,exist_ok=True)
     subprocess.run([sys.executable,str(ROOT/'tests/run-native-settings.py'),'--compile-only','--character-preset'],check=True)
     spec=importlib.util.spec_from_file_location('worker',ROOT/'tools/android-codex-worker.py');w=importlib.util.module_from_spec(spec);spec.loader.exec_module(w)
@@ -27,8 +27,8 @@ def main():
     d.run('push',str(args.pack.resolve()),pack)
     package=d.run('shell','dumpsys','package',w.PACKAGE).decode('utf-8',errors='replace')
     library=re.search(r'legacyNativeLibraryDir=(.*)',package).group(1).strip()+'/arm64'
-    if sum([args.long_only,args.focus,args.calibrate,args.calibrate_second,args.fragile,args.quality])>1:raise ValueError('Select one probe mode')
-    command=shlex.join(['run-as',w.PACKAGE,'sh','-c',shlex.join(['env','CLASSPATH='+check,'LD_LIBRARY_PATH='+library,'/system/bin/app_process64','/system/bin','cn.qqworkbench.assistant.CharacterPresetProbe',ident,pack]+(['quality'] if args.quality else ['long'] if args.long_only else ['focus'] if args.focus else ['calibrate'] if args.calibrate else ['calibrate-b'] if args.calibrate_second else ['fragile'] if args.fragile else []))])
+    if sum([args.long_only,args.focus,args.calibrate,args.calibrate_second,args.fragile,args.quality,args.tablet])>1:raise ValueError('Select one probe mode')
+    command=shlex.join(['run-as',w.PACKAGE,'sh','-c',shlex.join(['env','CLASSPATH='+check,'LD_LIBRARY_PATH='+library,'/system/bin/app_process64','/system/bin','cn.qqworkbench.assistant.CharacterPresetProbe',ident,pack]+(['tablet'] if args.tablet else ['quality'] if args.quality else ['long'] if args.long_only else ['focus'] if args.focus else ['calibrate'] if args.calibrate else ['calibrate-b'] if args.calibrate_second else ['fragile'] if args.fragile else []))])
     log=args.output/'native-probe.log'
     with log.open('w',encoding='utf-8') as output:
         proc=subprocess.run([str(d.adb),'-s',args.serial,'shell',command],stdout=output,stderr=subprocess.STDOUT,timeout=1100)

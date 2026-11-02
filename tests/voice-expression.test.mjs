@@ -4,6 +4,26 @@ import {voicePrompt,voiceCapability,voiceFormatHint,voiceDecision,voiceDeliveryS
 import {ConversationMemory,conversationScope} from '../assets/conversation-memory.mjs';
 const c={owner:'123456',voiceEnabled:true,voiceMode:'smart',speechProvider:'zipvoice'},event={message_type:'private',user_id:'123456'},scope=voiceScope(c,event,'654321');
 
+test('soft intimate expression reaches native synthesis, preserves text and respects current refusal and emotion switch',async()=>{
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'speech-intimate-'));try{const wav=Buffer.alloc(128);wav.write('RIFF');
+ const config={...c,voiceEmotionPreset:'intimate',zipVoiceModel:'full',zipVoiceDeliveryPreset:'t02-t06',speechRate:0,speechPitch:0},text='嗯，靠近一点嘛，我想轻轻和你说句话。';
+ for(const [settings,incoming,mood,style,rate,budget] of [[config,'', 'shy','soft',-5,16],[config,'正常说话','neutral','normal',0,32],[config,'别暧昧','neutral','normal',0,32],[{...config,voiceEmotion:false},'','neutral','normal',0,32]]){
+  const audio=await synthesize(settings,text,{directory,event:{raw_message:incoming},native:async(route,data)=>{assert.equal(data.text,text);assert.equal(data.emotion,mood);assert.equal(data.deliveryStyle,style);assert.equal(data.rate,rate);assert.equal(data.pitch,0);assert.equal(data.steps,budget);return {ok:true,audio:wav.toString('base64')};},convert:async(bin,args)=>fs.writeFileSync(args.at(-1),Buffer.alloc(100))});audio.cleanup();
+ }
+ assert.match(voicePrompt(config),/软绵、含蓄暧昧/);assert.ok(!voicePrompt(config,{format:'text'}).includes('暧昧'));
+ assert.ok(!voicePrompt({...config,voiceEmotion:false}).includes('暧昧'));
+ assert.equal(voiceDecision('你好',config,{event,reply:text,modelChoice:false}).voice,false,'expression never forces voice delivery');
+ }finally{fs.rmSync(directory,{recursive:true,force:true});}
+});
+
+test('selected listening budget keeps daily and gentle at 32 steps, shy at 16',async()=>{
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'speech-selected-'));try{const wav=Buffer.alloc(128);wav.write('RIFF');
+ for(const [emotion,steps] of [['neutral',32],['gentle',32],['shy',16]]){
+  const audio=await synthesize({...c,zipVoiceModel:'full',zipVoiceDeliveryPreset:'t02-t06',zipVoiceSteps:16},'我在听，你慢慢说。',{emotion,directory,native:async(route,data)=>{assert.equal(data.steps,steps);assert.equal(data.requestedSteps,steps);assert.equal(data.rate,emotion==='shy'?-5:0);return {ok:true,audio:wav.toString('base64')};},convert:async(bin,args)=>fs.writeFileSync(args.at(-1),Buffer.alloc(100))});audio.cleanup();
+ }
+ }finally{fs.rmSync(directory,{recursive:true,force:true});}
+});
+
 test('explicit quiet speech is routed locally without a second model call; unrelated ASMR discussion and refusals stay ordinary',async()=>{
  for(const incoming of ['来一段ASMR','用耳语陪我聊聊','小声说给我听','哄我睡']){
   assert.equal(voiceDeliveryStyle('好呀。',{raw_message:incoming}),'soft');assert.equal(voiceDecision(incoming,{...c,voiceMode:'request'},{reply:'好呀。',event}).voice,true);
@@ -87,6 +107,14 @@ test('long local speech preserves selected quality rather than silently reducing
  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'speech-steps-'));try{const wav=Buffer.alloc(128);wav.write('RIFF');
  for(const [text,adaptive,expected] of [['短句。',true,8],['这是完整的一句话。'.repeat(8),true,8],['这是完整的一句话。'.repeat(8),false,8]]){
  let calls=0;const audio=await synthesize({...c,zipVoiceSteps:8,zipVoiceAdaptive:adaptive},text,{directory,native:async(route,data)=>{calls++;assert.equal(data.steps,expected);assert.equal(data.requestedSteps,8);return {ok:true,audio:wav.toString('base64'),steps:expected,requestedSteps:8};},convert:async(bin,args)=>fs.writeFileSync(args.at(-1),Buffer.alloc(100))});assert.equal(calls,1);assert.equal(audio.info.steps,expected);audio.cleanup();
+ }
+ }finally{fs.rmSync(directory,{recursive:true,force:true});}
+});
+
+test('full precision voice budget and model selection reach native synthesis unchanged',async()=>{
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'speech-full-'));try{const wav=Buffer.alloc(128);wav.write('RIFF');
+ for(const [selected,expected] of [[8,16],[16,16],[32,32]]){
+ const audio=await synthesize({...c,zipVoiceModel:'full',zipVoiceSteps:selected},'嗯，我在听，你慢慢说。',{directory,native:async(route,data)=>{assert.equal(data.modelQuality,'full');assert.equal(data.steps,expected);return {ok:true,audio:wav.toString('base64'),modelQuality:'full',modelName:'ZipVoice FP32',steps:expected,requestedSteps:expected};},convert:async(bin,args)=>fs.writeFileSync(args.at(-1),Buffer.alloc(100))});assert.equal(audio.info.modelQuality,'full');assert.equal(audio.info.steps,expected);audio.cleanup();
  }
  }finally{fs.rmSync(directory,{recursive:true,force:true});}
 });

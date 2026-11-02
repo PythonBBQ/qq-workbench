@@ -1,7 +1,7 @@
 import {synthesize,splitSpeechFallback} from './voice.mjs';
 
 // Split before synthesis. Keep punctuation and the exact original order; no LLM call.
-export function splitVoiceMessages(input,{target=72,limit=100}={}){
+export function splitVoiceMessages(input,{target=72,limit=100,tailAllowance=16}={}){
   const text=String(input||'').trim();if(!text)return [];
   const units=Array.from(text),weight=ch=>/[\x00-\x7f]/.test(ch)?0.3:1;
   const result=[];let offset=0;
@@ -12,13 +12,14 @@ export function splitVoiceMessages(input,{target=72,limit=100}={}){
     const stop=strong>offset?strong:weak>offset?weak:Math.max(end,offset+1);result.push(units.slice(offset,stop).join(''));offset=stop;
   }
   // Avoid sending a tiny final sentence by itself, within a bounded final utterance.
-  if(result.length>1&&Array.from(result.at(-1)).reduce((n,ch)=>n+weight(ch),0)<16){const tail=result.at(-2)+result.at(-1);if(Array.from(tail).reduce((n,ch)=>n+weight(ch),0)<=limit+16&&tail.length<=260)result.splice(-2,2,tail);}
+  if(result.length>1&&Array.from(result.at(-1)).reduce((n,ch)=>n+weight(ch),0)<16){const tail=result.at(-2)+result.at(-1);if(Array.from(tail).reduce((n,ch)=>n+weight(ch),0)<=limit+tailAllowance&&tail.length<=260)result.splice(-2,2,tail);}
   return result;
 }
 
 /** One send per chunk, after previous acknowledgement. Never retry an uncertain send. */
 export function prepareSpeech(c,text,options={},generate=synthesize){
-  const parts=splitVoiceMessages(text);if(!parts.length)throw new Error('没有可朗读的文字');
+  const full=c.speechProvider==='zipvoice'&&c.zipVoiceModel==='full',limit=c.zipVoiceSteps===32||c.zipVoiceDeliveryPreset==='t02-t06'?24:36;
+  const parts=splitVoiceMessages(text,full?{target:limit-8,limit,tailAllowance:0}:{});if(!parts.length)throw new Error('没有可朗读的文字');
   let used=false;
   const batch={info:null,acceptedVoiceCount:0,fallback:false,cleanup(){},async deliver({send,confirmed,current=()=>true,progress=()=>{}}){
     if(used)throw new Error('本次语音已处理，不自动重复发送');used=true;let result;

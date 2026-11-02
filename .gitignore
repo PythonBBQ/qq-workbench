@@ -24,3 +24,5 @@ voice-runtime/
 **/*-profile.local.json
 assets/feiyu-six-references.zip
 assets/character-daily-references.zip
+
+assets/zipvoice-full-models.zip

@@ -24,8 +24,7 @@ final class AppUpdates {
     static byte[] read(InputStream input,int limit)throws Exception{try(InputStream in=input;ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] b=new byte[16384];int n;while((n=in.read(b))!=-1){if(out.size()+n>limit)throw new IOException("更新信息过大");out.write(b,0,n);}return out.toByteArray();}}
     static HttpURLConnection connection(URL url)throws Exception{HttpURLConnection c=(HttpURLConnection)url.openConnection();c.setConnectTimeout(15000);c.setReadTimeout(20000);c.setInstanceFollowRedirects(false);c.setUseCaches(false);c.setRequestProperty("Cache-Control","no-cache");c.setRequestProperty("User-Agent","QQWorkbench-Updater");c.setRequestProperty("Accept","application/vnd.github+json");return c;}
     static JSONObject check(Context context)throws Exception{
-        HttpURLConnection c=connection(releaseUrl(feed(context)));JSONObject release;
-        try{int status=c.getResponseCode();if(status==404)return new JSONObject().put("available",false).put("message","此项目暂无可用发行版；可在设置中更换更新源");if(status!=200)throw new IOException("更新源暂不可用（"+status+"）");release=new JSONObject(new String(read(c.getInputStream(),512*1024),"UTF-8"));}finally{c.disconnect();}
+        JSONObject release=UpdateFeed.read(releaseUrl(feed(context)),url->connection(NativeNetwork.publicUrl(url.toString())));
         String tag=release.optString("tag_name"),current=context.getPackageManager().getPackageInfo(context.getPackageName(),0).versionName;JSONArray assets=release.optJSONArray("assets");
         if(!tag.matches("[vV]?[0-9]{1,6}\\.[0-9]{1,6}\\.[0-9]{1,6}(?:[-.][A-Za-z0-9.-]+)?"))return new JSONObject().put("available",false).put("message","发行版未提供可识别的版本号");
         if(compare(tag,current)<=0)return new JSONObject().put("available",false).put("message","当前已是最新版本").put("version",tag);

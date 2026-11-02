@@ -21,6 +21,11 @@
       "sha256": "8b67ae549a465eee78f92ecb74644ad90c3c58ce65f19c68baf85878a10ef73a"
     }
   ],
+  "qualityModel": {
+    "name": "sherpa-onnx-zipvoice-zh-en-emilia.tar.bz2",
+    "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/sherpa-onnx-zipvoice-zh-en-emilia.tar.bz2",
+    "sha256": "098feeb0566875751eb8776b87060b9889b32b17d3649504e4514ce2b6a85100"
+  },
   "kotlin": {
     "url": "https://maven.aliyun.com/repository/central/org/jetbrains/kotlin/kotlin-stdlib/1.9.24/kotlin-stdlib-1.9.24.jar",
     "sha256": "858b902696da9cf585ab9d98ffc1c2712269828354dfe9107e3711b084a36468"

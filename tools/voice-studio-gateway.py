@@ -115,6 +115,49 @@ def character_controls(reference, alpha, delivery):
             'emo_alpha': min(alpha, .45) if delivery == 'normal' else alpha}
 
 
+def character_quality(mood, delivery):
+    # User selected listening sample C04, after comparing B05/B07 and C01-C06.
+    if mood == 'shy' and delivery == 'normal':
+        return {'speaker_reference': 'neutral', 'speaker_variant': 1,
+                'diffusion_steps': 64, 'inference_cfg_rate': .7,
+                'emotion_alpha': .7, 'temperature': .5, 'top_p': .65}
+    return {}
+
+
+def character_segments(text):
+    # Preserve C04 as one utterance. For long replies use C05's whole-phrase
+    # synthesis, never isolate or splice recorded interjections.
+    if len(text) <= 80:
+        return [text]
+    parts = []
+    while len(text) > 60:
+        strong = [i + 1 for i, c in enumerate(text[:60]) if i >= 19 and c in '。！？!?；;\n']
+        weak = [i + 1 for i, c in enumerate(text[:60]) if i >= 19 and c in '，,：: ']
+        end = strong[-1] if strong else weak[-1] if weak else 60
+        parts.append(text[:end]);text = text[end:]
+    if text:
+        parts.append(text)
+    return parts
+
+
+def join_character_waves(parts, target):
+    parameters = None
+    chunks = []
+    for index, part in enumerate(parts):
+        check_wave(part)
+        with wave.open(str(part), 'rb') as stream:
+            current = (stream.getnchannels(), stream.getsampwidth(), stream.getframerate())
+            if current[1] != 2 or parameters is not None and parameters != current:
+                raise ValueError('Incompatible character audio segments')
+            parameters = current
+            if index:
+                chunks.append(bytes(round(current[2] * .25) * current[0] * current[1]))
+            chunks.append(stream.readframes(stream.getnframes()))
+    with wave.open(str(target), 'wb') as stream:
+        stream.setnchannels(parameters[0]);stream.setsampwidth(parameters[1]);stream.setframerate(parameters[2])
+        stream.writeframes(b''.join(chunks))
+
+
 def make_app(studio, runtime, worker, token):
     from fastapi import FastAPI, HTTPException, Request
     from fastapi.responses import FileResponse
@@ -174,19 +217,28 @@ def make_app(studio, runtime, worker, token):
                         ref = checked_ssr_reference(runtime) if request["voice"] == "feiyu-ssr" else checked_reference(package, request["style"])
                     model = studio.tts.ensure_loaded()
                     controls = character_controls(emo_ref, alpha, request['delivery']) if custom else {'emo_vector': emotion_vector(request['emotion']), 'emo_alpha': .50}
-                    quality = request.get('quality', {})
+                    quality = {**(character_quality(request['emotion'], request['delivery']) if custom else {}), **request.get('quality', {})}
                     if custom and 'emotion_alpha' in quality:
                         controls['emo_alpha'] = quality['emotion_alpha']
                     if custom and quality.get('speaker_reference') == 'emotion':
                         ref = emo_ref
+                    elif custom and quality.get('speaker_reference') == 'neutral':
+                        _, ref, _ = checked_character_reference(runtime, 'neutral', quality.get('speaker_variant', 0))
                     infer_quality = {k: quality[k] for k in ('diffusion_steps', 'inference_cfg_rate', 'temperature', 'top_p') if k in quality}
-                    model.infer(spk_audio_prompt=str(ref), text=request["text"],
-                                output_path=str(wav), **controls, **infer_quality,
-                                use_emo_text=False, use_random=False,
-                                max_text_tokens_per_segment=90, num_beams=1,
-                                max_mel_tokens=1800, interval_silence=140)
-                    if getattr(model, "mel_tokens_capped", False):
-                        raise ValueError("Synthesis reached its length limit; audio withheld")
+                    segments = character_segments(request['text']) if custom else [request['text']]
+                    parts = []
+                    for index, sentence in enumerate(segments):
+                        part = output / ('part-' + str(index) + '.wav') if len(segments) > 1 else wav
+                        model.infer(spk_audio_prompt=str(ref), text=sentence,
+                                    output_path=str(part), **controls, **infer_quality,
+                                    use_emo_text=False, use_random=False,
+                                    max_text_tokens_per_segment=90, num_beams=1,
+                                    max_mel_tokens=1800, interval_silence=140)
+                        if getattr(model, "mel_tokens_capped", False):
+                            raise ValueError("Synthesis reached its length limit; audio withheld")
+                        parts.append(part)
+                    if len(parts) > 1:
+                        join_character_waves(parts, wav)
                     if request["voice"] == "feiyu-index-rvc":
                         studio.tts.unload()
                         run_worker("rvc", output, {**request, "input": str(wav)})
@@ -227,8 +279,8 @@ def make_app(studio, runtime, worker, token):
             data = json.loads(chunks)
             text = data["text"]
             voice, style, mood = data.get("voice", "feiyu"), data.get("style", "cute"), data.get("emotion", "neutral")
-            variant = data.get('variant', 0)
             delivery = data.get('delivery', 'normal')
+            variant = data.get('variant', 1 if voice == 'character-daily' and mood == 'shy' and delivery == 'normal' else 0)
             if not isinstance(text, str) or not text.strip() or len(text) > 1200:
                 raise ValueError()
             if voice not in VOICES or style not in {"cute", "gentle"} or mood not in MOODS:
@@ -238,13 +290,16 @@ def make_app(studio, runtime, worker, token):
             if delivery not in ('normal', 'soft', 'expressive'):
                 raise ValueError()
             quality = data.get('quality', {})
-            if not isinstance(quality, dict) or set(quality) - {'diffusion_steps', 'inference_cfg_rate', 'temperature', 'top_p', 'emotion_alpha', 'speaker_reference'}:
+            if not isinstance(quality, dict) or set(quality) - {'diffusion_steps', 'inference_cfg_rate', 'temperature', 'top_p', 'emotion_alpha', 'speaker_reference', 'speaker_variant'}:
                 raise ValueError()
             if quality and voice != 'character-daily':
                 raise ValueError()
             for name, value in quality.items():
                 if name == 'speaker_reference':
-                    if value not in ('base', 'emotion'):
+                    if value not in ('base', 'emotion', 'neutral'):
+                        raise ValueError()
+                elif name == 'speaker_variant':
+                    if type(value) is not int or not 0 <= value <= 7 or quality.get('speaker_reference') != 'neutral':
                         raise ValueError()
                 elif name == 'diffusion_steps':
                     if type(value) is not int or value not in (16, 32, 48, 64):

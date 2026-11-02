@@ -11,6 +11,7 @@ parser.add_argument('--upload-attempts',type=int,default=3)
 parser.add_argument('--upload-timeout',type=int,default=3600)
 parser.add_argument('--direct-upload',action='store_true',help='直连 uploads.github.com，不改变系统代理')
 parser.add_argument('--patch-base',type=Path,action='append',default=[],help='额外保留的同系列已签名基础APK；普通1.0.x自动生成补丁，不上传整包')
+parser.add_argument('--explicit-bases',action='store_true',help='只为明确指定的基础APK生成补丁')
 args=parser.parse_args()
 if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+',args.repo):parser.error('Invalid repository')
 if not 1<=args.upload_attempts<=5 or not 60<=args.upload_timeout<=7200:parser.error('Invalid upload limits')
@@ -32,7 +33,7 @@ uploads=[target]
 if patch_only:
     from apk_patch import build,apply
     bases=list(args.patch_base)
-    for candidate in (root/'build').glob('release-upload-*/QQWorkbench-Android.apk'):
+    for candidate in ([] if args.explicit_bases else (root/'build').glob('release-upload-*/QQWorkbench-Android.apk')):
         match=re.fullmatch(r'release-upload-(\d+)\.(\d+)\.(\d+)',candidate.parent.name)
         if match:
             base_version=tuple(map(int,match.groups()))
@@ -47,6 +48,9 @@ if patch_only:
         try:apply(base,patch,reconstructed);assert sha(reconstructed)==actual
         finally:reconstructed.unlink(missing_ok=True)
         print(json.dumps(report),flush=True);uploads.append(patch)
+feed=release/'update.json'
+feed.write_text(json.dumps({'tag_name':tag,'assets':[{'name':p.name,'size':p.stat().st_size,'digest':'sha256:'+sha(p),'browser_download_url':f'https://github.com/{args.repo}/releases/download/{tag}/{p.name}'} for p in uploads]},ensure_ascii=False,indent=2),encoding='utf-8')
+uploads.append(feed)
 sums=release/'SHA256SUMS.txt';sums.write_text(''.join(sha(p)+'  '+p.name+'\n' for p in uploads),encoding='ascii')
 uploads.append(sums)
 env=dict(os.environ)
@@ -57,6 +61,16 @@ for protocol,proxy in urllib.request.getproxies().items():
 
 def gh(*parts):return subprocess.check_output([args.gh,*map(str,parts)],env=env,encoding='utf-8',timeout=120)
 def api(path):return json.loads(gh('api','repos/'+args.repo+'/'+path+('&' if '?' in path else '?')+'qqwb_check='+str(time.time_ns()),'-H','Cache-Control: no-cache'))
+
+def publish_index():
+    import base64
+    path='repos/'+args.repo+'/contents/updates/latest.json'
+    current=None
+    try:current=json.loads(gh('api',path))
+    except subprocess.CalledProcessError:pass
+    payload={'message':'Update public updater index for '+tag,'content':base64.b64encode(feed.read_bytes()).decode(),'branch':'main'}
+    if current:payload['sha']=current['sha']
+    subprocess.run([args.gh,'api','--method','PUT',path,'--input','-'],input=json.dumps(payload),env=env,encoding='utf-8',stdout=subprocess.DEVNULL,check=True,timeout=120)
 def phase(name,**fields):
     record=dict(phase=name,version=version,sha256=actual,at=datetime.datetime.now().isoformat(),**fields)
     (root/('build/publish-status-'+tag[1:]+'.json')).write_text(json.dumps(record,indent=2),encoding='utf-8')
@@ -80,7 +94,7 @@ def verify(info):
 try:
     head=api('commits/main')['sha'];info=find_release()
     if info and not info['draft']:
-        verify(info);phase('published',url=info['html_url'],alreadyPublic=True)
+        verify(info);publish_index();phase('published',url=info['html_url'],alreadyPublic=True)
     else:
         if info is None:
             gh('release','create',tag,'--repo',args.repo,'--target',head,'--title','七丘 QQ 工作台 '+version,'--draft','--notes-file',args.notes.resolve(strict=True))
@@ -115,7 +129,7 @@ try:
         gh('release','edit',tag,'--repo',args.repo,'--draft=false','--latest','--notes-file',args.notes.resolve(strict=True),'--title','七丘 QQ 工作台 '+version)
         latest=api('releases/latest')
         if latest['tag_name']!=tag or latest['draft']:raise RuntimeError('Public latest release not confirmed')
-        verify(latest)
+        verify(latest);publish_index()
         phase('published',commit=head,url=latest['html_url'],kind='patch' if patch_only else 'full',download=next(a['browser_download_url'] for a in latest['assets'] if a['name']==uploads[0].name))
 except Exception:
     phase('failed_not_confirmed_published',message='Draft retained; rerun to resume. Do not publish missing assets manually.')

@@ -16,6 +16,14 @@ test('long speech is lazy, each acknowledged before the next synthesis, with one
  assert.equal(r,receipt);assert.equal(seen.join(''),text);assert.equal(cleaned,generated);assert.equal(batch.acceptedVoiceCount,generated);assert.equal(batch.info.part,generated);
  await assert.rejects(()=>batch.deliver({confirmed,send:async()=>{throw Error('should not resend');}}),/不自动重复/);
 });
+
+test('slow full precision model splits replies before inference and preserves every character',async()=>{
+ for(const steps of [16,32]){
+  const seen=[];let cleaned=0;const input='先休息一会吧，今天的事情可以慢慢说。等你准备好了，我再把后面的安排说给你听。'.repeat(3);
+  const batch=prepareSpeech({speechProvider:'zipvoice',zipVoiceModel:'full',zipVoiceSteps:steps},input,{},async(c,part)=>{seen.push(part);return {segment:{type:'record'},cleanup(){cleaned++;}};});
+  await batch.deliver({confirmed,send:async()=>receipt});assert.equal(seen.join(''),input);assert.ok(seen.every(v=>v.length<=(steps===32?24:36)));assert.equal(cleaned,seen.length);
+ }
+});
 test('uncertain send stops subsequent synthesis and sends, cleans audio, and never falls back to duplicate text',async()=>{
  let synthesized=0,sends=0,cleaned=0;const batch=prepareSpeech({},text,{},async()=>{synthesized++;return {segment:{type:'record'},cleanup(){cleaned++;}};});
  await assert.rejects(()=>batch.deliver({confirmed,send:async()=>{sends++;return sends===1?receipt:{status:'timeout'};}}),/不确定/);

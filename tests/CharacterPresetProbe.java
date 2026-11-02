@@ -29,7 +29,9 @@ public final class CharacterPresetProbe {
         String[] secondTexts={"你回来啦，想先吃饭还是休息一下？","嘿嘿，今天这么顺利，真让人高兴。","今天辛苦了，先照顾好自己再说吧。","嗯，我听见啦，你先让我想一想嘛。","唉，没关系的，我只是想安静一会。","现在先把情况确认清楚，再决定下一步。"};
         String[] acknowledgments={"嗯。","诶？","啊！","啊。","嘿嘿。","嘿嘿。","嘻嘻。","啊。","呜。"};String[] ackMoods={"gentle","neutral","happy","gentle","shy","happy","shy","neutral","sad"};
         JSONObject manifest=new JSONObject(new String(Files.readAllBytes(new File(test,"voice-references/slot-0/pack.json").toPath()),StandardCharsets.UTF_8));
-        if(args.length==3&&args[2].equals("quality")){
+        if(args.length==3&&args[2].equals("tablet")){
+            for(String mood:new String[]{"neutral","gentle","shy"})for(double guidance:new double[]{1,1.5})render(voice,outputs,report,mood+"-g"+guidance,new JSONObject().put("slot",0).put("text",mood.equals("shy")?"嗯，你这样说，我会有点不好意思的。不过我听着呢，你慢慢说。":"今天辛苦啦，先坐下来休息一下吧。等你准备好了，我们再慢慢聊。").put("emotion",mood).put("referenceVariant",0).put("guidanceScale",guidance).put("steps",8).put("rate",0).put("deliveryStyle","normal").put("phrasing",true),false);
+        }else if(args.length==3&&args[2].equals("quality")){
             for(int i:new int[]{0,2,3})render(voice,outputs,report,"quality-"+moods[i],new JSONObject().put("slot",0).put("text",i==2?"今天辛苦啦，先坐下来休息一下吧。等你准备好了，我们再慢慢聊。":texts[i]).put("emotion",moods[i]).put("referenceVariant",0).put("steps",8).put("rate",0).put("deliveryStyle","normal").put("phrasing",true),false);
             render(voice,outputs,report,"quality-long",new JSONObject().put("slot",0).put("text","嗯，你先别着急，我们把最重要的事情做好，剩下的可以慢慢来。你刚才说的话我有认真听，等你休息好了，我们再一起想想下一步。").put("emotion","gentle").put("referenceVariant",0).put("steps",8).put("rate",0).put("deliveryStyle","normal").put("phrasing",true),false);
         }else if(args.length==3&&args[2].equals("ready")){

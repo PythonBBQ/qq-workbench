@@ -41,4 +41,29 @@ def bundle(root):
             for name,data in sorted(files.items()):
                 info=zipfile.ZipInfo(name,date_time=(2026,10,31,0,0,0));info.compress_type=zipfile.ZIP_DEFLATED;archive.writestr(info,data)
     manifest_path.write_text(value,encoding='utf-8',newline='\n')
+    bundle_quality(root,lock)
+    return manifest
+
+def bundle_quality(root,lock=None):
+    root=Path(root);lock=lock or json.loads((root/'tools/zipvoice-deps.json').read_text(encoding='utf-8'))
+    item=lock['qualityModel'];out=root/'build/zipvoice-deps';out.mkdir(parents=True,exist_ok=True)
+    archive=root/'build/tablet-model-upgrade'/item['name']
+    if not archive.exists():archive=out/item['name'];download(item,archive)
+    if digest(archive)!=item['sha256']:raise ValueError('Full ZipVoice model checksum mismatch')
+    manifest_path=root/'assets/zipvoice-full-models.json';target=root/'assets/zipvoice-full-models.zip'
+    if target.exists() and manifest_path.exists():
+        existing=json.loads(manifest_path.read_text(encoding='utf-8'))
+        if existing.get('sourceSha256')==item['sha256']:return existing
+    files={};wanted={'text_encoder.onnx','fm_decoder.onnx','tokens.txt'}
+    with tarfile.open(archive) as source:
+        for member in source:
+            name=Path(member.name).name
+            if name in wanted and member.isfile():files[name]=source.extractfile(member).read()
+            if set(files)==wanted:break
+    if set(files)!=wanted:raise ValueError('Full model archive is incomplete')
+    manifest={'schema':1,'engine':'ZipVoice FP32','runtime':'sherpa-onnx '+lock['version'],'source':item['url'],'sourceSha256':item['sha256'],'defaultSteps':16,'files':{name:{'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()} for name,data in sorted(files.items())}}
+    with zipfile.ZipFile(target.with_suffix('.partial'),'w',zipfile.ZIP_DEFLATED,compresslevel=3) as z:
+        for name,data in sorted(files.items()):
+            info=zipfile.ZipInfo(name,date_time=(2026,11,2,0,0,0));info.compress_type=zipfile.ZIP_DEFLATED;z.writestr(info,data,compresslevel=3)
+    target.with_suffix('.partial').replace(target);manifest_path.write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     return manifest

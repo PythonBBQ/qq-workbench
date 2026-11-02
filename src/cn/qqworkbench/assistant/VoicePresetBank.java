@@ -21,8 +21,10 @@ final class VoicePresetBank {
         if(alternatives.length()>8)throw new IOException("语音变体记录无效");
         if(requested>=0){if(requested>=alternatives.length())throw new IOException("语音变体不存在");return alternatives.getJSONObject(requested);}
         List<JSONObject> matching=new ArrayList<>();boolean soft=requestedSoft==null?text.matches("(?is).*(ASMR|晚安|闭上眼|慢慢放松|轻声|小声说|安心睡|睡个好觉|放轻声音).*" ):requestedSoft;String tag=soft?"soft":text.matches(".*[？?]$")?"question":text.matches(".*(别急|没关系|陪你|慢慢|休息|辛苦|别难过).*" )?"comfort":"";
+        String vocal=text.matches("^[啊呀][，、。！？!?…\\s].*")?"ah":text.matches("^嗯[，、。！？!?…\\s].*")?"hmm":"";
+        if(!soft&&!vocal.isEmpty())for(int i=0;i<alternatives.length();i++){JSONObject row=alternatives.getJSONObject(i);if(tagged(row,vocal)&&!tagged(row,"soft"))return row;}
         if(!tag.isEmpty())for(int i=0;i<alternatives.length();i++){JSONObject row=alternatives.getJSONObject(i);if(tagged(row,tag)&&(soft||!tagged(row,"soft")))matching.add(row);}
-        if(matching.isEmpty())for(int i=0;i<alternatives.length();i++){JSONObject row=alternatives.getJSONObject(i);if(soft||!tagged(row,"soft"))matching.add(row);}
+        if(matching.isEmpty())for(int i=0;i<alternatives.length();i++){JSONObject row=alternatives.getJSONObject(i);if(soft||!tagged(row,"soft")&&!tagged(row,"ah"))matching.add(row);}
         if(matching.isEmpty())return primary;
         return matching.get(Math.floorMod(sequence,matching.size()));
     }
