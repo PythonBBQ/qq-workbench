@@ -27,14 +27,16 @@ final class AppUpdates {
         JSONObject release=UpdateFeed.read(releaseUrl(feed(context)),url->connection(NativeNetwork.publicUrl(url.toString())));
         String tag=release.optString("tag_name"),current=context.getPackageManager().getPackageInfo(context.getPackageName(),0).versionName;JSONArray assets=release.optJSONArray("assets");
         if(!tag.matches("[vV]?[0-9]{1,6}\\.[0-9]{1,6}\\.[0-9]{1,6}(?:[-.][A-Za-z0-9.-]+)?"))return new JSONObject().put("available",false).put("message","发行版未提供可识别的版本号");
-        if(compare(tag,current)<=0)return new JSONObject().put("available",false).put("message","当前已是最新版本").put("version",tag);
-        JSONObject asset=null,patch=null;boolean hasPatches=false;String baseHash="";
-        if(assets!=null)for(int i=0;i<assets.length();i++){JSONObject a=assets.optJSONObject(i);if(a==null)continue;String name=a.optString("name");
-            if(name.endsWith(".qqpatch")){hasPatches=true;if(baseHash.isEmpty())baseHash=installedHash(context);if(name.equals("QQWorkbench-from-"+baseHash+".qqpatch")){if(patch!=null)throw new IOException("发行版补丁重复");patch=a;}}
-            if(name.toLowerCase(Locale.ROOT).endsWith(".apk")){if(asset!=null)throw new IOException("发行版有多个安装包，请使用只发布本应用APK的更新源");asset=a;}
-        }
-        if(patch!=null)asset=patch;
-        if(asset==null)return new JSONObject().put("available",false).put("message",hasPatches?"此版本暂无适配当前安装包的补丁，请查看发行页；不会自动下载完整包":"新发行版尚未提供安卓安装包").put("version",tag);
+        long remoteCode=release.optLong("version_code",0);java.util.regex.Matcher code=java.util.regex.Pattern.compile("qqwb-version-code:([0-9]{1,12})").matcher(release.optString("body"));if(remoteCode==0&&code.find())remoteCode=Long.parseLong(code.group(1));
+        if(!UpdatePlan.newer(tag,current,remoteCode,UpdateFlow.version(context)))return new JSONObject().put("available",false).put("message","当前已是最新版本").put("version",tag);
+        boolean hasPatches=UpdatePlan.patches(assets);String baseHash=hasPatches?installedHash(context):"";
+        UpdatePlan plan=UpdatePlan.choose(assets,baseHash);JSONObject patch=plan.patch,asset=patch==null?plan.full:patch;
+        if(asset==null)return new JSONObject().put("available",false).put("message",hasPatches?"暂无适配此安装包的补丁或完整包，请查看发行页":"新发行版尚未提供安卓安装包").put("version",tag);
+        JSONObject result=assetRelease(context,tag,asset,patch!=null?"patch":"full",baseHash);
+        if(patch!=null&&plan.full!=null)result.put("fullFallback",assetRelease(context,tag,plan.full,"full",baseHash));
+        return result;
+    }
+    static JSONObject assetRelease(Context context,String tag,JSONObject asset,String kind,String baseHash)throws Exception{
         assetAddress(asset.optString("browser_download_url"));long size=asset.optLong("size");if(!validApkSize(size))throw new IOException("更新包大小无效");
         String apiUrl=asset.optString("url");
         if(!apiUrl.isEmpty()){
@@ -43,7 +45,7 @@ final class AppUpdates {
             if(!api.getHost().equals("api.github.com")||!api.getPath().equals(prefix+asset.optLong("id")))throw new IOException("更新资源与发行版不匹配");
         }
         if(!asset.optString("digest").matches("sha256:[a-f0-9]{64}"))throw new IOException("发行版缺少更新包校验值");
-        return new JSONObject().put("available",true).put("version",tag).put("kind",patch!=null?"patch":"full").put("baseSha256",baseHash).put("url",asset.getString("browser_download_url")).put("apiUrl",apiUrl).put("bytes",size).put("digest",asset.optString("digest")).put("message","发现"+(patch!=null?"节流补丁 ":"新版本 ")+tag+(patch!=null?"；本机重建后安装，保留配置":""));
+        return new JSONObject().put("available",true).put("version",tag).put("kind",kind).put("baseSha256",baseHash).put("url",asset.getString("browser_download_url")).put("apiUrl",apiUrl).put("bytes",size).put("digest",asset.optString("digest")).put("message","发现"+(kind.equals("patch")?"节流补丁 ":"新版本 ")+tag+(kind.equals("patch")?"；本机重建后安装，保留配置":""));
     }
     static String installedHash(Context c)throws Exception{
         File apk=new File(c.getApplicationInfo().sourceDir);String key=apk.getPath()+":"+apk.length()+":"+apk.lastModified();android.content.SharedPreferences p=c.getSharedPreferences("update-hashes",0);String hash=p.getString(key,"");if(!hash.matches("[a-f0-9]{64}")){hash=ApkPatch.sha(apk);p.edit().clear().putString(key,hash).apply();}return hash;
@@ -51,13 +53,19 @@ final class AppUpdates {
     // Syntax only, safe on the UI thread. DNS/private-address checks run when opening a connection.
     static URL assetAddress(String value)throws Exception{URI uri=new URI(value);String h=uri.getHost();boolean api="api.github.com".equals(h)&&uri.getRawPath().matches("/repos/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/releases/assets/[1-9][0-9]*")&&uri.getRawQuery()==null;if(!"https".equals(uri.getScheme())||uri.getRawUserInfo()!=null||uri.getRawFragment()!=null||uri.getPort()!=-1||!(api||"github.com".equals(h)||"objects.githubusercontent.com".equals(h)||"release-assets.githubusercontent.com".equals(h)))throw new IOException("更新包必须来自 GitHub 发行版");return uri.toURL();}
     static URL assetUrl(String value)throws Exception{return NativeNetwork.publicUrl(assetAddress(value).toString());}
+    static HttpURLConnection downloadConnection(URL url)throws Exception{
+        URL checked=assetUrl(url.toString());
+        // Public asset routes can cache an expired signed redirect despite no-cache headers.
+        if(checked.getQuery()==null&&(checked.getHost().equals("api.github.com")||checked.getHost().equals("github.com")))checked=new URL(checked.toString()+"?qqwb_download="+System.currentTimeMillis());
+        return connection(checked);
+    }
     static File file(Context c){return new File(new File(c.getCacheDir(),"updates"),"latest.apk");}
     static File download(Context context,JSONObject release)throws Exception{return download(context,release,ResumableDownload.NONE);}
     static File download(Context context,JSONObject release,ResumableDownload.Progress progress)throws Exception{
         File target=file(context),dir=target.getParentFile();dir.mkdirs();
         try(java.nio.channels.FileChannel channel=new RandomAccessFile(new File(dir,"download.lock"),"rw").getChannel();java.nio.channels.FileLock lock=channel.tryLock()){
             if(lock==null)throw new IOException("已有更新正在下载");
-            File temporary=ResumableDownload.fetch(dir,release,url->connection(assetUrl(url.toString())),progress);
+            File temporary=ResumableDownload.fetch(dir,release,url->downloadConnection(url),progress);
             if(release.optString("kind").equals("patch")){
                 File rebuilt=new File(dir,"reconstructed.part");progress.update("base-check",0,0);
                 try{ResumableDownload.check(progress);ApkPatch.apply(new File(context.getApplicationInfo().sourceDir),temporary,rebuilt,release.getString("version"),progress);ResumableDownload.check(progress);progress.update("signing",0,0);verify(context,rebuilt);if(target.exists()&&!target.delete())throw new IOException("无法替换旧更新包");if(!rebuilt.renameTo(target))throw new IOException("无法保存更新包");ResumableDownload.clear(dir);return target;}finally{rebuilt.delete();}

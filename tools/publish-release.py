@@ -11,13 +11,19 @@ parser.add_argument('--upload-attempts',type=int,default=3)
 parser.add_argument('--upload-timeout',type=int,default=3600)
 parser.add_argument('--direct-upload',action='store_true',help='直连 uploads.github.com，不改变系统代理')
 parser.add_argument('--patch-base',type=Path,action='append',default=[],help='额外保留的同系列已签名基础APK；普通1.0.x自动生成补丁，不上传整包')
+parser.add_argument('--include-full',action='store_true',help='同时发布完整APK，供新安装及补丁不匹配时明确选择')
 parser.add_argument('--explicit-bases',action='store_true',help='只为明确指定的基础APK生成补丁')
 args=parser.parse_args()
 if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+',args.repo):parser.error('Invalid repository')
 if not 1<=args.upload_attempts<=5 or not 60<=args.upload_timeout<=7200:parser.error('Invalid upload limits')
 manifest=(root/'AndroidManifest.xml').read_text(encoding='utf-8')
+version_code=int(re.search(r'android:versionCode="([0-9]+)"',manifest).group(1))
 version=re.search(r'android:versionName="([^"]+)"',manifest).group(1)
 tag='v'+version.removesuffix('-preview')
+notes=args.notes.read_text(encoding='utf-8')
+if 'qqwb-version-code:' not in notes:
+    notes += '\n\n<!-- qqwb-version-code:'+str(version_code)+' -->\n'
+notes_file=root/'build/publish-notes.md';notes_file.write_text(notes,encoding='utf-8')
 receipt=json.loads((root/'build/build-receipt.json').read_text(encoding='utf-8'))
 apk=Path(receipt['output']['apk'])
 def sha(path):
@@ -40,7 +46,7 @@ if patch_only:
             if base_version[:2]==numbers[:2] and base_version<numbers:bases.append(candidate)
     unique={sha(p):p for p in bases if p.resolve()!=target.resolve()}
     if not unique:raise RuntimeError('No preserved signed base APK; patch release refused')
-    uploads=[]
+    uploads=[target] if args.include_full else []
     for base_hash,base in unique.items():
         patch=release/('QQWorkbench-from-'+base_hash+'.qqpatch')
         report=build(base,target,patch,tag)
@@ -49,7 +55,16 @@ if patch_only:
         finally:reconstructed.unlink(missing_ok=True)
         print(json.dumps(report),flush=True);uploads.append(patch)
 feed=release/'update.json'
-feed.write_text(json.dumps({'tag_name':tag,'assets':[{'name':p.name,'size':p.stat().st_size,'digest':'sha256:'+sha(p),'browser_download_url':f'https://github.com/{args.repo}/releases/download/{tag}/{p.name}'} for p in uploads]},ensure_ascii=False,indent=2),encoding='utf-8')
+payloads=list(uploads)
+def write_feed(info=None):
+    remote={asset['name']:asset for asset in (info or {}).get('assets',[])}
+    assets=[]
+    for path in payloads:
+        item={'name':path.name,'size':path.stat().st_size,'digest':'sha256:'+sha(path),'browser_download_url':f'https://github.com/{args.repo}/releases/download/{tag}/{path.name}'}
+        if path.name in remote:item.update(id=remote[path.name]['id'],url=remote[path.name]['url'])
+        assets.append(item)
+    feed.write_text(json.dumps({'tag_name':tag,'version_code':version_code,'assets':assets},ensure_ascii=False,indent=2),encoding='utf-8')
+write_feed()
 uploads.append(feed)
 sums=release/'SHA256SUMS.txt';sums.write_text(''.join(sha(p)+'  '+p.name+'\n' for p in uploads),encoding='ascii')
 uploads.append(sums)
@@ -94,15 +109,19 @@ def verify(info):
 try:
     head=api('commits/main')['sha'];info=find_release()
     if info and not info['draft']:
+        write_feed(info);sums.write_text(''.join(sha(p)+'  '+p.name+'\n' for p in uploads if p!=sums),encoding='ascii')
         verify(info);publish_index();phase('published',url=info['html_url'],alreadyPublic=True)
     else:
         if info is None:
-            gh('release','create',tag,'--repo',args.repo,'--target',head,'--title','七丘 QQ 工作台 '+version,'--draft','--notes-file',args.notes.resolve(strict=True))
+            gh('release','create',tag,'--repo',args.repo,'--target',head,'--title','七丘 QQ 工作台 '+version,'--draft','--notes-file',notes_file.resolve(strict=True))
             info=find_release()
         if info is None or not info['draft'] or info['target_commitish']!=head:raise RuntimeError('Draft target does not match main; left unpublished')
         upload_url=info['upload_url'].split('{')[0]
         if not re.fullmatch(r'https://uploads\.github\.com/repos/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/releases/[0-9]+/assets',upload_url):raise RuntimeError('Invalid upload URL')
         for path in uploads:
+            if path==feed:
+                write_feed(find_release())
+                sums.write_text(''.join(sha(p)+'  '+p.name+'\n' for p in uploads if p!=sums),encoding='ascii')
             for attempt in range(1,args.upload_attempts+1):
                 info=find_release()
                 if info is None or not info['draft']:raise RuntimeError('Draft state changed')
@@ -126,7 +145,7 @@ try:
         info=find_release();verify(info)
         if api('commits/main')['sha']!=head:raise RuntimeError('Source changed during upload; draft retained')
         phase('publishing',commit=head)
-        gh('release','edit',tag,'--repo',args.repo,'--draft=false','--latest','--notes-file',args.notes.resolve(strict=True),'--title','七丘 QQ 工作台 '+version)
+        gh('release','edit',tag,'--repo',args.repo,'--draft=false','--latest','--notes-file',notes_file.resolve(strict=True),'--title','七丘 QQ 工作台 '+version)
         latest=api('releases/latest')
         if latest['tag_name']!=tag or latest['draft']:raise RuntimeError('Public latest release not confirmed')
         verify(latest);publish_index()

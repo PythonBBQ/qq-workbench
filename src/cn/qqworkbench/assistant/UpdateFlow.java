@@ -18,9 +18,16 @@ final class UpdateFlow {
     static void problem(Context c,String message){if(integrating(c))prefs(c).edit().putString("integrationMessage",message+"；可在诊断中重试，账号和配置保留").apply();}
     static void install(MainActivity a){
         if(a.updateInstalling)return;a.updateInstalling=true;a.toast("正在核对更新包，请稍候…");
-        a.io.submit(()->{try{Intent intent=AppUpdates.installer(a);boolean permission=intent.getAction().equals(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES);if(!permission){android.content.pm.PackageInfo target=a.getPackageManager().getPackageArchiveInfo(AppUpdates.file(a).getAbsolutePath(),0);if(target==null)throw new IOException("无法读取更新版本");prefs(a).edit().putLong("installTarget",target.getLongVersionCode()).commit();}
-            a.runOnUiThread(()->{a.updateInstalling=false;if(a.destroyed)return;try{a.updatePermissionReturn=permission;prefs(a).edit().putBoolean("permissionPending",permission).commit();a.startActivityForResult(intent,78);}catch(Exception e){a.updatePermissionReturn=false;a.toast("无法打开系统安装界面，请稍后重试");}});
+        a.io.submit(()->{try{Intent intent=AppUpdates.installer(a);boolean permission=intent.getAction().equals(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES);if(!permission){android.content.pm.PackageInfo target=a.getPackageManager().getPackageArchiveInfo(AppUpdates.file(a).getAbsolutePath(),0);if(target==null)throw new IOException("无法读取更新版本");
+                try(Maintenance task=Maintenance.begin(a,"install")){task.quiesce();if(!prefs(a).edit().putLong("installTarget",target.getLongVersionCode()).commit())throw new IOException("无法保存更新交接状态");task.handoffInstall();}
+                intent.putExtra(Intent.EXTRA_RETURN_RESULT,true);
+            }
+            a.runOnUiThread(()->{a.updateInstalling=false;if(a.destroyed){returned(a);return;}try{a.updatePermissionReturn=permission;prefs(a).edit().putBoolean("permissionPending",permission).commit();a.startActivityForResult(intent,78);}catch(Exception e){a.updatePermissionReturn=false;returned(a);a.toast("无法打开系统安装界面，更新包已保留");}});
         }catch(Exception e){a.runOnUiThread(()->{a.updateInstalling=false;if(!a.destroyed)a.toast(e.getMessage());});}});
+    }
+    static void returned(MainActivity a){
+        if(!Maintenance.installing(a))return;
+        new Thread(()->{try{Maintenance.recover(a.getApplicationContext());long target=prefs(a).getLong("installTarget",0);if(target>version(a)){prefs(a).edit().remove("installTarget").apply();a.getSharedPreferences("update-download",0).edit().putString("phase","ready").putString("message","安装未完成，更新包已保留；原服务已按原状态恢复，可继续安装").apply();}}catch(Exception e){a.runOnUiThread(()->{if(!a.destroyed)a.toast("安装交接待恢复："+e.getMessage());});}},"update-install-return").start();
     }
     static void offerInstall(MainActivity a){
         if(!a.updateForeground||a.updateInstalling||!a.screen.equals("updates"))return;
@@ -29,6 +36,9 @@ final class UpdateFlow {
         prefs(a).edit().putString("promptedFile",identity).apply();a.installUpdate();
     }
     static void replaced(Context c){
+        // A new process resumes durable maintenance on opening the Activity. Never
+        // start QQ against an unfinished restore or installer handoff.
+        if(Maintenance.pending(c)){try{c.startForegroundService(new Intent(c,MaintenanceService.class).setAction("recover-update"));}catch(Exception ignored){}Intent resume=new Intent(c,MainActivity.class).putExtra("openUpdates",true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP);try{c.startActivity(resume);}catch(Exception ignored){}return;}
         if(!UsageAgreement.accepted(c))return;long target=prefs(c).getLong("installTarget",0);boolean requested=c.getSharedPreferences("runtime",0).getBoolean("requested",false);
         if(target<=0||version(c)<target){if(requested)try{c.startForegroundService(new Intent(c,RuntimeService.class));}catch(Exception ignored){}return;}
         begin(c);c.getSharedPreferences("update-download",0).edit().putString("phase","integrating").putString("message","安装完成，正在整合本地资源").apply();

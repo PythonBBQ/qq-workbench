@@ -38,21 +38,25 @@ final class BackupScreens {
         Uri uri=data.getData();
         if(request==82){a.io.submit(()->{try(InputStream in=new FileInputStream(new File(a.getFilesDir(),"migration-before-restore.qqwb"));OutputStream out=a.getContentResolver().openOutputStream(uri,"wt")){if(out==null)throw new IOException();MigrationArchive.copy(in,out,MigrationArchive.MAX+8*1024*1024);a.runOnUiThread(()->a.toast("原数据备份已导出，密码为上次导入使用的密码"));}catch(Exception e){a.runOnUiThread(()->a.toast("备份导出失败"));}});return;}
         if(password==null){a.toast("密码已释放，请重新选择备份操作");return;}
-        synchronized(DataMigration.class){if(DataMigration.busy){Arrays.fill(password,'\0');a.toast("备份或迁移正在进行");return;}DataMigration.busy=true;}
+        final Maintenance task;
+        try{task=Maintenance.begin(a,request==80?"export":"import");}catch(Exception e){Arrays.fill(password,'\0');a.toast(e.getMessage());return;}
         a.base(request==80?"正在备份":"正在迁移","backupProgress");a.section("请保持应用打开",request==80?"正在停止原会话并保存加密备份…":"正在解密和校验文件；完成校验前不会改动现有数据。");
         a.loginOffered=true;
         a.io.submit(()->{
-            File stage=new File(a.getCacheDir(),"migration-import-"+UUID.randomUUID());boolean requested=a.getSharedPreferences("runtime",0).getBoolean("requested",false),stopped=false;String message;
-            try{
+            File stage=new File(a.getCacheDir(),"migration-import-"+UUID.randomUUID()),snapshot=new File(a.getCacheDir(),"migration-export-"+UUID.randomUUID()+".qqwb");String message;
+            try(Maintenance maintenance=task){
                 JSONObject manifest=null;if(request==81)try(InputStream in=a.getContentResolver().openInputStream(uri)){if(in==null)throw new IOException("无法读取备份");manifest=MigrationArchive.read(in,stage,password);}
-                stopped=true;DataMigration.stop(a);
-                if(request==80)try(OutputStream out=a.getContentResolver().openOutputStream(uri,"wt")){if(out==null)throw new IOException("无法写入备份");DataMigration.exportData(a,out,password);}
+                if(manifest!=null)DataMigration.validate(stage,manifest);
+                maintenance.quiesce();
+                if(request==80){
+                    try(OutputStream out=new FileOutputStream(snapshot)){DataMigration.exportData(a,out,password);}
+                    try(InputStream in=new FileInputStream(snapshot);OutputStream out=a.getContentResolver().openOutputStream(uri,"wt")){if(out==null)throw new IOException("无法写入备份");MigrationArchive.copy(in,out,MigrationArchive.MAX+8*1024*1024);out.flush();}
+                }
                 else DataMigration.importData(a,stage,manifest,password);
                 message=request==80?"加密备份已保存，可传到另一台设备导入。":"记忆和配置已导入。请停止旧设备，再在本机连接QQ。";
             }catch(Exception e){message="操作未完成："+(e.getMessage()==null?"文件不可读或密码不正确":e.getMessage());}
             finally{
-                Arrays.fill(password,'\0');try{MigrationArchive.erase(stage);}catch(Exception ignored){}
-                DataMigration.busy=false;if(stopped&&!DataMigration.transaction(a).exists())DataMigration.resume(a,requested);
+                Arrays.fill(password,'\0');try{MigrationArchive.erase(stage);}catch(Exception ignored){}snapshot.delete();
             }
             final String text=message;a.runOnUiThread(()->{if(a.destroyed)return;a.loginOffered=false;a.photo=PhotoBackground.load(a);a.background=a.theme().getInt("background",0xfff0f6fa);a.drafts.clear();show(a);a.note(text);a.toast(text);});
         });

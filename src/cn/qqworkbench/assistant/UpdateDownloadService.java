@@ -34,7 +34,7 @@ public final class UpdateDownloadService extends Service {
         if(intent!=null&&"pause".equals(intent.getAction())){paused.set(true);if(worker!=null)worker.interrupt();if(!active.get())stopSelf();return START_NOT_STICKY;}
         startForeground(18,notification("正在准备更新下载",false));
         if(!UsageAgreement.accepted(this)){starting.set(false);stopSelf();return START_NOT_STICKY;}
-        if(!active.compareAndSet(false,true)){starting.set(false);return START_NOT_STICKY;}starting.set(false);paused.set(false);
+        if(!active.compareAndSet(false,true)){starting.set(false);if(worker==null)stopSelf();return START_NOT_STICKY;}starting.set(false);paused.set(false);
         worker=new Thread(()->{
             try{wake=getSystemService(PowerManager.class).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"qqworkbench:update");wake.setReferenceCounted(false);wake.acquire(30*60*1000L);
                 JSONObject release=pendingRelease(this);total=release.getLong("bytes");
@@ -44,7 +44,7 @@ public final class UpdateDownloadService extends Service {
                 }});
                 phase="ready";message="资源重建与签名校验完成，等待系统安装确认";received=total;pending(this).delete();
             }catch(Exception e){phase=paused.get()?"paused":"interrupted";message=paused.get()?"下载已暂停，点击继续可保留进度":e instanceof java.net.SocketTimeoutException||e instanceof java.net.UnknownHostException||e instanceof java.net.ConnectException?"官方下载连接超时或不可达，已保留进度；检查网络后点击继续下载":e.getMessage()==null?"下载未完成，点击继续下载":e.getMessage();}
-            finally{if(wake!=null&&wake.isHeld())wake.release();persist();active.set(false);stopForeground(STOP_FOREGROUND_DETACH);getSystemService(NotificationManager.class).notify(18,notification(message,true));stopSelf();}
+            finally{if(wake!=null&&wake.isHeld())wake.release();persist();active.set(false);stopForeground(STOP_FOREGROUND_DETACH);getSystemService(NotificationManager.class).notify(18,notification(message,true));stopSelf(id);}
         },"app-update-download");worker.start();return START_NOT_STICKY;
     }
     void persist(){getSharedPreferences("update-download",0).edit().putString("phase",phase).putString("message",message).putLong("received",received).putLong("total",total).apply();}

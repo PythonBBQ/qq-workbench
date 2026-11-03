@@ -18,7 +18,7 @@ final class StorageCleanup {
         a.base("存储清理","storage");a.section("应用测试文件","仅清理历次试听、探测输出和已替换音色的旧副本。正在使用的模型、收藏音色、QQ登录、对话与记忆始终保留。");
         android.widget.TextView state=a.text("正在统计可清理空间…",14);a.body.addView(state);
         a.io.submit(()->{long bytes=0;try{for(File f:candidates(a.getFilesDir()))bytes+=size(f);}catch(Exception ignored){}final long count=bytes;a.runOnUiThread(()->{if(!a.destroyed)state.setText("可清理："+format(count));});});
-        a.button("清理测试文件",()->{if(DataMigration.busy){a.toast("备份或迁移中，请稍候");return;}DataMigration.busy=true;a.io.submit(()->{String result;try{long n=clear(a.getFilesDir());result="已清理 "+format(n);}catch(Exception e){result="清理未完成，用户数据保留";}finally{DataMigration.busy=false;}final String text=result;a.runOnUiThread(()->{if(!a.destroyed){state.setText(text);a.toast(text);}});});});
+        a.button("清理测试文件",()->{if(DataMigration.busy){a.toast("备份或迁移中，请稍候");return;}a.io.submit(()->{String result;try(Maintenance task=Maintenance.begin(a,"cleanup")){task.quiesce();long n=clear(a.getFilesDir());result="已清理 "+format(n);}catch(Exception e){result="清理未完成，用户数据保留";}final String text=result;a.runOnUiThread(()->{if(!a.destroyed){state.setText(text);a.toast(text);}});});});
         a.note("应用本体包含QQ运行环境、视频转写和语音模型，属于离线运行所需资源。下载目录的旧安装包可在文件管理中单独删除。");
     }
 }

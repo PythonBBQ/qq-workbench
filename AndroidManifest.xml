@@ -1,4 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="cn.qqworkbench.assistant" android:versionCode="10007" android:versionName="1.0.7">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="cn.qqworkbench.assistant" android:versionCode="10009" android:versionName="1.0.8">
   <uses-sdk android:minSdkVersion="30" android:targetSdkVersion="35"/>
   <uses-permission android:name="android.permission.INTERNET"/>
   <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
@@ -23,6 +23,9 @@
     <activity android:name=".BiliLoginActivity" android:exported="false" android:windowSoftInputMode="adjustResize"/>
     <service android:name=".LocalVoiceService" android:exported="false" android:process=":speech"/>
     <service android:name=".UpdateDownloadService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="dataSync"/>
+    <service android:name=".MaintenanceService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="specialUse">
+      <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="User-requested local encrypted backup, restore and app update handoff"/>
+    </service>
     <service android:name=".RuntimeService" android:stopWithTask="false" android:exported="false" android:foregroundServiceType="specialUse">
       <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="User-started local QQ session and assistant runtime"/>
     </service>

@@ -9,7 +9,18 @@ mkdir -p "$work" "$XDG_RUNTIME_DIR" "/tmp/qqwb-vnc-$slot"
 chmod 700 "$XDG_RUNTIME_DIR" "/tmp/qqwb-vnc-$slot"
 cd "$work"
 children=()
-cleanup(){ for pid in "${children[@]}"; do kill "$pid" 2>/dev/null || true; done; }
+cleanup() {
+  trap '' TERM INT
+  for pid in "${children[@]}"; do kill "$pid" 2>/dev/null || true; done
+  for attempt in {1..40}; do
+    local live=0
+    for pid in "${children[@]}"; do kill -0 "$pid" 2>/dev/null && live=1; done
+    (( live == 0 )) && break
+    sleep .1
+  done
+  for pid in "${children[@]}"; do kill -KILL "$pid" 2>/dev/null || true; done
+  for pid in "${children[@]}"; do wait "$pid" 2>/dev/null || true; done
+}
 trap cleanup EXIT
 trap 'exit 0' TERM INT
 safe_env=(env -u QQWB_ACCOUNT_PROFILES -u QQWB_SITE_COOKIES -u DEEPSEEK_API_KEY -u VISION_API_KEY -u SPEECH_API_KEY -u FEIYU_API_KEY -u WORKBENCH_TOKEN -u QQWB_NATIVE_TOKEN -u WORKBENCH_MEMORY_KEY -u VNC_PASSWORD)

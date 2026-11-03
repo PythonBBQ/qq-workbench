@@ -10,6 +10,7 @@ import java.util.concurrent.*;
 
 final class LocalVoiceClient {
     static JSONObject call(Context context,String operation,JSONObject request)throws Exception{
+        if(DataMigration.busy||Maintenance.pending(context))throw new IOException("维护正在进行，语音稍后恢复");
         CountDownLatch done=new CountDownLatch(1);JSONObject[] result={null};java.util.concurrent.atomic.AtomicBoolean waiting=new java.util.concurrent.atomic.AtomicBoolean(true),dispatched=new java.util.concurrent.atomic.AtomicBoolean(false);
         JSONObject body=new JSONObject(request.toString()).put("localDeadline",SystemClock.elapsedRealtime()+120000);
         Messenger reply=new Messenger(new Handler(Looper.getMainLooper()) {public void handleMessage(Message msg){try{JSONObject value=new JSONObject(msg.getData().getString("result","{}"));if(waiting.get())result[0]=value;else discard(context,value);}catch(Exception ignored){}done.countDown();}});

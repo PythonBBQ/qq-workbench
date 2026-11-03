@@ -30,16 +30,25 @@ final class DataMigration {
         return new JSONObject().put("version",1).put("slotSeed",vault.ensure("internal")).put("secrets",secrets).put("settings",preferences(c.getSharedPreferences("settings",0))).put("theme",preferences(c.getSharedPreferences("MainActivity",0)));
     }
     static void exportData(Context c,OutputStream out,char[] password)throws Exception{MigrationArchive.write(c.getFilesDir(),files(c),metadata(c),password,out);}
-    static boolean stop(Context c)throws Exception{
-        boolean requested=c.getSharedPreferences("runtime",0).getBoolean("requested",false);RuntimeService.stopRequested(c);
-        long end=android.os.SystemClock.elapsedRealtime()+45000;
-        while(RuntimeService.running||RuntimeService.stopping){if(android.os.SystemClock.elapsedRealtime()>end)throw new IOException("原会话仍在退出，请稍后重试");Thread.sleep(250);}
-        Container container=new Container(c);if(new File(container.root,".qq-rootfs-v1").isFile()){
-            java.lang.Process p=container.start("exec flock -w 20 /opt/qq-workbench/.runtime.lock true",new HashMap<>());
-            if(!p.waitFor(25,java.util.concurrent.TimeUnit.SECONDS)){p.destroy();throw new IOException("原会话尚未释放运行锁");}if(p.exitValue()!=0)throw new IOException("原会话尚未释放运行锁");
-        }return requested;
+    static void validatePreferences(JSONObject all)throws Exception{
+        if(all.length()>2000)throw new IOException("备份设置项过多");
+        for(Iterator<String> it=all.keys();it.hasNext();){String key=it.next();if(key.length()>256)throw new IOException("备份设置名称过长");JSONObject entry=all.getJSONObject(key);Object value=entry.get("value");String type=entry.getString("type");
+            boolean valid=type.equals("string")?value instanceof String:type.equals("bool")?value instanceof Boolean:type.equals("set")?value instanceof JSONArray:type.equals("int")?value instanceof Integer:type.equals("long")?value instanceof Integer||value instanceof Long:type.equals("float")?value instanceof Number:false;
+            if(!valid)throw new IOException("备份设置类型不完整");if(type.equals("set")){JSONArray items=(JSONArray)value;for(int i=0;i<items.length();i++)if(!(items.get(i) instanceof String))throw new IOException("备份集合设置无效");}
+        }
     }
-    static void resume(Context c,boolean requested){if(requested)c.startForegroundService(new Intent(c,RuntimeService.class));}
+    static void validate(File stage,JSONObject manifest)throws Exception{
+        JSONObject meta=manifest.getJSONObject("metadata");if(meta.getInt("version")!=1)throw new IOException("备份格式不支持");
+        if(!(meta.get("slotSeed") instanceof String)||meta.getString("slotSeed").isEmpty())throw new IOException("备份记忆凭据不完整");
+        JSONObject secrets=meta.getJSONObject("secrets");for(String name:SECRETS)if(!secrets.has(name)||!(secrets.get(name) instanceof String))throw new IOException("备份凭据不完整");
+        validatePreferences(meta.getJSONObject("settings"));validatePreferences(meta.getJSONObject("theme"));
+        for(String name:new String[]{"settings.json",WORK+"settings.json"}){File f=new File(stage,name);if(f.isFile()){if(f.length()>2*1024*1024)throw new IOException("备份配置文件过大");new JSONObject(new String(Files.readAllBytes(f.toPath()),"UTF-8"));}}
+    }
+    static boolean stop(Context c)throws Exception{
+        boolean requested=c.getSharedPreferences("runtime",0).getBoolean("requested",false);Maintenance.stopRuntime(c);return requested;
+    }
+
+    static void resume(Context c,boolean requested){if(requested){c.getSharedPreferences("runtime",0).edit().putBoolean("requested",true).commit();c.startForegroundService(new Intent(c,RuntimeService.class));}}
     static File transaction(Context c){return new File(c.getFilesDir(),"migration-transaction");}
     static void save(File f,JSONObject data)throws Exception{Container.writePrivate(f,data.toString());}
     static void recover(Context c)throws Exception{
@@ -54,6 +63,7 @@ final class DataMigration {
         MigrationArchive.erase(tx);
     }
     static void importData(Context c,File stage,JSONObject manifest,char[] password)throws Exception{
+        validate(stage,manifest);
         JSONObject meta=manifest.getJSONObject("metadata");if(meta.getInt("version")!=1)throw new IOException("备份格式不支持");
         JSONObject secrets=meta.getJSONObject("secrets");for(String name:SECRETS)if(!secrets.has(name)||!(secrets.get(name) instanceof String))throw new IOException("备份凭据不完整");
         String sourceSeed=meta.getString("slotSeed"),targetSeed=new Secrets(c).ensure("internal"),master=secrets.getString("conversation-memory");

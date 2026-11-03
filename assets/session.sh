@@ -9,7 +9,18 @@ done
 export DISPLAY=:17 XDG_RUNTIME_DIR=/tmp/qqwb-runtime SNOWLUMA_HOOK_RUNTIME_DIR=/tmp/qqwb-runtime
 mkdir -p "$XDG_RUNTIME_DIR" /tmp/qqwb-vnc
 chmod 700 "$XDG_RUNTIME_DIR" /tmp/qqwb-vnc
-cleanup() { for pid in "${children[@]}"; do kill "$pid" 2>/dev/null || true; done; }
+cleanup() {
+  trap '' TERM INT
+  for pid in "${children[@]}"; do kill "$pid" 2>/dev/null || true; done
+  for attempt in {1..40}; do
+    local live=0
+    for pid in "${children[@]}"; do kill -0 "$pid" 2>/dev/null && live=1; done
+    (( live == 0 )) && break
+    sleep .1
+  done
+  for pid in "${children[@]}"; do kill -KILL "$pid" 2>/dev/null || true; done
+  for pid in "${children[@]}"; do wait "$pid" 2>/dev/null || true; done
+}
 children=()
 trap cleanup EXIT
 trap 'exit 0' TERM INT

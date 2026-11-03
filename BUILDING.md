@@ -102,3 +102,12 @@ B站视频路径通过固定官方API选择最低码率视频轨，安卓受限�
 ## 1.0.2参考预设
 
 个人参考二进制不提交源码仓库。需要随本地或明确授权的发行包内置时，在assets放置经过校验的feiyu-six-references.zip和character-daily-references.zip；没有这些可选包时隐藏对应一键按钮，Kokoro、系统TTS和手动参考导入仍保留。参考库格式与处理工具见docs/character-daily-voice-preset.md。签名补丁发行版仅上传.qqpatch与校验和，基于1.0.0基础整包重建；检查与下载上限均为1900MiB。
+
+
+## 1.0.8 维护构建
+
+`tools/build-maintenance-release.py` 需要显式指定官方 1.0.7 底包、已有依赖缓存、Android toolchain、Java bin、原签名及密码文件和输出路径。底包必须匹配源码中的固定 SHA-256；工具编译当前全部生产 Java，重新生成 Manifest 和签名，核对所有未变化资源。模型与参考音色复用 1.0.7，不打包工作站的 MOSS 试验资源。`--compile-only` 只检查编译；完整构建写 `build/build-receipt.json`。
+
+`tools/test-maintenance.py` 以 `--cache-root --toolchain --java-bin --json-jar` 指定依赖，执行维护回归。`tests/BackupInstrumentation.java` 是独立同签名设备测试应用的入口，生产 APK 不含它；安卓链接检查、真实 Keystore 和生命周期测试需运行该测试包。
+
+发布脚本支持 `--include-full`；1.0.8 同时上传完整 APK 和明确指定底包的补丁。发布前重建每个补丁核对完整 APK 哈希，草稿中核对所有资源，再公开并刷新更新索引。清单含 version_code、公开资源 API ID 和 URL，不含登录 Token。

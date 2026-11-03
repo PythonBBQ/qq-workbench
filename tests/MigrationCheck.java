@@ -18,7 +18,7 @@ public final class MigrationCheck {
         return new JSONObject().put("version",1).put("encrypted",true).put("iv",Base64.getEncoder().encodeToString(iv)).put("tag",Base64.getEncoder().encodeToString(Arrays.copyOfRange(all,all.length-16,all.length))).put("data",Base64.getEncoder().encodeToString(Arrays.copyOf(all,all.length-16)));
     }
     public static void main(String[] args)throws Exception{
-        File root=new File("/data/local/tmp/qqwb-migration-check-"+UUID.randomUUID());root.mkdirs();char[] pass="synthetic-password-123".toCharArray();
+        File root=new File(args.length==0?"/data/local/tmp/qqwb-migration-check-"+UUID.randomUUID():new File(args[0],"migration-check-"+UUID.randomUUID()).getPath());root.mkdirs();char[] pass="synthetic-password-123".toCharArray();
         try{
             File source=new File(root,"source");source.mkdir();write(source,"settings.json","{\"persona\":\"测试鲸鱼\"}");write(source,DataMigration.WORK+"learning-notes.json","[\"synthetic note\"]");
             Map<String,File> entries=new TreeMap<>();entries.put("settings.json",new File(source,"settings.json"));entries.put(DataMigration.WORK+"learning-notes.json",new File(source,DataMigration.WORK+"learning-notes.json"));
@@ -26,7 +26,7 @@ public final class MigrationCheck {
             File stage=new File(root,"stage");JSONObject manifest=MigrationArchive.read(new ByteArrayInputStream(encrypted),stage,pass);check(manifest.getJSONObject("files").length()==2);check(text(stage,"settings.json").equals(text(source,"settings.json")));
             rejected(encrypted,new File(root,"wrong"),"wrong-password-1".toCharArray());byte[] tamper=encrypted.clone();tamper[tamper.length-1]^=1;rejected(tamper,new File(root,"tamper"),pass);rejected(Arrays.copyOf(encrypted,encrypted.length-20),new File(root,"truncated"),pass);
             for(String path:new String[]{"../settings.json","/settings.json","voice-references/slot-0/../../settings.json","linux/rootfs/root/.config/QQ/secret","linux/rootfs/opt/qq-workbench/codex-jobs.json","voice-references/slot-0.backup-test/pack.json"})check(!MigrationArchive.permitted(path));
-            Files.createSymbolicLink(new File(source,"theme-background.jpg").toPath(),new File(source,"settings.json").toPath());boolean reject=false;try{MigrationArchive.child(source,"theme-background.jpg");}catch(IOException e){reject=true;}check(reject);
+            if(Arrays.asList(args).contains("--skip-host-symlink"))System.out.println("QQWB_SYMLINK_HOST_SKIPPED: Windows privilege missing; device regression remains required");else{Files.createSymbolicLink(new File(source,"theme-background.jpg").toPath(),new File(source,"settings.json").toPath());boolean reject=false;try{MigrationArchive.child(source,"theme-background.jpg");}catch(IOException e){reject=true;}check(reject);}
             for(int slot=1;slot<=3;slot++)for(boolean voice:new boolean[]{false,true}){
                 String old=MigrationArchive.slotKey("old-device-token",slot),next=MigrationArchive.slotKey("new-device-token",slot);check(!old.equals(next));File f=new File(root,"memory-"+slot+voice);Files.write(f.toPath(),memory(old,voice).toString().getBytes("UTF-8"));
                 MigrationArchive.rekey(f,old,next,voice);MigrationArchive.rekey(f,next,next,voice);boolean failed=false;try{MigrationArchive.rekey(f,old,old,voice);}catch(Exception e){failed=true;}check(failed);

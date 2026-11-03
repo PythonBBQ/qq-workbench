@@ -2,9 +2,9 @@
 
 安卓本机运行的 QQ AI 助手。无需让电脑一直开机；适用 Android 11 及以上、ARM64 设备。首次启动会准备内置容器、Linux QQ 与图形环境，需要数 GB 可用空间；基础组件优先离线安装，QQ登录和模型聊天需要联网。不同厂商的后台限制仍需在系统设置放行。
 
-[下载1.0基础安装包](https://github.com/PythonBBQ/qq-workbench/releases/tag/v1.0.0) · [最新补丁/发行版](https://github.com/PythonBBQ/qq-workbench/releases/latest) · [1.0.7 更新说明](docs/RELEASE-1.0.7.md) · [构建和发布](BUILDING.md)
+[下载1.0基础安装包](https://github.com/PythonBBQ/qq-workbench/releases/tag/v1.0.0) · [最新补丁/发行版](https://github.com/PythonBBQ/qq-workbench/releases/latest) · [1.0.8 更新说明](docs/RELEASE-1.0.8.md) · [构建和发布](BUILDING.md)
 
-当前版本 **1.0.7** 新增全部账号的加密记忆迁移备份、测试文件清理，并修复更新检查遇到 GitHub API 403 就中断的问题。检查更新增加发行版清单和仓库索引备用通道，不需要 GitHub Token；同仓库、哈希与签名校验保留。设置 → 备份与迁移可将记忆、人设、API 卡片和自定义音色一起带到另一台设备；QQ 可能需要重新登录，停止旧设备后再切换。详见[本版说明](docs/RELEASE-1.0.7.md)和[迁移步骤](docs/MEMORY-MIGRATION.md)。1.0.6 的完整本机 ZipVoice 模型与已选参考保留，未训练新权重。
+当前版本 **1.0.8** 重构运行会话、备份导入和安装交接，修复“运行锁未释放”，并让语音与数据迁移互斥。导入失败保留原数据，安装取消恢复原运行状态。保留 1.0.7 的完整 ZipVoice 模型与音色预设，不加入 MOSS 测试分支。提供完整 APK 和按真实底包哈希匹配的补丁；详见 [本版说明](docs/RELEASE-1.0.8.md)、[维护架构](docs/MAINTENANCE.md)与[迁移步骤](docs/MEMORY-MIGRATION.md)。
 
 保留 **0.1.44** 对旧加密配置故障的恢复：隔离无法解密的记录并提示重填，保留原密文与QQ数据。密钥确实丢失的旧记忆无法凭空恢复。手机此前安装包与GitHub下载包SHA256相同；已实测越过加密错误，九项环境检查通过，登录网页返回HTTP200。详见[0.1.44说明](docs/RELEASE-0.1.44.md)。
 
@@ -32,9 +32,9 @@
 
 0.1.20 起，设置 → 软件更新会读取本仓库 GitHub Releases，检查并下载同包名、同签名的新 APK。账号及配置保留，系统安装按钮需要在设备确认。维护者需构建并发布下一版本，上传源码不会自动生成已签名的安装包。签名私钥不上传 GitHub。
 
-更新源填写 `https://api.github.com/repos/PythonBBQ/qq-workbench/releases/latest`；浏览器下载入口为 [最新发行版](https://github.com/PythonBBQ/qq-workbench/releases/latest)。当前版本号是 `1.0.7`，对应标签 `v1.0.7`；基础整包为 `v1.0.0`。草稿不提供公开下载；维护工具现在先补传并校验 APK 与校验和，完成后才公开发布，中断可以重新运行。
+更新源填写 `https://api.github.com/repos/PythonBBQ/qq-workbench/releases/latest`；浏览器下载入口为 [最新发行版](https://github.com/PythonBBQ/qq-workbench/releases/latest)。当前版本号是 `1.0.8`，内部版本 `10009`，对应标签 `v1.0.8`；本次提供完整包，旧基础整包 `v1.0.0` 仍可配合补丁更新。草稿不提供公开下载；维护工具现在先补传并校验 APK 与校验和，完成后才公开发布，中断可以重新运行。
 
-卸载后安装旧版仍提示“更高版本”时，见[安装记录检查与保留数据回退](docs/ANDROID-REINSTALL.md)。电脑工具可检查多用户/分身的包记录，并对指定官方同签名 APK 请求保留数据安装；不会自动卸载或清空数据。尚未在报告问题的手机上完成实测。
+卸载后安装旧版仍提示“更高版本”时，见[安装记录检查与保留数据回退](docs/ANDROID-REINSTALL.md)。电脑工具可检查多用户/分身的包记录，并对指定官方同签名 APK 请求保留数据安装；不会自动卸载或清空数据。已在 OPPO PHU110 确认分身残留并完成同签名保留数据回退；不代表其他机型一定允许降级。
 
 ## 使用声明
 

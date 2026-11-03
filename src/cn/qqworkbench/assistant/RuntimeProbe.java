@@ -24,7 +24,10 @@ final class RuntimeProbe {
         synchronized String value(){return new String(bytes.toByteArray(),StandardCharsets.UTF_8);}
     }
     static Result run(ProcessBuilder builder,long timeoutMs,String marker)throws IOException,InterruptedException{
-        long start=System.nanoTime();Process process=builder.redirectErrorStream(true).start();Capture capture=new Capture(marker);
+        return run(builder.redirectErrorStream(true).start(),timeoutMs,marker);
+    }
+    static Result run(Process process,long timeoutMs,String marker)throws IOException,InterruptedException{
+        long start=System.nanoTime();Capture capture=new Capture(marker);
         Thread reader=new Thread(()->{try(InputStream in=process.getInputStream()){byte[] b=new byte[2048];int n;while((n=in.read(b))!=-1)capture.append(b,n);}catch(IOException ignored){}},"qqwb-probe-output");reader.setDaemon(true);reader.start();
         boolean finished=false;
         try{

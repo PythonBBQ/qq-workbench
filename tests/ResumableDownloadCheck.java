@@ -20,7 +20,7 @@ public final class ResumableDownloadCheck {
     static JSONObject release(File target)throws Exception{return new JSONObject().put("url","https://github.com/PythonBBQ/qq-workbench/releases/download/v9.0.0/test.apk").put("bytes",content.length).put("digest","sha256:"+ApkPatch.sha(target));}
     static void seed(File dir,JSONObject release,int length)throws Exception{dir.mkdirs();Files.write(ResumableDownload.part(dir).toPath(),Arrays.copyOf(content,length));Files.write(ResumableDownload.meta(dir).toPath(),ResumableDownload.key(release).getBytes("UTF-8"));}
     public static void main(String[] args)throws Exception{
-        for(int i=0;i<content.length;i++)content[i]=(byte)(i*31+7);File root=new File("/data/local/tmp/qqwb-download-check-"+System.nanoTime());root.mkdirs();File target=new File(root,"expected");Files.write(target.toPath(),content);JSONObject r=release(target);int[] connections={0};
+        for(int i=0;i<content.length;i++)content[i]=(byte)(i*31+7);File root=new File(args.length==0?"/data/local/tmp/qqwb-download-check-"+System.nanoTime():new File(args[0],"download-check-"+System.nanoTime()).getPath());root.mkdirs();File target=new File(root,"expected");Files.write(target.toPath(),content);JSONObject r=release(target);int[] connections={0};
         try{
             // Resume a file left by a previous app process, requesting precisely the missing bytes.
             File first=new File(root,"resume");seed(first,r,4096);

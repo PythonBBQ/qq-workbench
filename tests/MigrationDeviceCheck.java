@@ -23,9 +23,12 @@ public final class MigrationDeviceCheck {
     }
     public static void main(String[] args)throws Exception{
         Looper.prepareMainLooper();Class<?> at=Class.forName("android.app.ActivityThread");Constructor<?> ctor=at.getDeclaredConstructor();ctor.setAccessible(true);Object thread=ctor.newInstance();Method system=at.getDeclaredMethod("getSystemContext");system.setAccessible(true);Context app=((Context)system.invoke(thread)).createPackageContext("cn.qqworkbench.assistant",Context.CONTEXT_IGNORE_SECURITY);
-        new Thread(()->{File test=new File(app.getCacheDir(),"migration-device-check-"+UUID.randomUUID());TestContext source=new TestContext(app,new File(test,"source"),"migration-check-source-"),target=new TestContext(app,new File(test,"target"),"migration-check-target-");char[] pass="test-only-password".toCharArray();
-            int exit=0;try{
-                Class.forName("android.security.keystore2.AndroidKeyStoreProvider").getMethod("install").invoke(null);
+        Class.forName("android.security.keystore2.AndroidKeyStoreProvider").getMethod("install").invoke(null);
+        new Thread(()->{int exit=0;try{run(app);}catch(Throwable e){e.printStackTrace();exit=1;}System.exit(exit);},"migration-check").start();Looper.loop();
+    }
+    public static void run(Context app)throws Exception{
+        File test=new File(app.getCacheDir(),"migration-device-check-"+UUID.randomUUID());TestContext source=new TestContext(app,new File(test,"source"),"migration-check-source-"),target=new TestContext(app,new File(test,"target"),"migration-check-target-");char[] pass="test-only-password".toCharArray();
+            try{
                 Secrets sv=new Secrets(source),tv=new Secrets(target);sv.put("internal","synthetic-source-internal");sv.put("conversation-memory","synthetic-source-memory");sv.put("deepseek","synthetic-source-api");tv.put("internal","synthetic-target-internal");tv.put("conversation-memory","synthetic-target-memory");tv.put("deepseek","synthetic-target-api");
                 source.getSharedPreferences("settings",0).edit().putString("persona","source-persona").putInt("contextTurns",19).commit();target.getSharedPreferences("settings",0).edit().putString("persona","target-persona").commit();
                 MigrationCheck.write(source.root,"settings.json","{\"owner\":\"123456\"}");MigrationCheck.write(target.root,"settings.json","{\"owner\":\"654321\"}");
@@ -39,7 +42,6 @@ public final class MigrationDeviceCheck {
                 File previous=new File(target.root,"migration-before-restore.qqwb");try(InputStream in=new FileInputStream(previous)){JSONObject old=MigrationArchive.read(in,new File(test,"previous"),pass);check(old.getJSONObject("metadata").getJSONObject("secrets").getString("deepseek").equals("synthetic-target-api"));}
                 DataMigration.recover(target);check(!DataMigration.transaction(target).exists());
                 System.out.println("QQWB_MIGRATION_DEVICE_OK: synthetic source/target vault re-encryption, different local tokens, four accounts and eight memory files, destination pre-import encrypted backup, injected preference failure rollback, pending-task exclusion; live data untouched");
-            }catch(Throwable e){e.printStackTrace();exit=1;}finally{source.clean();target.clean();try{MigrationArchive.erase(test);}catch(Exception ignored){}Arrays.fill(pass,'\0');}System.exit(exit);
-        },"migration-check").start();Looper.loop();
+            }finally{source.clean();target.clean();try{MigrationArchive.erase(test);}catch(Exception ignored){}Arrays.fill(pass,'\0');}
     }
 }

@@ -26,12 +26,12 @@ public final class RuntimeService extends Service {
     private volatile int healthFailures;
     private volatile boolean adopted;
     private volatile boolean assistantReady;
+    private boolean supervisionStarted;
     static synchronized void record(String value){if(value==null||value.trim().isEmpty())return;logs.addLast(value);while(logs.size()>160)logs.removeFirst();}
     static synchronized String logText(){return String.join("\n",logs);}
     public android.os.IBinder onBind(Intent i){return null;}
     public void onCreate(){super.onCreate();
-        if(DataMigration.busy){stopSelf();return;}
-        try{DataMigration.recover(this);}catch(Exception e){state="迁移恢复未完成，请打开应用检查";stopSelf();return;}
+        if(DataMigration.busy||Maintenance.pending(this)){stopSelf();return;}
         if(!UsageAgreement.accepted(this)){state="请先在应用中阅读并同意个人使用协议";stopSelf();return;}
         NotificationManager nm=getSystemService(NotificationManager.class);nm.createNotificationChannel(new NotificationChannel("runtime","QQ 工作台运行状态",NotificationManager.IMPORTANCE_LOW));
         PendingIntent open=PendingIntent.getActivity(this,0,new Intent(this,MainActivity.class),PendingIntent.FLAG_IMMUTABLE);
@@ -40,12 +40,12 @@ public final class RuntimeService extends Service {
         background=new BackgroundGuard(this,health,this::resumeConnection);background.start();
     }
     public int onStartCommand(Intent i,int flags,int id){
-        if(DataMigration.busy){stopSelf();return START_NOT_STICKY;}
+        if(DataMigration.busy||Maintenance.pending(this)||stopping){stopSelf();return START_NOT_STICKY;}
         if(!UsageAgreement.accepted(this)){getSharedPreferences("runtime",0).edit().putBoolean("requested",false).commit();stopSelf();return START_NOT_STICKY;}
         android.content.SharedPreferences preferences=getSharedPreferences("runtime",0);
         if(i==null&&(!preferences.getBoolean("requested",false)||!claimRecovery())){stopSelf();return START_NOT_STICKY;}
         preferences.edit().putBoolean("requested",true).apply();
-        if(!running){running=true;stopped=false;update("服务已启动，正在检查本机环境…");health.scheduleWithFixedDelay(this::checkHealth,30,30,TimeUnit.SECONDS);worker.execute(this::supervise);}
+        if(!running){running=true;stopped=false;update("服务已启动，正在检查本机环境…");health.scheduleWithFixedDelay(this::checkHealth,30,30,TimeUnit.SECONDS);supervisionStarted=true;worker.execute(this::supervise);}
         return START_STICKY;
     }
     static void stopRequested(Context context){context.getSharedPreferences("runtime",0).edit().putBoolean("requested",false).commit();context.stopService(new Intent(context,RuntimeService.class));}
@@ -90,7 +90,7 @@ public final class RuntimeService extends Service {
         try{localState();adopted=true;}catch(Exception ignored){}
         if(adopted&&sync){UpdateFlow.begin(this);update("更新后正在停止旧会话并整合资源…");requestShutdown();boolean exited=false;for(int i=0;i<25&&!stopped;i++){Thread.sleep(1000);try{localState();}catch(Exception e){exited=true;break;}}if(!exited)throw new IOException("旧会话尚未退出，未覆盖运行中的资源");
             adopted=false;}
-        if(sync){UpdateFlow.begin(this);Container old=new Container(this);if(new File(old.root,".qq-rootfs-v1").isFile()){java.lang.Process guard=old.start("exec flock -w 15 /opt/qq-workbench/.runtime.lock true",new HashMap<>());if(!guard.waitFor(18,TimeUnit.SECONDS)){guard.destroy();throw new IOException("等待旧会话释放资源超时");}if(guard.exitValue()!=0)throw new IOException("旧会话尚未释放资源，未覆盖运行中的文件");}}
+        if(sync){UpdateFlow.begin(this);RuntimeProcesses.unlocked(this,15000);}
         if(adopted){update("已接管仍在运行的本机QQ会话");while(!stopped)Thread.sleep(15000);return;}
         int exit;
         do{
@@ -103,10 +103,10 @@ public final class RuntimeService extends Service {
     finally{
         java.lang.Process survivor=process;
         if(!stopped&&survivor!=null&&survivor.isAlive()){requestShutdown();survivor.destroy();try{if(!survivor.waitFor(3,TimeUnit.SECONDS))survivor.destroyForcibly();}catch(InterruptedException ignored){Thread.currentThread().interrupt();}}
-        if(network!=null){network.close();network=null;}running=false;process=null;if(!stopped)stopSelf();}}
+        if(network!=null){network.close();network=null;}if(!stopped){running=false;process=null;stopSelf();}}}
     private int launchOnce()throws Exception{
         assistantReady=false;healthFailures=0;
-        Container container=new Container(this);container.prepare(this::update);UpdateFlow.resourcesReady(this);if(stopped||Thread.currentThread().isInterrupted())return 0;
+        Container container=new Container(this);RuntimeProcesses.unlocked(this,2000);if(stopped||Thread.currentThread().isInterrupted())return 0;container.prepare(this::update);UpdateFlow.resourcesReady(this);if(stopped||Thread.currentThread().isInterrupted())return 0;
         container.selectRuntimeMode(this::update);if(stopped||Thread.currentThread().isInterrupted())return 0;Secrets vault=new Secrets(this);
         JSONObject selected=new ApiProfiles(this).active();
         File configFile=new File(getFilesDir(),"linux/rootfs/opt/qq-workbench/settings.json");JSONObject current=configFile.isFile()?new JSONObject(new String(java.nio.file.Files.readAllBytes(configFile.toPath()),java.nio.charset.StandardCharsets.UTF_8)):new JSONObject();JSONObject apiSettings=ApiProfiles.settings(selected);for(java.util.Iterator<String> it=apiSettings.keys();it.hasNext();){String k=it.next();current.put(k,apiSettings.get(k));}Container.writePrivate(configFile,current.toString());
@@ -117,15 +117,17 @@ public final class RuntimeService extends Service {
         env.put("QQWB_APT_PROXY",getSharedPreferences("settings",0).getString("setupProxy",""));
         String credentials=Secrets.report(this);if(!credentials.isEmpty())record(credentials);
         update("检查 Linux QQ 与图形组件…");
-        process=container.start("exec flock -n -E 75 /opt/qq-workbench/.runtime.lock bash -c 'bash /opt/qq-workbench/install.sh && exec bash /opt/qq-workbench/session.sh'",env);
-        if(stopped){process.destroy();return 0;}
-        try(BufferedReader in=new BufferedReader(new InputStreamReader(process.getInputStream()))){String line;while((line=in.readLine())!=null){
+        final java.lang.Process launched;
+        synchronized(this){if(stopped||Thread.currentThread().isInterrupted())return 0;
+        process=container.start("exec flock --close -n -E 75 /opt/qq-workbench/.runtime.lock bash -c 'bash /opt/qq-workbench/install.sh && exec bash /opt/qq-workbench/session.sh'",env);launched=process;}
+        if(stopped)return 0;
+        try(BufferedReader in=new BufferedReader(new InputStreamReader(launched.getInputStream()))){String line;while((line=in.readLine())!=null){
             // Raw upstream logs can contain account and bootstrap details; publish explicit phases only.
             if(line.startsWith("QQWB:"))update(line.substring(5));
             else if(line.contains("error while loading shared libraries")||line.contains("EADDRINUSE")||line.contains("PTRACE_")||line.startsWith("E:")||line.contains("Segmentation fault")||line.contains("Permission denied"))record(line.substring(0,Math.min(line.length(),500)));
             else if(line.matches(".*(?:install|session)\\.sh: line [0-9]+:.*(?:syntax error|command not found|bad interpreter).*"))record("启动脚本错误："+line.replaceAll("[^\\p{L}\\p{N} /_.:()\\-]","?").substring(0,Math.min(line.length(),500)));
         }}
-        int code=process.waitFor();process=null;if(!stopped)update("运行已停止（退出码 "+code+"）"+(environmentProblem.isEmpty()?"，请查看诊断后重试":" · "+environmentProblem));return code;
+        int code=launched.waitFor();synchronized(this){if(process==launched)process=null;}if(!stopped)update("运行已停止（退出码 "+code+"）"+(environmentProblem.isEmpty()?"，请查看诊断后重试":" · "+environmentProblem));return code;
     }
     private void requestShutdown(){
         java.net.HttpURLConnection c=null;
@@ -133,7 +135,23 @@ public final class RuntimeService extends Service {
         catch(Exception ignored){}finally{if(c!=null)c.disconnect();}
     }
     public void onTaskRemoved(Intent rootIntent){record("界面已离开最近任务，后台服务继续运行；系统强行停止仍会终止它");super.onTaskRemoved(rootIntent);}
-    public void onDestroy(){stopped=true;java.lang.Process p=process;stopping=p!=null||adopted;
-        if(stopping){state="正在停止本地服务…";new Thread(()->{try{requestShutdown();if(p!=null&&!p.waitFor(7,TimeUnit.SECONDS)){p.destroy();if(!p.waitFor(3,TimeUnit.SECONDS))p.destroyForcibly();}}catch(Exception ignored){}finally{stopping=false;state="已停止";}}).start();}
-        if(background!=null)background.close();health.shutdownNow();worker.shutdownNow();if(wake!=null&&wake.isHeld())wake.release();running=false;super.onDestroy();}
+    public void onDestroy(){
+        if(!supervisionStarted){if(background!=null)background.close();health.shutdownNow();worker.shutdownNow();if(wake!=null&&wake.isHeld())wake.release();super.onDestroy();return;}
+        final java.lang.Process p;
+        synchronized(this){stopped=true;p=process;stopping=true;}
+        if(background!=null)background.close();health.shutdownNow();worker.shutdownNow();
+        state="正在停止本地服务…";
+        new Thread(()->{
+            boolean done=false;
+            try{
+                requestShutdown();
+                if(p!=null)p.waitFor(7,TimeUnit.SECONDS);
+                RuntimeProcesses.stop(this);
+                if(!worker.awaitTermination(10,TimeUnit.SECONDS))throw new IOException("启动线程仍在退出");
+                RuntimeProcesses.unlocked(this,5000);done=true;
+            }catch(Exception e){record("停止核验未完成："+e.getMessage());}
+            finally{process=null;running=false;stopping=false;state=done?"已停止":"停止尚未核验，请到备份或诊断重试";if(wake!=null&&wake.isHeld())wake.release();}
+        },"qqwb-stop").start();
+        super.onDestroy();
+    }
 }
