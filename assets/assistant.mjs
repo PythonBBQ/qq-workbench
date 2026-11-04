@@ -1,6 +1,6 @@
 import {prepareSpeech} from './voice-delivery.mjs';
 import {RequestInspector} from './request-inspector.mjs';
-import {DeliveryRecovery} from './delivery-recovery.mjs';
+import {DeliveryRecovery,ReplyTasks} from './delivery-recovery.mjs';
 import {AccountInstances,instanceLayout} from './account-instances.mjs';
 import {CodexJobs,assistantMention,codexText} from './codex-jobs.mjs';
 import {parseShortcut} from './shortcuts.mjs';
@@ -101,6 +101,8 @@ async function main() {
   if (!token || token.length < 24) throw new Error('Missing local authentication');
   const nativeToken=process.env.QQWB_NATIVE_TOKEN||token;delete process.env.QQWB_NATIVE_TOKEN;
   if(process.env.QQWB_ANDROID_NETWORK==='1')globalThis.fetch=androidFetch(globalThis.fetch.bind(globalThis),nativeToken);
+  const replyTasks=new ReplyTasks();
+  globalThis.fetch=replyTasks.fetch(globalThis.fetch.bind(globalThis));
   let accountProfiles=[];try{accountProfiles=JSON.parse(process.env.QQWB_ACCOUNT_PROFILES||'[]');}catch{}delete process.env.QQWB_ACCOUNT_PROFILES;
   const instanceManager=layout?null:new AccountInstances({root:here,source:sourceDirectory,token,nativeToken,primaryBot:()=>identity||bridge.lastKnownUin(),profiles:accountProfiles});
   let apiKey = process.env.DEEPSEEK_API_KEY || '', visionKey = process.env.VISION_API_KEY || '', speechKey=process.env.SPEECH_API_KEY||'',feiyuKey=process.env.FEIYU_API_KEY||'';
@@ -129,6 +131,7 @@ async function main() {
   const reflecting=new Set();
   let journal = {};
   let ownerSnapshot=null;
+  let enabledSnapshot=null;
   try { journal = JSON.parse(fs.readFileSync(ledgerPath, 'utf8')); } catch (e) { if (e.code !== 'ENOENT') throw new Error('发送记录损坏，自动回复未启动'); }
   function saveJournal() {
     const entries = Object.entries(journal); if (entries.length > 2000) journal = Object.fromEntries(entries.slice(-2000));
@@ -138,7 +141,11 @@ async function main() {
     let saved={};try{saved=JSON.parse(fs.readFileSync(path.join(here,'settings.json'),'utf8'));}catch{}
     if(saved.visionMode==null&&saved.visionUrl&&saved.visionModel)saved.visionMode='separate';
     const next={...defaults,...saved},owner=JSON.stringify([String(next.owner),next.characterName||'',next.persona||'',next.worldBook||'',next.voiceEnabled,next.voiceAlways,next.voiceMode,next.voicePreference,next.voiceCooldown,next.voiceNatural,next.voiceMemoryEnabled,next.voiceEmotion,next.voiceEmotionPreset,next.zipVoiceModel,next.zipVoiceDeliveryPreset,next.zipVoiceSteps,next.zipVoiceAdaptive,next.feiyuStyle,next.feiyuVoice,next.feiyuUrl,next.androidVoice,next.speechProvider,next.kokoroSpeaker,next.speechVoice,next.speechRate,next.speechPitch,next.emojiEnabled,next.emojiAutoLabel,next.autoCollectEmoji,next.speechRegion,next.qqVoiceId]);
-    if(ownerSnapshot!==null&&ownerSnapshot!==owner){ownerStickers.clear();connectionEpoch++;contexts.clear();videoContexts.clear();sourceContexts.clear();sessions.clear();groupContext.clear();queue=[];queuedCodexResults.clear();}
+    if(enabledSnapshot!==null&&enabledSnapshot!==next.enabled&&replyTasks.active?.kind!=='admin'){
+      replyTasks.cancel('回复开关已变化，旧任务已取消');connectionEpoch++;queue=[];queuedCodexResults.clear();
+    }
+    enabledSnapshot=next.enabled;
+    if(ownerSnapshot!==null&&ownerSnapshot!==owner){if(replyTasks.active?.kind!=='admin')replyTasks.cancel('账号或回复配置已变化，旧任务已取消');ownerStickers.clear();connectionEpoch++;contexts.clear();videoContexts.clear();sourceContexts.clear();sessions.clear();groupContext.clear();queue=[];queuedCodexResults.clear();}
     ownerSnapshot=owner;return next;
   }
   function record(role, text) { recent.push(`${role}：${String(text).slice(0,180)}`); if (recent.length > 20) recent.shift(); }
@@ -239,12 +246,13 @@ async function main() {
     }finally{busy=false;if(queuedSelection!==null&&!shuttingDown){const next=queuedSelection;queuedSelection=null;void connect(next);}}
   }
   function rpc(action, params,timeoutMs=25000) {
-    return new Promise((resolve,reject)=>{
+    replyTasks.check();
+    return replyTasks.wait(new Promise((resolve,reject)=>{
       if(ws?.readyState!==WebSocket.OPEN)return reject(new Error('OneBot 未连接'));
       const echo=crypto.randomUUID();const timeout=setTimeout(()=>{pending.delete(echo);reject(new Error('发送超时，结果不确定；不自动重发'));},timeoutMs);
       pending.set(echo,{resolve:r=>{clearTimeout(timeout);resolve(r);},reject:e=>{clearTimeout(timeout);reject(e);}});
       try{ws.send(JSON.stringify({action,params,echo}));}catch(e){pending.delete(echo);clearTimeout(timeout);reject(e);}
-    });
+    }));
   }
   async function accept(incoming) {
     const c=config(),shortcut=parseShortcut(incoming);
@@ -257,10 +265,10 @@ async function main() {
     if(moderation.blocked(event,c.owner,identity))return;
     const admissionEpoch=connectionEpoch;
     if(!await privateFriends.allowed(event,identity)||admissionEpoch!==connectionEpoch||!connected||journal[id]||queue.length>=24||moderation.blocked(event,config().owner,identity))return;
-    if(!admin&&!deliveryRecovery.allowed(event,connected,healthAt))return;
     ownerStickers.remember(event,c.owner);
     if(shortcut?.operation||shortcut?.needsReply&&!c.enabled){
       const operation=shortcut.operation||{action:'commandText',text:'自动回复已暂停，先发＃继续，再使用这条聊天指令。'};
+      if(operation.action==='replyControl')replyTasks.cancel('主人已切换回复状态，取消旧任务');
       if(operation.action==='collect'){try{operation.source=ownerStickers.select(event,c.owner);}catch(e){operation.sourceError=e.message;}}
       journal[id]='queued';saveJournal();queue.push({event,id,mode:'admin',operation,epoch:connectionEpoch});drainQueue();return;
     }
@@ -289,12 +297,23 @@ async function main() {
   let draining=false;
   async function drainQueue() {
     if(draining)return;draining=true;
-    try{while(queue.length){const item=queue.shift();try{await reply(item);}catch(e){journal[item.id]=journal[item.id]==='sending'?'uncertain':'failed';saveJournal();if(item.codexDelivery)codexJobs.delivery(item.codexDelivery,journal[item.id]==='uncertain'?'uncertain':'cancelled');record('状态',e.message);if(journal[item.id]==='uncertain'){deliveryRecovery.fail(item.event);const blocked=deliveryRecovery.key(item.event);queue=queue.filter(queued=>{if(deliveryRecovery.key(queued.event)!==blocked)return true;journal[queued.id]='cancelled';if(queued.codexDelivery){queuedCodexResults.delete(queued.codexDelivery);codexJobs.delivery(queued.codexDelivery,'cancelled');}return false;});saveJournal();summary='此条发送结果未确认，不重发；本会话短暂保护后只处理新消息，其他会话继续';healthAt=0;void connect();}}finally{if(item.codexDelivery)queuedCodexResults.delete(item.codexDelivery);}}}
+    try{while(queue.length){const item=queue.shift();try{
+      await replyTasks.run(async()=>{
+        replyTasks.phase('核验回复连接');
+        // Only new queued messages resume; the uncertain message stays in the journal.
+        while(connected&&!deliveryRecovery.allowed(item.event,connected,healthAt)){
+          await replyTasks.wait(connect());
+          if(!deliveryRecovery.allowed(item.event,connected,healthAt))await replyTasks.wait(new Promise(r=>setTimeout(r,500)));
+        }
+        await reply(item);
+      },{kind:item.mode});
+    }catch(e){journal[item.id]=journal[item.id]==='sending'?'uncertain':'failed';saveJournal();if(item.codexDelivery)codexJobs.delivery(item.codexDelivery,journal[item.id]==='uncertain'?'uncertain':'cancelled');record('状态',e.message);summary=e.message;if(journal[item.id]==='uncertain'){deliveryRecovery.fail(item.event);summary='此条发送未确认，不重发；后续新消息核验连接后继续';healthAt=0;void connect();}}finally{if(item.codexDelivery)queuedCodexResults.delete(item.codexDelivery);}}}
     finally{draining=false;}
   }
   async function trackedModel(options,category='chat'){
+    replyTasks.phase(category==='chat'?'等待模型回复':category==='vision'?'分析图片或视频':'处理'+category);
     const at=Date.now();let returnedUsage={},success=false,lastRequest;const baseFetch=options.fetcher||fetch;const inspectingFetch=async(endpoint,request)=>{try{lastRequest=requestInspector.capture(endpoint,request,category);}catch{}try{const response=await baseFetch(endpoint,request);if(!response.ok)requestInspector.finish(lastRequest,false);return response;}catch(e){requestInspector.finish(lastRequest,false);throw e;}};
-    try{const answer=await callModel({...options,fetcher:inspectingFetch,onUsage:u=>{returnedUsage=u;addUsage(usage,u);options.onUsage?.(u);}});success=true;return answer;}
+    try{const answer=await replyTasks.wait(callModel({...options,fetcher:inspectingFetch,onUsage:u=>{replyTasks.check();returnedUsage=u;addUsage(usage,u);options.onUsage?.(u);}}));success=true;return answer;}
     finally{requestInspector.finish(lastRequest,success);usageLedger.record({usage:returnedUsage,host:new URL(options.url).hostname,model:options.body.model,category,ok:success,ms:Date.now()-at});}
   }
   async function model(url,key,body,timeout=90000,category='chat',onUsage=null) {
@@ -305,6 +324,7 @@ async function main() {
     if(!response.ok)throw new Error('设备接口未完成');return response.json();
   }
   async function speechNative(route,data={}){
+    replyTasks.phase(route==='synthesize'?'合成语音':'检查语音');
     const response=await fetch('http://127.0.0.1:13481/speech/'+route,{method:'POST',headers:{Authorization:'Bearer '+nativeToken,'Content-Type':'application/json'},body:JSON.stringify({...data,slot:instanceSlot}),signal:AbortSignal.timeout(130000)});
     const result=await response.json();if(!response.ok||!result.ok)throw new Error(result.message||'系统语音接口未完成');return result;
   }
@@ -320,6 +340,7 @@ async function main() {
     const file=path.join(sourceDirectory,'video-imports',data.clip);try{return await transcribeClip(file,here);}finally{try{fs.unlinkSync(file);}catch{}}
   }
   async function reply({event,id,mode,epoch,adminAnswer,operation,codexDelivery}) {
+    replyTasks.check();
     const c=config();if((!c.enabled&&mode!=='admin')||!connected||epoch!==connectionEpoch){journal[id]='cancelled';saveJournal();return;}
     if(moderation.blocked(event,c.owner,identity)||!await privateFriends.allowed(event,identity)||epoch!==connectionEpoch){journal[id]='cancelled';saveJournal();return;}
     const chatKey=apiKey,imageKey=visionKey;
@@ -448,6 +469,7 @@ async function main() {
     }
     if(speechFallback)answer=splitSpeechFallback(answer).join('\n\n');
     if(!await privateFriends.allowed(event,identity,true)||!connected||epoch!==connectionEpoch||moderation.blocked(event,config().owner,identity)){speech?.cleanup();journal[id]='cancelled';saveJournal();return;}
+    replyTasks.phase('发送QQ回复');
     const message=faceOnly?[{type:'image',data:{file:face.url,sub_type:1,summary:'[动画表情]'}}]:speech?[]:[{type:'text',data:{text:answer}},...(face&&config().emojiEnabled?[{type:'image',data:{file:face.url,sub_type:1,summary:'[动画表情]'}}]:[])];
     const params={message,...(event.message_type==='group'?{group_id:event.group_id}:{user_id:event.user_id})};
     if(codexDelivery)codexJobs.delivery(codexDelivery,'delivering');
@@ -596,7 +618,7 @@ async function main() {
       else if(req.method==='GET'&&req.url==='/requests/list')res.end(JSON.stringify({requests:requestInspector.list()}));
       else if(req.method==='POST'&&req.url==='/requests/get'){const d=await body(req);res.end(JSON.stringify({request:requestInspector.get(d.id)}));}
       else if(req.method==='POST'&&req.url==='/requests/clear'){await body(req);requestInspector.clear();res.end(JSON.stringify({message:'本机输入预览已清除，不影响聊天记忆'}));}
-      else if(req.method==='GET'&&req.url==='/state')res.end(JSON.stringify({connected,identity,deliveryRecovery:deliveryRecovery.state(connected,healthAt),codex:codexJobs.state(),voice:voiceStatus,instanceSlot,engine:'SnowLuma 1.14.22',modelConfigured:!!apiKey,activeModel:config().model,activeApiUrl:config().apiUrl,activeProtocol:config().apiProtocol||'chat',enabled:config().enabled,usage,summary:`${connected?connectionMessage:(bridge.failure||connectionMessage)}\n${config().enabled?'自动回复开启':'自动回复暂停'} · ${apiKey?'聊天密钥已配置':'请在设置中填写聊天 API Key'} · ${summary}\n本次运行 Token：输入 ${usage.input} · 输出 ${usage.output} · 输入缓存命中 ${usage.cached}`,recentText:recent.join('\n'),queue:queue.length}));
+      else if(req.method==='GET'&&req.url==='/state')res.end(JSON.stringify({connected,identity,processing:replyTasks.state(),deliveryRecovery:deliveryRecovery.state(connected,healthAt),codex:codexJobs.state(),voice:voiceStatus,instanceSlot,engine:'SnowLuma 1.14.22',modelConfigured:!!apiKey,activeModel:config().model,activeApiUrl:config().apiUrl,activeProtocol:config().apiProtocol||'chat',enabled:config().enabled,usage,summary:`${connected?connectionMessage:(bridge.failure||connectionMessage)}\n${config().enabled?'自动回复开启':'自动回复暂停'} · ${apiKey?'聊天密钥已配置':'请在设置中填写聊天 API Key'} · ${replyTasks.active?replyTasks.state().phase:summary}\n本次运行 Token：输入 ${usage.input} · 输出 ${usage.output} · 输入缓存命中 ${usage.cached}`,recentText:recent.join('\n'),queue:queue.length}));
       else if(req.method==='POST'&&req.url==='/runtime/resume'){const d=await body(req);if(!['network','idle','wake','health'].includes(d.reason))throw new Error('Invalid recovery reason');const scheduled=resumeConnection(d.reason);res.end(JSON.stringify({ok:true,scheduled,message:scheduled?'正在重新核验连接':'已在检查连接'}));}
       else if(req.method==='GET'&&req.url==='/media/state'){stickers.reset(identity);res.end(JSON.stringify({faces:stickers.faces,labelBusy:stickers.labelBusy,labelMessage:stickers.labelMessage,voices:FEMALE_VOICES,speechKeyConfigured:!!speechKey,post:identity?{...posts.state(config().owner,identity),problem:posts.problem}:null}));}
       else if(req.method==='POST'&&req.url==='/stickers/sync'){await body(req);if(!connected)throw new Error('请先连接QQ');const epoch=connectionEpoch,bot=identity;stickers.reset(bot);try{const faces=await stickers.sync(()=>epoch===connectionEpoch&&bot===identity);void maintainStickers();res.end(JSON.stringify({ok:true,faces,message:'已读取 '+faces.length+' 张 QQ 收藏表情'}));}catch(e){res.end(JSON.stringify({ok:false,message:e.message}));}}
@@ -631,7 +653,7 @@ async function main() {
         if(p.visionMode==='separate'){completionUrl(p.visionUrl);if(!p.visionModel||!data.visionKey.trim())throw new Error('Invalid vision');}
         const next=config();for(const k of ['apiUrl','model','visionMode','visionUrl','visionModel','apiProtocol'])next[k]=p[k]??(k==='apiProtocol'?'chat':'');
         fs.writeFileSync(path.join(here,'settings.json.tmp'),JSON.stringify(next),{mode:0o600});fs.renameSync(path.join(here,'settings.json.tmp'),path.join(here,'settings.json'));
-        apiKey=data.apiKey.trim();visionKey=data.visionKey.trim();connectionEpoch++;contexts.clear();videoContexts.clear();sourceContexts.clear();sessions.clear();groupContext.clear();queue=[];queuedCodexResults.clear();
+        replyTasks.cancel('模型配置已切换，旧请求已取消');apiKey=data.apiKey.trim();visionKey=data.visionKey.trim();connectionEpoch++;contexts.clear();videoContexts.clear();sourceContexts.clear();sessions.clear();groupContext.clear();queue=[];queuedCodexResults.clear();
         res.end(JSON.stringify({message:'模型卡片已启用，上下文从新话题开始',model:next.model,apiUrl:next.apiUrl,protocol:next.apiProtocol}));
       }
       else if(req.method==='GET'&&req.url==='/growth/list'){const c=config(),scope=conversationScope(c,{message_type:'private',user_id:c.owner},identity);res.end(JSON.stringify({sessions:memory.growthList(c.owner,identity,scope.role),problem:memory.problem}));}

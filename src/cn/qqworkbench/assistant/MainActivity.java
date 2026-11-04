@@ -33,12 +33,12 @@ public final class MainActivity extends Activity {
         if(!DataMigration.busy&&!refreshBusy){refreshBusy=true;poller.submit(()->{try{
             JSONObject state=api("/state",null);if(!state.optBoolean("modelConfigured")&&hasKey())applyCredentials();
             runOnUiThread(()->{if(destroyed)return;lastState=state;
-                if(screen.equals("home")){status.setText(state.optBoolean("connected")?"QQ 已连接 · "+state.optString("identity"):"正在连接 QQ");replyState.setText(state.optBoolean("enabled")?(state.optJSONObject("deliveryRecovery")!=null&&state.optJSONObject("deliveryRecovery").optInt("count")>0?"自动回复开启 · 部分会话等待恢复":"自动回复已开启"):"已手动暂停 · 点击恢复自动回复");detail.setText(state.optString("recentText").isEmpty()?"还没有新对话。登录后给小号发一句话即可。":state.optString("recentText"));
+                if(screen.equals("home")){status.setText(state.optBoolean("connected")?"QQ 已连接 · "+state.optString("identity"):"正在连接 QQ");replyState.setText(replyProgress(state));detail.setText(state.optString("recentText").isEmpty()?"还没有新对话。登录后给小号发一句话即可。":state.optString("recentText"));
                     if(!state.optBoolean("connected")&&!loginOffered&&hasKey()){loginOffered=true;returnAfterLogin=true;go("qq");}
                 }else if(screen.equals("qq")&&state.optBoolean("connected")&&returnAfterLogin){returnAfterLogin=false;if(!history.isEmpty()&&history.peekLast().equals("home"))history.removeLast();show("home");}
                 else if(screen.equals("setup")&&detail!=null)detail.setText(RuntimeService.state);
             });
-        }catch(Exception e){runOnUiThread(()->{if(!destroyed&&(screen.equals("home")||screen.equals("setup"))&&status!=null)status.setText(RuntimeService.state);});}finally{refreshBusy=false;}});}
+        }catch(Exception e){runOnUiThread(()->{if(destroyed)return;lastState=null;if((screen.equals("home")||screen.equals("setup"))&&status!=null){status.setText(RuntimeService.running?"本地服务未响应，连接状态尚未核验":RuntimeService.state);if(screen.equals("home")&&replyState!=null)replyState.setText("正在检查回复状态；请查看后台运行与诊断");}});}finally{refreshBusy=false;}});}
         handler.postDelayed(this,4000);
     }};
     public void onCreate(Bundle state){super.onCreate(state);if(DataMigration.busy){waitForMigration();return;}if(Maintenance.pending(this)){base("恢复维护任务","backupProgress");section("请稍候","正在结束旧会话并恢复中断的备份、导入或更新。");io.submit(()->{try{Maintenance.recover(this);runOnUiThread(()->{if(!destroyed)initializeWorkbench(state);});}catch(Exception e){runOnUiThread(()->{if(!destroyed)new AlertDialog.Builder(this).setTitle("维护恢复未完成").setMessage(e.getMessage()+"；原数据保留，请重新打开应用重试。").setPositiveButton("关闭",(d,w)->finish()).show();});}});return;}initializeWorkbench(state);}
@@ -417,12 +417,19 @@ public final class MainActivity extends Activity {
     }
     public void onDestroy(){destroyed=true;if(migrationPassword!=null){java.util.Arrays.fill(migrationPassword,'\0');migrationPassword=null;}if(loginWindow!=null){loginWindow.close();loginWindow=null;}handler.removeCallbacksAndMessages(null);if(DataMigration.busy)io.shutdown();else io.shutdownNow();poller.shutdownNow();if(voicePreview!=null){voicePreview.release();voicePreview=null;}new File(getCacheDir(),"voice-preview.mp3").delete();if(browser!=null)browser.destroy();super.onDestroy();}
     void openSystem(Intent intent){try{startActivity(intent);}catch(ActivityNotFoundException e){toast("系统未提供此入口，请在应用详情中设置");}}
+    String replyProgress(JSONObject state){
+        if(!state.optBoolean("enabled"))return "已手动暂停 · 点击恢复自动回复";
+        JSONObject task=state.optJSONObject("processing");
+        if(task!=null&&task.optBoolean("active"))return task.optString("phase","正在回复")+" · "+Math.max(0,(System.currentTimeMillis()-task.optLong("since",System.currentTimeMillis()))/1000)+" 秒 · 排队 "+state.optInt("queue")+" 条";
+        JSONObject recovery=state.optJSONObject("deliveryRecovery");
+        return recovery!=null&&recovery.optInt("count")>0?"自动回复开启 · 新消息等待连接核验":"自动回复已开启";
+    }
     void backgroundSettings(){base("后台运行","background");section("持续接收 QQ 消息","");
         android.os.PowerManager pm=(android.os.PowerManager)getSystemService(POWER_SERVICE);
         NotificationManager nm=getSystemService(NotificationManager.class);
         note(nm.areNotificationsEnabled()?"运行通知：已允许。":"运行通知：未允许，后台状态通知不可见。请在通知设置开启；这与电池优化是独立设置。");
         android.content.SharedPreferences runtime=getSharedPreferences("runtime",0);long checked=runtime.getLong("lastHealthy",0),gap=runtime.getLong("lastSchedulingGap",0),test=runtime.getLong("backgroundTestStart",0);
-        note(runtime.getString("healthStatus","启动后约30秒完成首次独立后台检查。"));
+        note(checked>0&&System.currentTimeMillis()-checked>90000?"后台检查记录已过期，当前在线状态尚未核验；可能被系统冻结。":runtime.getString("healthStatus","启动后约30秒完成首次独立后台检查。"));
         note(runtime.getBoolean("networkAvailable",false)?"后台网络：可用":"后台网络：等待连接");
         note(runtime.getBoolean("wifiProtected",false)?"Wi-Fi熄屏保护：运行中":"Wi-Fi熄屏保护：未启用或当前不是Wi-Fi");
         long resumed=runtime.getLong("lastNetworkResume",0);if(resumed>0)note("最近网络恢复检查："+android.text.format.DateFormat.format("MM-dd HH:mm:ss",resumed));

@@ -50,11 +50,11 @@ test('system TTS is authenticated by its caller, converted once, and temporary f
     await assert.rejects(()=>synthesize({speechProvider:'android'},'x',{directory:root,native:async()=>({ok:true,audio:wav.toString('base64')}),convert:async()=>{throw new Error('ffmpeg failed');}}),/转换/);assert.equal(fs.readdirSync(root).length,0);
   }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
-test('unknown receipts protect only their conversation; resume requires time and a fresh connection check, never replay',()=>{
+test('unknown receipts require a fresh connection check but do not silence later messages',()=>{
   let now=1000;const recovery=new DeliveryRecovery({now:()=>now}),one={message_type:'private',user_id:123456},other={message_type:'private',user_id:765432};
-  recovery.fail(one);assert.equal(recovery.allowed(one,true,1001),false);assert.equal(recovery.allowed(other,true,1001),true);
+  recovery.fail(one);assert.equal(recovery.allowed(one,true,999),false);assert.equal(recovery.allowed(one,true,1001),true);assert.equal(recovery.allowed(other,true,1001),true);
   now=32000;assert.equal(recovery.allowed(one,true,999),false);assert.equal(recovery.allowed(one,false,32000),false);assert.equal(recovery.allowed(one,true,32000),true);
-  recovery.fail(one);now+=30001;assert.equal(recovery.allowed(one,true,now),false);now+=30000;assert.equal(recovery.allowed(one,true,now),true);recovery.success(one);assert.equal(recovery.state().count,0);
+  recovery.fail(one);assert.equal(recovery.allowed(one,true,now-1),false);now++;assert.equal(recovery.allowed(one,true,now),true);recovery.success(one);assert.equal(recovery.state().count,0);
 });
 
 test('the same chat completion chooses voice contextually; text preference and local guardrails still win',()=>{

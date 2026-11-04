@@ -35,6 +35,7 @@ globalThis.fetch=async(url,options)=>{
   const u=new URL(url);
   if(u.origin==='https://api.deepseek.com'||u.origin==='https://relay.example'){
     const body=JSON.parse(options.body);process.send({model:body,auth:options.headers.Authorization,host:u.hostname});
+    if(globalThis.sendControl==='model-hung')await new Promise(()=>{});
     if(body.messages[0].content.includes('为QQ收藏表情生成简短'))return Response.json({choices:[{message:{content:'{\"label\":\"开心、卖萌\"}'}}]});
     if(body.messages[0].content.includes('工作台具备QQ收藏表情发送能力')&&JSON.stringify(body.messages.at(-1)).includes('今天开心吗'))return Response.json({choices:[{message:{content:'好开心[[表情:1]]'}}]});
     if(JSON.stringify(body.messages.at(-1)).includes('测试旧版占位回复'))return Response.json({choices:[{message:{content:'（发送了一张QQ收藏表情）'}}]});
@@ -201,13 +202,12 @@ globalThis.fetch=async(url,options)=>{
     // An unconfirmed send is not a training sample and protects only its conversation without disabling automatic reply.
     const beforeUnconfirmed=(await(await api('/memory/export',{})).json()).jsonl;
     const beforeFailed=sent.length;child.send({control:'unconfirmed'});sendOwner(146,'不会记住未确认发送');await until(()=>sent.length===beforeFailed+1);
-    await until(async()=>(await(await api('/state')).json()).deliveryRecovery.count===1);
+    await until(async()=>Object.values(JSON.parse(await fs.readFile(path.join(dir,'delivery-journal.json'),'utf8'))).includes('uncertain'));
     assert.equal((await(await api('/state')).json()).enabled,true);
     assert.equal((await(await api('/memory/export',{})).json()).jsonl,beforeUnconfirmed);
-    child.send({control:'normal'});sendOwner(147,'本会话保护期间不发');await new Promise(r=>setTimeout(r,100));assert.equal(sent.length,beforeFailed+1);
-    child.send({event:{...event,user_id:888888,message_id:148,message:[{type:'text',data:{text:'其他会话正常回复'}}]}});await until(()=>sent.length===beforeFailed+2);
-    child.send({event:{...event,user_id:999999,message_id:146}});await new Promise(r=>setTimeout(r,100));assert.equal(sent.length,beforeFailed+2,'unknown send is never replayed');
-    await new Promise(resolve=>setTimeout(resolve,31000));await api('/runtime/resume',{reason:'test-after-protection'});
+    child.send({control:'normal'});sendOwner(147,'连接核验后本会话的新消息继续');await until(()=>sent.length===beforeFailed+2);
+    child.send({event:{...event,user_id:888888,message_id:148,message:[{type:'text',data:{text:'其他会话正常回复'}}]}});await until(()=>sent.length===beforeFailed+3);
+    child.send({event:{...event,user_id:999999,message_id:146}});await new Promise(r=>setTimeout(r,100));assert.equal(sent.length,beforeFailed+3,'unknown send is never replayed');
     // Candidate-card testing cannot mutate the live model or send a QQ message.
     const liveBefore=await(await api('/state')).json(),sentBeforeCheck=sent.length;
     const badProfile={settings:{apiUrl:'https://relay.example/v1',model:'unavailable-model',apiProtocol:'chat'},apiKey:'synthetic-bad-key'};
@@ -405,5 +405,14 @@ globalThis.fetch=async(url,options)=>{
     child.send({control:'speech-failed'});n=sent.length;const fallbackModels=models.length;sendOwner(364,'用语音回复，测试分段');await until(()=>sent.length===n+2);assert.equal(speechAttempts,1,'failed synthesis is not retried');assert.equal(models.length,fallbackModels+1,'paragraph splitting adds no model call');assert.equal(sent.at(-1).message[0].type,'text');const paragraphs=sent.slice(n).map(item=>item.message[0].data.text);assert.equal(paragraphs.length,2);assert.equal(paragraphs.join(''),'先别着急，我们先把最重要的事情做好，其他事情可以慢慢来。等你休息好以后，我们再一起想想下一步，今天先照顾好自己。');assert.equal((await(await api('/voice/state')).json()).last.status,'fallback');child.send({control:'normal'});
     n=sent.length;sendOwner(365,'用文字说，你不是可以发语音吗');await until(()=>sent.length===n+1);assert.match(models.at(-1).model.messages[0].content,/本会话上次合成失败/);assert.match(models.at(-1).model.messages[0].content,/不能当成永久无语音能力/);
     await update({enabled:false});await api('/runtime/resume',{reason:'idle'});assert.equal((await(await api('/state')).json()).enabled,false,'manual pause survives network recovery');
+    // Real assistant queue: an upstream that ignores cancellation must not pin draining forever.
+    await update({enabled:true,voiceEnabled:false,learningEnabled:false});
+    n=sent.length;const beforeHang=models.length;child.send({control:'model-hung'});sendOwner(370,'模拟请求永不返回');
+    await until(()=>models.length===beforeHang+1);
+    assert.equal((await(await api('/state')).json()).processing.active,true);
+    await update({enabled:false});await until(async()=>!(await(await api('/state')).json()).processing.active);
+    child.send({control:'normal'});await update({enabled:true});
+    for(let i=0;i<8;i++){sendOwner(371+i,'恢复后连续私聊 '+i);await until(()=>sent.length===n+i+1);}
+    assert.equal((await(await api('/state')).json()).processing.active,false);
   }finally{try{await api('/shutdown',{});}catch{}await until(()=>exited||false).catch(()=>child.kill());if(child.connected)child.disconnect();}
 });

@@ -76,7 +76,7 @@ public final class RuntimeService extends Service {
         if(background!=null)background.refresh();
         try{JSONObject s=localState();UpdateFlow.finished(this);assistantReady=true;healthFailures=0;if(!s.optBoolean("connected")&&background!=null&&background.online())resumeConnection("health");getSharedPreferences("runtime",0).edit().putLong("lastHealthy",System.currentTimeMillis()).putBoolean("qqConnected",s.optBoolean("connected")).putString("healthStatus",s.optBoolean("connected")?"后台服务与QQ在线核验通过":"后台服务可达，QQ等待重新连接").apply();
             NotificationManager manager=getSystemService(NotificationManager.class);manager.notify(17,notification(s.optBoolean("connected")?"QQ在线 · 后台检查正常":"后台运行 · QQ正在连接"));
-        }catch(Exception ignored){if(!assistantReady){healthFailures=0;getSharedPreferences("runtime",0).edit().putString("healthStatus","正在初始化，尚未进入后台连接检查").apply();return;}healthFailures++;if(healthFailures==3){record("连续三次本机健康检查未响应；保留仍运行的进程，避免重复启动QQ");getSharedPreferences("runtime",0).edit().putString("healthStatus","本机检查未响应，请检查省电限制或诊断").apply();}}
+        }catch(Exception ignored){getSharedPreferences("runtime",0).edit().putBoolean("qqConnected",false).putString("healthStatus",assistantReady?"本机检查未响应，QQ在线状态尚未核验":"正在初始化，尚未进入后台连接检查").apply();if(!assistantReady){healthFailures=0;return;}healthFailures++;if(healthFailures==3){record("连续三次本机健康检查未响应；保留仍运行的进程，避免重复启动QQ");getSharedPreferences("runtime",0).edit().putString("healthStatus","本机检查未响应，请检查省电限制或诊断").apply();getSystemService(NotificationManager.class).notify(17,notification("本地服务未响应 · 连接待核验"));}}
     }
     private Notification notification(String message){
         PendingIntent open=PendingIntent.getActivity(this,0,new Intent(this,MainActivity.class),PendingIntent.FLAG_IMMUTABLE);
