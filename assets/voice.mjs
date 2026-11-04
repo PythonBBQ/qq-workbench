@@ -43,7 +43,7 @@ export function voicePrompt(c,{preferences={},explicit=false,format='auto'}={}){
   const {pace,...languagePreferences}=preferences,remembered=describeVoicePreferences(languagePreferences);
   return '\n[回复形式]结合当前话题、情绪和上下文选择。'+selection+'不方便听、代码链接、数字清单和长解释用文字；群聊克制。开头只加[[text]]或[[voice:neutral]]，语音的neutral可换happy/gentle/shy/sad/serious；随后直接给正文，不解释标记。'+
     (c.voiceNatural===false?'':'文字先回应重点，短段落，保留准确细节；语音像当面接话，一到三句、通常20到90字，关键答案不省略，长语音由软件分条朗读。短句按意思停顿；开心轻快，安慰温和，害羞时短暂停顿和委婉接话，严肃直接。合适时自然用一处“嗯、啊、诶”，与后一句连贯；不每条硬加。少套话、复述、反问和重复称呼，不机械撒娇。不写动作旁白、笑声呼吸标签、SSML或表情，不拉长拼音或滥用省略号；必要英文数字照常。')+
-    (c.voiceEmotion!==false&&c.voiceEmotionPreset==='intimate'?'语音采用软绵、含蓄暧昧的口吻，短句自然接话；话题不合适时正常回答，不强行调情、不写喘息或动作标签，本条要求正常说话时恢复自然。':'')+
+    (c.voiceEmotion!==false&&c.voiceEmotionPreset==='intimate'?'语音采用软绵、含蓄暧昧的口吻，像熟悉的人靠近后低声接话，表达直接一点的亲近和眷恋；短句有自然留白，少用夸张撒娇、叠字、拖音和连续语气词，不把暧昧写成困倦、安慰或不敢说话。话题不合适时正常回答，不强行调情、不写喘息或动作标签，本条要求正常说话时恢复自然。':c.voiceEmotion!==false&&c.voiceEmotionPreset==='shy'?'害羞是被夸后轻微不好意思，话仍说完整；偶尔短暂停顿，保持平时的称呼和措辞，不装幼态、不反复结巴、不每句都说害羞或不好意思。':'')+
     (remembered?'说话偏好：'+remembered+'；本条明确要求优先。':'')+
     '只写要说的话，不宣称已发送，不冒充真人，不编造现实活动。';
 }
@@ -117,10 +117,10 @@ export async function synthesize(c,text,{key='',feiyuKey='',emotion='neutral',ev
     else{
       if(!native)throw new Error('系统语音接口尚未就绪');
       const adjustments=c.speechProvider==='zipvoice'||c.voiceEmotion===false?[0,0]:({happy:[6,3],gentle:[-7,-2],shy:[-9,1],sad:[-10,-3],serious:[-4,-2]})[emotion]||[0,0];
-      const rateOffset=c.voiceEmotion!==false&&c.speechProvider==='zipvoice'&&(intimateActive||emotion==='shy')?-5:0;
+      const rateOffset=c.voiceEmotion!==false&&c.speechProvider==='zipvoice'?(intimateActive?-3:emotion==='shy'?-5:0):0;
       const modelQuality=c.zipVoiceModel==='full'?'full':'fast',selectedDelivery=modelQuality==='full'&&c.zipVoiceDeliveryPreset==='t02-t06',requestedSteps=modelQuality==='full'?(selectedDelivery?(['neutral','gentle'].includes(emotion)?32:16):(c.zipVoiceSteps===32?32:16)):(c.zipVoiceSteps===4?4:8),steps=requestedSteps;
       const deliveryStyle=c.speechProvider==='zipvoice'&&c.voiceEmotion!==false?delivery:'normal',referenceMood=deliveryStyle==='soft'&&!['shy','gentle'].includes(emotion)?'gentle':emotion;
-      const result=await native('synthesize',{provider:c.speechProvider,speaker:c.kokoroSpeaker||3,text:value,phrasing:plan.phrasing,voice:c.androidVoice||'',language:c.speechLanguage||'zh-CN',emotion:c.voiceEmotion===false?'neutral':referenceMood,deliveryStyle,modelQuality,steps,requestedSteps,rate:clamp(Number(c.speechRate||0)+adjustments[0]+rateOffset,-40,60,0),pitch:clamp(Number(c.speechPitch||0)+adjustments[1],-30,30,0)});
+      const result=await native('synthesize',{provider:c.speechProvider,speaker:c.kokoroSpeaker||3,text:value,phrasing:plan.phrasing,voice:c.androidVoice||'',language:c.speechLanguage||'zh-CN',emotion:c.voiceEmotion===false?'neutral':referenceMood,deliveryStyle,stableReference:c.speechProvider==='zipvoice'&&(intimateActive||emotion==='shy'),modelQuality,steps,requestedSteps,rate:clamp(Number(c.speechRate||0)+adjustments[0]+rateOffset,-40,60,0),pitch:clamp(Number(c.speechPitch||0)+adjustments[1],-30,30,0)});
       bytes=Buffer.from(result.audio||'','base64');
       if(c.speechProvider==='kokoro')info={provider:'kokoro',speaker:result.speaker||3,elapsedMs:result.elapsedMs||0};
       if(c.speechProvider==='zipvoice')info={provider:'zipvoice',referenceMood:result.referenceMood||'neutral',referenceSource:result.referenceSource||'unknown',elapsedMs:result.elapsedMs||0};

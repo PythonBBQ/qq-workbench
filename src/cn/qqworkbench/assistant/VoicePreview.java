@@ -13,6 +13,7 @@ final class VoicePreview {
         String expression=c.optBoolean("voiceEmotion",true)?mood:"neutral";
         JSONObject request=new JSONObject().put("slot",slot).put("provider",provider).put("speaker",c.optInt("kokoroSpeaker",3)).put("text",text).put("emotion",VoiceModelPolicy.referenceMood(expression)).put("modelQuality",VoiceModelPolicy.model(c.optString("zipVoiceModel"))).put("steps",VoiceModelPolicy.selectedSteps(VoiceModelPolicy.model(c.optString("zipVoiceModel")),c.optInt("zipVoiceSteps",8),c.optString("zipVoiceDeliveryPreset"),expression)).put("rate",provider.equals("zipvoice")?VoiceModelPolicy.rate(expression,c.optInt("speechRate",0)):c.optInt("speechRate",0)).put("phrasing",true).put("voice",c.optString("androidVoice")).put("language","zh-CN").put("pitch",c.optInt("speechPitch",0));
         if(expression.equals("intimate")||!c.optBoolean("voiceEmotion",true))request.put("deliveryStyle",VoiceModelPolicy.deliveryStyle(expression));
+        if(provider.equals("zipvoice")){request.put("stableReference",VoiceModelPolicy.stableReference(expression));if(expression.equals("shy"))request.put("deliveryStyle","normal");}
         return request;
     }
     static void play(MainActivity a,int slot,JSONObject settings,String mood,String text){

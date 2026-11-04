@@ -28,6 +28,13 @@ final class VoicePresetBank {
         if(matching.isEmpty())return primary;
         return matching.get(Math.floorMod(sequence,matching.size()));
     }
+    static JSONObject synthesisReference(JSONObject primary,String text,int sequence,JSONObject request,Boolean soft)throws Exception{
+        // Preserve the user's selected anchor for shy/intimate expression.
+        // A soft-tagged alternative may have a different timbre or room sound.
+        // Explicit variant indices remain available to isolated listening probes.
+        if(request.optInt("referenceVariant",-1)<0&&request.optBoolean("stableReference",false))return primary;
+        return select(primary,text,sequence,request.optInt("referenceVariant",-1),soft);
+    }
     static JSONObject acknowledgment(File profile,String text,String mood,int sequence)throws Exception{
         if(!safeAlias(text))return null;File file=new File(profile,"acknowledgments.json"),reference=new File(profile,mood+".json");if(!file.isFile()||!reference.isFile())return null;
         JSONObject active=new JSONObject(new String(Files.readAllBytes(reference.toPath()),StandardCharsets.UTF_8));String source=active.optString("source");

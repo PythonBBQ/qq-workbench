@@ -27,7 +27,7 @@ final class VoicePanel {
         a.section("音调与速度","调整后可在下方试听，保存后用于聊天。");
         rate=a.slider("语速",c.optInt("speechRate",0),-40,60,"%");
         pitch=a.slider("音调",c.optInt("speechPitch",0),-30,30,"%");
-        a.section("语气预设","自动跟随情境，或固定使用一种表达。软绵·暧昧使用轻柔参考与略慢语速；自导入的单段参考共用同一音色。");
+        a.section("语气预设","自动跟随情境，或固定表达。害羞与软绵·暧昧保留当前主参考音色，调整措辞和轻微语速，不自动切换旧轻声变体；效果以试听为准。");
         String[] moods={"auto","neutral","happy","gentle","shy","sad","serious","intimate"};int chosen=java.util.Arrays.asList(moods).indexOf(c.optString("voiceEmotionPreset","auto"));
         mood=a.choices(new String[]{"自动","自然","开心","温柔","害羞","难过","认真","软绵 · 暧昧"},Math.max(0,chosen));
         a.section("语音回复","长回复自动分成多条语音，按顺序发送；某段合成失败，剩余转文字。");
