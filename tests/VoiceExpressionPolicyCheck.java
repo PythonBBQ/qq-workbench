@@ -23,6 +23,14 @@ public final class VoiceExpressionPolicyCheck {
         check(VoicePresetBank.synthesisReference(single,"你好。",0,new JSONObject().put("stableReference",true),true)==single);
         JSONObject disabled=VoicePreview.request(0,new JSONObject(settings.toString()).put("voiceEmotion",false),"intimate","你好。");
         check(disabled.getString("emotion").equals("neutral"));check(!disabled.getBoolean("stableReference"));check(disabled.getInt("rate")==0);
+        JSONObject ordinary=VoicePreview.request(0,settings,"neutral","晚安。");
+        check(ordinary.getString("deliveryStyle").equals("normal"));
+        JSONObject quiet=VoicePreview.request(0,settings,"neutral","闭上眼睛，安心睡吧。");
+        check(quiet.getString("emotion").equals("gentle"));check(quiet.getString("deliveryStyle").equals("soft"));
+        JSONObject system=VoicePreview.request(0,new JSONObject(settings.toString()).put("speechProvider","android").put("speechRate",4).put("speechPitch",2),"shy","你好。");
+        check(system.getInt("rate")==-5);check(system.getInt("pitch")==3);
+        JSONObject plain=VoicePreview.request(0,new JSONObject(settings.toString()).put("voiceNatural",false),"neutral","你好。");
+        check(!plain.getBoolean("phrasing"));
         System.out.println("QQWB_VOICE_EXPRESSION_POLICY_OK: same anchor across utterances, explicit probe override, single reference, unchanged pitch, preview rates and disabled emotion");
     }
 }

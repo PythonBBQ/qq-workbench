@@ -4,6 +4,19 @@ import {voicePrompt,voiceCapability,voiceFormatHint,voiceDecision,voiceDeliveryS
 import {ConversationMemory,conversationScope} from '../assets/conversation-memory.mjs';
 const c={owner:'123456',voiceEnabled:true,voiceMode:'smart',speechProvider:'zipvoice'},event={message_type:'private',user_id:'123456'},scope=voiceScope(c,event,'654321');
 
+test('disabled emotion ignores stale fixed moods for reference, steps and speed together',async()=>{
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'speech-emotion-off-'));
+ try{const wav=Buffer.alloc(128);wav.write('RIFF');
+  for(const preset of ['auto','shy','intimate']){
+   const audio=await synthesize({...c,voiceEmotion:false,voiceEmotionPreset:preset,zipVoiceModel:'full',zipVoiceDeliveryPreset:'t02-t06',speechRate:4,speechPitch:0},'晚安，慢慢休息。',{emotion:'shy',directory,native:async(route,request)=>{
+    assert.equal(request.emotion,'neutral');assert.equal(request.rate,4);assert.equal(request.steps,32);
+    assert.equal(request.deliveryStyle,'normal');assert.equal(request.stableReference,false);
+    return {ok:true,audio:wav.toString('base64')};
+   },convert:async(bin,args)=>fs.writeFileSync(args.at(-1),Buffer.alloc(100))});audio.cleanup();
+  }
+ }finally{fs.rmSync(directory,{recursive:true,force:true});}
+});
+
 test('soft intimate expression reaches native synthesis, preserves text and respects current refusal and emotion switch',async()=>{
  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'speech-intimate-'));try{const wav=Buffer.alloc(128);wav.write('RIFF');
  const config={...c,voiceEmotionPreset:'intimate',zipVoiceModel:'full',zipVoiceDeliveryPreset:'t02-t06',speechRate:0,speechPitch:0},text='嗯，靠近一点嘛，我想轻轻和你说句话。';

@@ -88,7 +88,8 @@ export function speechPlan(text,c={},emotion='neutral'){
   let value=speechText(text);
   // Conservative spoken forms; identifiers, versions and ordinary numbers are left intact.
   value=value.replace(/(-?\d+(?:\.\d+)?)\s*%/g,(_,n)=>'百分之'+n.replace(/^-/,'负')).replace(/(-?\d+(?:\.\d+)?)\s*℃/g,(_,n)=>n.replace(/^-/,'零下')+'摄氏度');
-  if(['neutral','happy','gentle','shy','sad','serious'].includes(c.voiceEmotionPreset))emotion=c.voiceEmotionPreset;
+  if(c.voiceEmotion===false)emotion='neutral';
+  else if(['neutral','happy','gentle','shy','sad','serious'].includes(c.voiceEmotionPreset))emotion=c.voiceEmotionPreset;
   return {text:value,emotion:['neutral','happy','gentle','shy','sad','serious'].includes(emotion)?emotion:'neutral',phrasing:c.voiceNatural!==false};
 }
 export function speechDeliveryFilter(soft=false,pitch=0,gain=0){

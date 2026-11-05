@@ -44,6 +44,14 @@ public final class ResumableDownloadCheck {
             File fallback=new File(root,"fallback");int[] switched={0};out=ResumableDownload.fetch(fallback,alternate,url->{int call=switched[0]++;check(url.getHost().equals(call==0?"api.github.com":"github.com"));return call==0?new Reply(url,200,content,null,true):new Reply(url,206,Arrays.copyOfRange(content,4096,content.length),"bytes 4096-150006/150007",false){public int getResponseCode(){check("bytes=4096-".equals(getRequestProperty("Range")));return 206;}};},ResumableDownload.NONE);check(switched[0]==2&&ApkPatch.sha(out).equals(ApkPatch.sha(target)));
             // A rate-limited API can fall back, but invalid ranges never switch to conceal corruption.
             File limited=new File(root,"rate-limited");int[] rateCalls={0};out=ResumableDownload.fetch(limited,alternate,url->new Reply(url,rateCalls[0]++==0?403:200,content,null,false),ResumableDownload.NONE);check(rateCalls[0]==2&&ApkPatch.sha(out).equals(ApkPatch.sha(target)));
+            // A proxy/API can return HTTP 200 with an error page. Do not replace valid partial APK bytes.
+            for(String type:new String[]{"application/json; charset=utf-8","text/html"}){
+                File errorPage=new File(root,"error-page-"+type.charAt(0));seed(errorPage,alternate,4096);int[] pageCalls={0};
+                out=ResumableDownload.fetch(errorPage,alternate,url->{
+                    if(pageCalls[0]++==0)return new Reply(url,200,"{\"message\":\"try again\"}".getBytes("UTF-8"),null,false){public String getHeaderField(String name){return name.equalsIgnoreCase("Content-Type")?type:super.getHeaderField(name);}};
+                    return new Reply(url,206,Arrays.copyOfRange(content,4096,content.length),"bytes 4096-150006/150007",false){public int getResponseCode(){check("bytes=4096-".equals(getRequestProperty("Range")));return 206;}};
+                },ResumableDownload.NONE);check(pageCalls[0]==2&&ApkPatch.sha(out).equals(ApkPatch.sha(target)));
+            }
             File unsafe=new File(root,"api-wrong-range");seed(unsafe,alternate,1000);int[] unsafeCalls={0};rejected=false;try{ResumableDownload.fetch(unsafe,alternate,url->{unsafeCalls[0]++;return new Reply(url,206,content,"bytes 0-150006/150007",false);},ResumableDownload.NONE);}catch(ResumableDownload.InvalidDownload expected){rejected=true;}check(rejected&&unsafeCalls[0]==1&&ResumableDownload.part(unsafe).length()==1000);
             System.out.println("QQWB_RESUMABLE_DOWNLOAD_OK: resume, exact Range, pause, digest rejection, official API first, route fallback with resume, rate-limit fallback, invalid ranges never retried");
         }finally{for(File dir:root.listFiles()){if(dir.isDirectory()){for(File file:dir.listFiles())file.delete();}dir.delete();}root.delete();}

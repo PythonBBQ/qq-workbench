@@ -9,6 +9,13 @@ test('speech partitions preserve all text, punctuation, English words and surrog
  for(const value of [text,'English sentences stay together. '.repeat(40),'没有标点也要保留内容'.repeat(50),'今天😀你好。'.repeat(60)]){const parts=splitVoiceMessages(value);assert.equal(parts.join(''),value.trim());assert.ok(parts.length>1);assert.ok(parts.every(p=>p.length>0&&p.length<=260));assert.ok(parts.every(p=>!/[\uD800-\uDBFF]$/.test(p)&&!/[\uDC00-\uDFFF]/.test(p[0])));}
  assert.deepEqual(splitVoiceMessages('准备好了。'),['准备好了。']);assert.deepEqual(splitVoiceMessages(''),[]);
 });
+
+test('small trailing sentences never merge past the native 240 UTF-16 character limit',()=>{
+ for(const value of ['a'.repeat(239)+' hello.', '𠀀'.repeat(121)+'。', 'a'.repeat(238)+'𠀀𠀀。', 'a'.repeat(235)+' 继续说完。']){
+  const parts=splitVoiceMessages(value);assert.equal(parts.join(''),value);
+  assert.ok(parts.every(part=>part.length<=240),parts.map(part=>part.length).join(','));
+ }
+});
 test('long speech is lazy, each acknowledged before the next synthesis, with one cleanup per segment',async()=>{
  const seen=[];let generated=0,acked=0,cleaned=0;
  const batch=prepareSpeech({},text,{},async(c,part)=>{assert.equal(generated,acked);generated++;seen.push(part);return {segment:{type:'record',data:{file:String(generated)}},info:{part:generated},cleanup(){cleaned++;}};});

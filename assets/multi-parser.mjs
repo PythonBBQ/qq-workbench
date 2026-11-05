@@ -89,15 +89,16 @@ export async function readShare(value,fetcher=fetch,options={}){
  const runtime=options.runtime||process.env.QQWB_PARSER_RUNTIME||path.join(path.dirname(fileURLToPath(import.meta.url)),'parser');
  const python=options.python||process.env.QQWB_PARSER_PYTHON||'/usr/bin/python3';
  const controller=new AbortController(),signal=AbortSignal.any([controller.signal,AbortSignal.timeout(25000),...(options.signal?[options.signal]:[])]);
+ if(signal.aborted)throw new Error('平台解析已取消，未读取完整内容');
  const result=await new Promise((resolve,reject)=>{
   const child=spawn(python,['-I','-B',path.join(runtime,'worker.py')],{cwd:runtime,windowsHide:true,stdio:['pipe','pipe','ignore'],env:{PATH:process.env.PATH||'',LANG:'C.UTF-8',PYTHONIOENCODING:'utf-8'}});
   let buffer='',finished=false,calls=0;
   const finish=(error,value)=>{if(finished)return;finished=true;signal.removeEventListener('abort',abort);child.stdin.destroy();child.kill();error?reject(error):resolve(value);};
   const abort=()=>finish(new Error('平台解析超时或已取消，未读取完整内容'));
-  signal.addEventListener('abort',abort,{once:true});if(signal.aborted){abort();return;}
   child.on('error',()=>finish(new Error('多平台解析组件未就绪，请重新启动本地服务')));
   child.stdin.on('error',()=>finish(new Error('多平台解析组件已退出')));
   child.on('close',()=>{if(!finished)finish(new Error('多平台解析未完成'));});
+  signal.addEventListener('abort',abort,{once:true});if(signal.aborted){abort();return;}
   child.stdout.on('data',chunk=>{
    buffer+=chunk.toString('utf8');if(buffer.length>100000){finish(new Error('平台解析结果超过上限'));return;}
    while(buffer.includes('\n')){

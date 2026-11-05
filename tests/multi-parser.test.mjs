@@ -9,6 +9,12 @@ const options={resolve};
 const html=text=>new Response(text,{headers:{'content-type':'text/html; charset=utf-8'}});
 const contextDir=()=>{const parent=path.resolve(import.meta.dirname,'../build/multi-parser-tests');fs.mkdirSync(parent,{recursive:true});return fs.mkdtempSync(path.join(parent,'case-'));};
 
+test('an already cancelled parse never starts a missing process or emits an unhandled child error',async()=>{
+ const controller=new AbortController();controller.abort();
+ await assert.rejects(()=>readShare('https://github.com/example/public-repo',async()=>{throw Error('must not fetch');},{...options,signal:controller.signal,python:path.join(contextDir(),'missing-python')}),/取消/);
+ await new Promise(resolve=>setTimeout(resolve,30));
+});
+
 test('shared URLs normalize supported HTTP, trim Chinese punctuation and reject deceptive/private addresses',()=>{
  assert.equal(PLATFORMS.length,13);assert.equal(platformFor('https://api.bilibili.com/').id,'bilibili');
  assert.equal(platformFor('https://bilibili.com.evil.test/'),null);

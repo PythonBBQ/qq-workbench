@@ -10,10 +10,16 @@ final class VoicePreview {
     static void imported(MainActivity a,int slot,String mood){try{JSONObject c=a.currentConfig();if(slot!=0){JSONArray all=new AccountProfiles(a).list();c=new JSONObject();for(int i=0;i<all.length();i++)if(all.getJSONObject(i).optInt("slot")==slot)c=all.getJSONObject(i);}c=new JSONObject(c.toString()).put("speechProvider","zipvoice");ready(a,slot,c,mood);}catch(Exception e){a.toast("参考已保存，稍后可在语音页试听");}}
     static JSONObject request(int slot,JSONObject c,String mood,String text)throws Exception{
         if(slot<0||slot>3)throw new IllegalArgumentException("账号无效");String provider=c.optString("speechProvider");if(!provider.equals("zipvoice")&&!provider.equals("kokoro")&&!provider.equals("android"))throw new IllegalArgumentException("请先保存服务音色，再使用服务试听");
-        String expression=c.optBoolean("voiceEmotion",true)?mood:"neutral";
-        JSONObject request=new JSONObject().put("slot",slot).put("provider",provider).put("speaker",c.optInt("kokoroSpeaker",3)).put("text",text).put("emotion",VoiceModelPolicy.referenceMood(expression)).put("modelQuality",VoiceModelPolicy.model(c.optString("zipVoiceModel"))).put("steps",VoiceModelPolicy.selectedSteps(VoiceModelPolicy.model(c.optString("zipVoiceModel")),c.optInt("zipVoiceSteps",8),c.optString("zipVoiceDeliveryPreset"),expression)).put("rate",provider.equals("zipvoice")?VoiceModelPolicy.rate(expression,c.optInt("speechRate",0)):c.optInt("speechRate",0)).put("phrasing",true).put("voice",c.optString("androidVoice")).put("language","zh-CN").put("pitch",c.optInt("speechPitch",0));
-        if(expression.equals("intimate")||!c.optBoolean("voiceEmotion",true))request.put("deliveryStyle",VoiceModelPolicy.deliveryStyle(expression));
-        if(provider.equals("zipvoice")){request.put("stableReference",VoiceModelPolicy.stableReference(expression));if(expression.equals("shy"))request.put("deliveryStyle","normal");}
+        boolean emotions=c.optBoolean("voiceEmotion",true);String expression=emotions?mood:"neutral",reference=VoiceModelPolicy.referenceMood(expression);
+        String delivery=emotions?VoiceModelPolicy.deliveryStyle(expression,text):"normal";
+        if(provider.equals("zipvoice")&&delivery.equals("soft")&&!reference.equals("shy")&&!reference.equals("gentle"))reference="gentle";
+        String rateMood=provider.equals("zipvoice")?expression:VoiceModelPolicy.referenceMood(expression);
+        JSONObject request=new JSONObject().put("slot",slot).put("provider",provider).put("speaker",c.optInt("kokoroSpeaker",3)).put("text",text).put("emotion",reference)
+            .put("modelQuality",VoiceModelPolicy.model(c.optString("zipVoiceModel"))).put("steps",VoiceModelPolicy.selectedSteps(VoiceModelPolicy.model(c.optString("zipVoiceModel")),c.optInt("zipVoiceSteps",8),c.optString("zipVoiceDeliveryPreset"),expression))
+            .put("rate",VoiceModelPolicy.rate(provider,rateMood,c.optInt("speechRate",0))).put("phrasing",c.optBoolean("voiceNatural",true))
+            .put("voice",c.optString("androidVoice")).put("language","zh-CN").put("pitch",VoiceModelPolicy.pitch(provider,VoiceModelPolicy.referenceMood(expression),c.optInt("speechPitch",0)));
+        request.put("deliveryStyle",provider.equals("zipvoice")?delivery:"normal");
+        if(provider.equals("zipvoice"))request.put("stableReference",VoiceModelPolicy.stableReference(expression));
         return request;
     }
     static void play(MainActivity a,int slot,JSONObject settings,String mood,String text){

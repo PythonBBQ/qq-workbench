@@ -6,13 +6,14 @@ export function splitVoiceMessages(input,{target=72,limit=100,tailAllowance=16}=
   const units=Array.from(text),weight=ch=>/[\x00-\x7f]/.test(ch)?0.3:1;
   const result=[];let offset=0;
   while(offset<units.length){
-    let end=offset,size=0,strong=-1,weak=-1;
-    while(end<units.length&&size+weight(units[end])<=limit&&end-offset<240){size+=weight(units[end]);end++;if(size>=target*.55){if(/[。！？!?；;\n]/.test(units[end-1]))strong=end;else if(/[,，、：:\s]/.test(units[end-1]))weak=end;}if(size>=target&&strong>offset)break;}
+    let end=offset,size=0,characters=0,strong=-1,weak=-1;
+    // Native String.length() counts UTF-16 units; one supplementary character uses two.
+    while(end<units.length&&size+weight(units[end])<=limit&&characters+units[end].length<=240){size+=weight(units[end]);characters+=units[end].length;end++;if(size>=target*.55){if(/[。！？!?；;\n]/.test(units[end-1]))strong=end;else if(/[,，、：:\s]/.test(units[end-1]))weak=end;}if(size>=target&&strong>offset)break;}
     if(end===units.length){result.push(units.slice(offset).join(''));break;}
     const stop=strong>offset?strong:weak>offset?weak:Math.max(end,offset+1);result.push(units.slice(offset,stop).join(''));offset=stop;
   }
   // Avoid sending a tiny final sentence by itself, within a bounded final utterance.
-  if(result.length>1&&Array.from(result.at(-1)).reduce((n,ch)=>n+weight(ch),0)<16){const tail=result.at(-2)+result.at(-1);if(Array.from(tail).reduce((n,ch)=>n+weight(ch),0)<=limit+tailAllowance&&tail.length<=260)result.splice(-2,2,tail);}
+  if(result.length>1&&Array.from(result.at(-1)).reduce((n,ch)=>n+weight(ch),0)<16){const tail=result.at(-2)+result.at(-1);if(Array.from(tail).reduce((n,ch)=>n+weight(ch),0)<=limit+tailAllowance&&tail.length<=240)result.splice(-2,2,tail);}
   return result;
 }
 
