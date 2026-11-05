@@ -63,7 +63,7 @@ export function learningIntent(text){
   return candidate?.query?{kind:'web-search',value:candidate.query}:null;
 }
 function tokens(text){const s=String(text).toLowerCase();return new Set([...(s.match(/[a-z0-9]{2,}/g)||[]),...(s.match(/[\u3400-\u9fff]{2,}/g)||[]).flatMap(t=>Array.from({length:t.length-1},(_,i)=>t.slice(i,i+2)))]);}
-const pageFollowup=text=>/(?:这个|那个|刚才的?|上面的?|这篇|那篇|该)(?:网页|页面|文章|链接)|(?:网页|文章|页面|文中|文内).{0,25}(?:说|讲|怎么|如何|步骤|总结|概括|部分|内容|后面|重新|刷新)|^(?:继续读|接着读|总结一下|概括一下|重新读取|刷新网页|里面.{0,20}(?:说|步骤|怎么))/i.test(String(text));
+const pageFollowup=text=>/(?:这个|那个|刚才的?|上面的?|这篇|那篇|这段|那段|该)(?:网页|页面|文章|链接|视频)|(?:网页|文章|页面|文中|文内).{0,25}(?:说|讲|怎么|如何|步骤|总结|概括|部分|内容|后面|重新|刷新)|^(?:继续读|接着读|看完视频|继续看视频|接着看视频|总结一下|概括一下|重新读取|刷新网页|里面.{0,20}(?:说|步骤|怎么))/i.test(String(text));
 const refreshPage=text=>/重新(?:读|看|打开|获取)|刷新(?:网页|页面|一下)?|再读一遍/.test(String(text));
 export class LearningStore{
   constructor(directory,fetcher=fetch,parserOptions={}){this.file=path.join(directory,'learning-notes.json');this.fetcher=fetcher;this.parserOptions=parserOptions;this.notes=[];this.cache=new Map();this.inFlight=new Map();try{const data=JSON.parse(fs.readFileSync(this.file,'utf8'));if(Array.isArray(data))for(const n of data.slice(-30))try{if(typeof n.title==='string'&&typeof n.url==='string'&&typeof n.content==='string')this.notes.push({...n,title:clean(n.title,160),content:clean(n.content),url:webUrl(n.url).href});}catch{}}catch{} }
@@ -95,7 +95,7 @@ export class LearningStore{
     if(pageFollowup(text)){
       const previous=(options.history||[]).filter(m=>m.role==='user').slice(-8).reverse().map(m=>sharedLinks(contextText(m.content))).find(urls=>urls.length);
       if(previous)return {kind:'share-read',value:previous[0],...(previous.length>1?{urls:previous}:{}),question,refresh:refreshPage(text)};
-      if(/网页|页面|文章|链接|继续读|接着读|重新读取/.test(text))return {kind:'page-clarify',value:''};
+      if(/网页|页面|文章|链接|视频|继续读|接着读|重新读取/.test(text))return {kind:'page-clarify',value:''};
     }
     const direct=learningIntent(text);
     if(direct&&direct.kind!=='web-search')return direct;

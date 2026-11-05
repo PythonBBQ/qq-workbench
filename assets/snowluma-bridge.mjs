@@ -17,6 +17,11 @@ export function readyAccount(items) {
   const online=items.filter(p=>p.connected&&p.loggedIn&&validUin(p.uin));
   return online.length===1?online[0]:null;
 }
+export function pendingConnection(items,{since=0,now=Date.now()}={}) {
+  const attached=items.some(p=>p.connected),stalled=attached&&since>0&&now-since>=90000;
+  return {phase:attached?(stalled?'login_stalled':'waiting_login'):'preparing',since,
+    message:attached?(stalled?'QQ 接入未能确认账号就绪，请到诊断查看；QQ 窗口已登录也不代表消息通道可用':'接入组件已连接，正在等待 QQ 登录与账号就绪'):'正在启动 QQ 接入组件'};
+}
 export function needsRelaunchRecovery({launcherExited,args,nativeLoaded}) {
   return launcherExited&&args.includes('--relaunch')&&!nativeLoaded;
 }
@@ -169,6 +174,7 @@ export class SnowLumaBridge {
   async state() {
     const items=await this.processes(),account=readyAccount(items);
     if(account){
+      this.loginPendingSince=0;this.connection={phase:'verifying',since:0,message:'账号已就绪，正在核验消息通道'};
       this.failure='';
       const uin=String(account.uin);
       if(this.configuredUin!==uin){
@@ -179,7 +185,10 @@ export class SnowLumaBridge {
       return {status:{isLogin:true},info:{uin}};
     }
     this.configuredUin='';
-    return {status:{isLogin:false,loginError:items.some(p=>p.connected)?'SnowLuma 已连接，等待 QQ 完成登录':''},info:{uin:''}};
+    if(!items.some(p=>p.connected))this.loginPendingSince=0;
+    else if(!this.loginPendingSince)this.loginPendingSince=Date.now();
+    this.connection=pendingConnection(items,{since:this.loginPendingSince||0});
+    return {status:{isLogin:false,loginError:this.connection.message},info:{uin:''}};
   }
   async accounts() {
     return (await this.processes()).filter(p=>validUin(p.uin)).map(p=>({uin:String(p.uin),

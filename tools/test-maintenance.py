@@ -13,7 +13,7 @@ sys.path.insert(0,str(root));from tools.shizuku_deps import sdk_jars
 from tools.zipvoice_deps import sdk_jars as voice_jars
 jars=sdk_jars(a.cache_root)+voice_jars(a.cache_root)
 sdk=a.toolchain/'platform-35_r02/android-35/android.jar';bt=a.toolchain/'build-tools_r35_windows/android-15'
-tests=['UpdatePlanCheck','RuntimeOwnershipCheck','MigrationCheck','ResumableDownloadCheck','ApkPatchCheck','UpdateFeedCheck','VoiceExpressionPolicyCheck']
+tests=['UpdatePlanCheck','RuntimeOwnershipCheck','MigrationCheck','ResumableDownloadCheck','ApkPatchCheck','UpdateFeedCheck','VoiceExpressionPolicyCheck','WebVideoPolicyCheck']
 work=root/'build/maintenance-host';work.mkdir(parents=True,exist_ok=True)
 def run(*parts):subprocess.run(list(map(str,parts)),check=True,cwd=root)
 with tempfile.TemporaryDirectory(dir=work) as temp:

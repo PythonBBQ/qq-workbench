@@ -74,19 +74,39 @@ final class VideoFrames {
         return false;
     }
     static JSONObject remote(Context context,String value,boolean bili)throws Exception{
-        URL url=NativeNetwork.publicUrl(value);String host=url.getHost().toLowerCase(java.util.Locale.ROOT);
-        if(!mediaHost(url,bili))throw new IOException("视频媒体地址不受支持");
+        return remote(context,value,bili?"bilibili":"qq");
+    }
+    static boolean mediaHost(URL url,String source){
+        if("web".equals(source))return url.getProtocol().equals("https")&&url.getUserInfo()==null&&(url.getPort()==-1||url.getPort()==443);
+        return ("bilibili".equals(source)||"qq".equals(source))&&mediaHost(url,"bilibili".equals(source));
+    }
+    static JSONObject remote(Context context,String value,String source)throws Exception{
+        URL url=NativeNetwork.publicUrl(value);boolean bili="bilibili".equals(source),web="web".equals(source);
+        if(!mediaHost(url,source))throw new IOException("视频媒体地址不受支持");
         File directory=new File(context.getFilesDir(),"linux/rootfs/opt/qq-workbench/video-imports");
         if(!directory.isDirectory()&&!directory.mkdirs())throw new IOException("视频暂存目录不可用");
         File temporary=new File(directory,"clip-"+java.util.UUID.randomUUID().toString().replace("-","")+".bin");boolean handedOff=false;
-        HttpURLConnection c=(HttpURLConnection)url.openConnection();
-        try{c.setInstanceFollowRedirects(false);c.setConnectTimeout(12000);c.setReadTimeout(25000);c.setRequestProperty("Accept","video/*,application/octet-stream");
+        HttpURLConnection c=null;
+        try{
+            for(int attempt=0;;attempt++){
+                c=(HttpURLConnection)url.openConnection();c.setInstanceFollowRedirects(false);c.setConnectTimeout(12000);c.setReadTimeout(25000);c.setRequestProperty("Accept","video/*,application/octet-stream");
             if(bili){c.setRequestProperty("Referer","https://www.bilibili.com/");c.setRequestProperty("User-Agent","Mozilla/5.0");}
-            if(c.getResponseCode()!=200)throw new IOException(bili?"B站视频下载受限，请重新登录B站或稍后重试":"QQ视频暂不可下载");
+                int status=c.getResponseCode();
+                if(web&&(status==301||status==302||status==303||status==307||status==308)){
+                    String location=c.getHeaderField("Location");if(location==null||attempt>=3)throw new IOException("视频跳转过多或缺少地址");
+                    URL next=NativeNetwork.publicUrl(new URL(url,location).toString());if(!mediaHost(next,source))throw new IOException("视频跳转地址不受支持");c.disconnect();url=next;continue;
+                }
+                if(status!=200)throw new IOException(bili?"B站视频下载受限，请重新登录B站或稍后重试":web?"视频下载失败，可能需要登录或链接已失效":"QQ视频暂不可下载");
+                break;
+            }
             if(c.getContentLengthLong()>MAX_BYTES)throw new IOException("视频超过32MB，请导入裁剪后的片段");
-            String type=c.getContentType();if(type!=null&&!type.startsWith("video/")&&!type.startsWith("audio/")&&!type.startsWith("application/octet-stream"))throw new IOException("链接不是可读取的视频文件");
-            try(InputStream in=c.getInputStream()){copy(in,temporary);}
-            {if(temporary.length()==0)throw new IOException("B站返回空视频");temporary.setReadable(false,false);temporary.setReadable(true,true);temporary.setWritable(false,false);temporary.setWritable(true,true);handedOff=true;return new JSONObject().put("clip",temporary.getName()).put("bytes",temporary.length());}
-        }finally{c.disconnect();if(!handedOff)temporary.delete();}
+            String type=c.getContentType();type=type==null?"":type.toLowerCase(java.util.Locale.ROOT);
+            if((web||!type.isEmpty())&&!(type.startsWith("video/")||!web&&type.startsWith("audio/")||type.startsWith("application/octet-stream"))||type.contains("mpegurl"))throw new IOException("链接不是可读取的独立视频文件");
+            try(InputStream in=c.getInputStream();OutputStream out=new FileOutputStream(temporary)){
+                long total=0,deadline=android.os.SystemClock.elapsedRealtime()+90000;byte[] bytes=new byte[32768];int count;
+                while((count=in.read(bytes))!=-1){total+=count;if(total>MAX_BYTES)throw new IOException("视频超过32MB，请先裁剪短片段");if(android.os.SystemClock.elapsedRealtime()>deadline)throw new IOException("视频下载超时，请选择较短片段");out.write(bytes,0,count);}
+            }
+            {if(temporary.length()==0)throw new IOException("视频返回空内容");temporary.setReadable(false,false);temporary.setReadable(true,true);temporary.setWritable(false,false);temporary.setWritable(true,true);handedOff=true;return new JSONObject().put("clip",temporary.getName()).put("bytes",temporary.length());}
+        }finally{if(c!=null)c.disconnect();if(!handedOff)temporary.delete();}
     }
 }

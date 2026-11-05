@@ -1,4 +1,29 @@
 import {withAudio,audioContext,audioFocusContext} from './video-audio.mjs';
+import dns from 'node:dns/promises';
+import {webUrl,publicAddress} from './web-learning.mjs';
+import {sharedLinks} from './multi-parser.mjs';
+import {browsingDeclined} from './browse-intent.mjs';
+
+export function webVideoIntent(text,{items=[],automatic=true}={}){
+  const s=String(text||'');
+  if(browsingDeclined(s)||/(?:不要|不用|别|无需).{0,8}(?:看|读|下载|分析).{0,5}视频|(?:只|仅)(?:看|读|要|查|搜索|搜)?(?:一下)?(?:标题|简介|封面|资料|链接|正文|文字)/.test(s))return null;
+  const wants=/(?:视频|画面).{0,20}(?:说|讲|发生|怎么|分析|总结|内容|动作)|(?:看|听|分析|总结|理解|概括).{0,12}(?:视频|画面)|(?:这个|那个|这段|那段)视频/.test(s);
+  if(!wants&&!(automatic&&sharedLinks(s).length&&s.length<300))return null;
+  for(const item of items)if(item.videos?.length){const selected=item.videos.find(v=>v.kind!=='stream')||item.videos[0];return {...selected,reference:item.url,title:item.title,count:item.videos.length};}
+  return null;
+}
+export async function readWebVideo(intent,token,fetcher=fetch,options={}){
+  const url=webUrl(intent.url),addresses=await (options.resolve||((host)=>dns.lookup(host,{all:true})))(url.hostname);
+  if(!addresses.length||addresses.some(v=>!publicAddress(v.address)))throw new Error('视频域名指向内网，未下载');
+  if(intent.kind==='stream')throw new Error('网页视频是HLS/DASH分段流，暂不支持；请提供公开MP4/WebM或B站视频链接');
+  options.onStatus?.('正在读取网页公开视频，按设置抽帧并在本机转写音轨');
+  const r=await fetcher('http://127.0.0.1:13481/video-frames',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({url:url.href,source:'web'}),signal:AbortSignal.any([AbortSignal.timeout(510000),...(options.signal?[options.signal]:[])])});
+  if(!r.ok){await r.body?.cancel();throw new Error('网页视频下载未完成，可能需要登录、已失效或超过32MB；未读取画面');}
+  let sample=await r.json();
+  if(sample.clip){if(!/^clip-[a-f0-9]{32}\.bin$/.test(sample.clip)||!options.decode)throw new Error('网页视频兼容解码组件未就绪');sample=await options.decode(sample.clip);}
+  const video=sampledVideo(sample);
+  return {...video,title:intent.title,reference:intent.reference,scope:'来源：'+intent.reference+'\n网页：'+intent.title+(intent.count>1?'\n页面包含多个视频，本次只读取其中首个可用格式的视频。':'')+'\n'+video.scope};
+}
 export const VIDEO_POLICY=Object.freeze({seconds:600,batchSeconds:120,fps:1,perSheet:8,maxSheets:75,batchSheets:15,width:1024,height:288,estimatedTokensPerSheet:3000,maxRequestTokens:100000});
 export function samplingPlan(duration,fps=1){
   if(![1,2,4].includes(fps))throw new Error('视频采样仅支持每秒1、2或4帧');

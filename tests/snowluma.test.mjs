@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {readyAccount,oneBotConfig,needsRelaunchRecovery} from '../assets/snowluma-bridge.mjs';
+import {readyAccount,oneBotConfig,needsRelaunchRecovery,pendingConnection} from '../assets/snowluma-bridge.mjs';
 
 test('recover only a completed launcher with an unhooked QQ relaunch',()=>{
   const relaunch={launcherExited:true,args:['/opt/QQ/qq','--relaunch'],nativeLoaded:false};
@@ -28,4 +28,13 @@ test('SnowLuma OneBot is authenticated and limited to the local assistant',()=>{
   assert.deepEqual(saved.networks.wsClients,[]);assert.deepEqual(saved.networks.httpServers,[]);
   assert.equal(config.networks.wsClients.length,1);
   assert.throws(()=>oneBotConfig({},'test-token'));
+});
+
+ test('a connected hook is reported as pending, never as a verified QQ session',()=>{
+  assert.equal(pendingConnection([]).phase,'preparing');
+  const items=[{connected:true,loggedIn:false,uin:'0'}];
+  assert.equal(pendingConnection(items,{since:1000,now:89999}).phase,'waiting_login');
+  const stalled=pendingConnection(items,{since:1000,now:91000});
+  assert.equal(stalled.phase,'login_stalled');assert.match(stalled.message,/消息通道/);
+  assert.equal(readyAccount(items),null);
 });

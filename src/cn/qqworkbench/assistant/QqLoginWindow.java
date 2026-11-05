@@ -25,7 +25,7 @@ final class QqLoginWindow {
     }
     boolean current(){return !closed&&!a.destroyed&&a.loginWindow==this&&a.browser==web;}
     final Runnable tick=new Runnable(){public void run(){if(!current()||paused)return;if(!busy){busy=true;worker.submit(()->{QqWindowProbe.Status result=QqWindowProbe.check(slot);a.runOnUiThread(()->{busy=false;if(!current()||paused)return;
-            if(result==QqWindowProbe.Status.READY){identify.setEnabled(true);hint.setText("QQ 登录窗口已就绪，请在下方登录；完成后核验账号。");if(!loaded)load();}
+            if(result==QqWindowProbe.Status.READY){identify.setEnabled(true);hint.setText(slot==0&&a.lastState!=null?(a.lastState.optBoolean("connected")?"QQ 已连接，可以返回聊天。":a.lastState.optString("connectionMessage","请在下方完成 QQ 登录，消息通道会自动核验。")):"QQ 登录窗口已就绪，请在下方登录；完成后核验账号。");if(!loaded)load();}
             else {identify.setEnabled(false);if(loaded){loaded=false;web.stopLoading();web.setVisibility(View.GONE);}String stage=RuntimeService.state;hint.setText(!startProblem.isEmpty()?startProblem:!RuntimeService.running?stage+"\n可点“检测环境并重试打开”，或在诊断查看缺失组件。":result==QqWindowProbe.Status.DESKTOP_UNAVAILABLE?"登录网页已就绪，桌面组件仍在准备…\n"+stage:"正在准备 QQ 登录窗口…\n"+stage+"\n首次安装会自动检测并下载缺失组件，请保持联网。");}
         });});}a.handler.postDelayed(this,2500);}};
     void load(){try{loaded=true;web.setVisibility(View.VISIBLE);web.loadUrl("http://127.0.0.1:"+QqWindowProbe.webPort(slot)+"/vnc.html?autoconnect=true&resize=scale#password="+URLEncoder.encode(new Secrets(a).ensure("vnc").substring(0,8),"UTF-8"));}catch(Exception e){failed();}}

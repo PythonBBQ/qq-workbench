@@ -33,7 +33,7 @@ public final class MainActivity extends Activity {
         if(!DataMigration.busy&&!refreshBusy){refreshBusy=true;poller.submit(()->{try{
             JSONObject state=api("/state",null);if(!state.optBoolean("modelConfigured")&&hasKey())applyCredentials();
             runOnUiThread(()->{if(destroyed)return;lastState=state;
-                if(screen.equals("home")){status.setText(state.optBoolean("connected")?"QQ 已连接 · "+state.optString("identity"):"正在连接 QQ");replyState.setText(replyProgress(state));detail.setText(state.optString("recentText").isEmpty()?"还没有新对话。登录后给小号发一句话即可。":state.optString("recentText"));
+                if(screen.equals("home")){status.setText(state.optBoolean("connected")?"QQ 已连接 · "+state.optString("identity"):state.optString("connectionMessage","正在连接 QQ"));replyState.setText(replyProgress(state));detail.setText(state.optString("recentText").isEmpty()?"还没有新对话。登录后给小号发一句话即可。":state.optString("recentText"));
                     if(!state.optBoolean("connected")&&!loginOffered&&hasKey()){loginOffered=true;returnAfterLogin=true;go("qq");}
                 }else if(screen.equals("qq")&&state.optBoolean("connected")&&returnAfterLogin){returnAfterLogin=false;if(!history.isEmpty()&&history.peekLast().equals("home"))history.removeLast();show("home");}
                 else if(screen.equals("setup")&&detail!=null)detail.setText(RuntimeService.state);
@@ -214,7 +214,7 @@ public final class MainActivity extends Activity {
         button("登录B站（自动保存登录状态）",this::biliLogin);
         button("打开哔哩哔哩App",this::openBiliApp);
         button("平台登录资料（可选）",()->platformCredentials());
-        help("支持范围","已内置多平台分享解析。B站可在上方官方网页登录，自动加密保存登录状态；也保留手动Cookie。打开官方App仅作跳转，App登录不会同步到工作台。聊天可说“B站搜索看看某个主题的视频”先搜索再看，也可发BV号或视频链接说“看看这个视频”，会实际下载可访问的最低画质视频并每秒抽帧；只有“看完视频”等明确续看才引用当前会话最近的视频；默认按视频内容搜索，仅“搜up 名字”时查作者；新主题先新搜索，聊天不附技术来源，发＃来源再查看，失败不拿旧画面代替。只查标题简介时不下载视频。仅支持有权访问的普通视频，32MB、10分钟以内，不把封面或试看当完整内容；在本机检测声音、辅助分类和转写音轨。其他平台最多读取两张配图和公开正文，不等于看完视频。网页搜索最多3条结果、尝试读取2个网页。解析本身不调用模型，聊天与视频按实际模型用量计费。网页、视频和卡片不能改变账号身份与操作权限。");
+        help("支持范围","已内置多平台分享解析。B站可在上方官方网页登录，自动加密保存登录状态；也保留手动Cookie。打开官方App仅作跳转，App登录不会同步到工作台。聊天可说“B站搜索看看某个主题的视频”先搜索再看，也可发BV号或视频链接说“看看这个视频”，会实际下载可访问的最低画质视频并每秒抽帧；只有“看完视频”等明确续看才引用当前会话最近的视频；默认按视频内容搜索，仅“搜up 名字”时查作者；新主题先新搜索，聊天不附技术来源，发＃来源再查看，失败不拿旧画面代替。只查标题简介时不下载视频。仅支持有权访问的普通视频，32MB、10分钟以内，不把封面或试看当完整内容；在本机检测声音、辅助分类和转写音轨。普通网页支持声明的MP4/WebM视频及内嵌B站播放器，发链接或说“看看这个网页的视频”即可，最多分析其中一个视频；不执行脚本或绕过登录。其他分享平台仍以正文和配图为主；HLS/DASH分段流暂不支持。网页搜索最多3条结果、尝试读取2个网页。解析本身不调用模型，聊天与视频按实际模型用量计费。网页、视频和卡片不能改变账号身份与操作权限。");
         section("资料笔记","最多30条，回答时只带入相关片段。");LinearLayout notes=body,requestedPage=page;TextView loading=text("正在读取…",14);notes.addView(loading);
         io.submit(()->{try{JSONArray all=api("/learning/notes",null).optJSONArray("notes");runOnUiThread(()->{if(destroyed||page!=requestedPage)return;notes.removeView(loading);body=notes;if(all==null||all.length()==0)note("还没有笔记。");else for(int i=0;i<all.length();i++){JSONObject n=all.optJSONObject(i);if(n==null)continue;button(n.optString("title","资料"),()->new AlertDialog.Builder(this).setTitle(n.optString("title")).setMessage(n.optString("url")+"\n\n"+n.optString("content")).setPositiveButton("关闭",null).setNeutralButton("删除",(d,w)->deleteNote(n.optString("id"))).show());}});}catch(Exception e){runOnUiThread(()->{if(!destroyed&&page==requestedPage)loading.setText("服务就绪后可查看笔记。");});}});
     }
@@ -308,7 +308,7 @@ public final class MainActivity extends Activity {
     void memoryDelete(String id,String note){io.submit(()->{try{JSONObject data=new JSONObject().put("id",id);if(note!=null)data.put("noteId",note);api("/memory/delete",data);runOnUiThread(()->{if(screen.equals("memory"))memorySettings();toast("记忆已删除");});}catch(Exception e){runOnUiThread(()->toast("删除未完成"));}});}
     void exportTraining(){io.submit(()->{try{JSONObject result=api("/memory/export",new JSONObject());String jsonl=result.optString("jsonl");runOnUiThread(()->{if(jsonl.isEmpty()){toast("还没有大号对话样本");return;}pendingTrainingExport=jsonl;try{startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).setType("application/x-ndjson").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE,"qiqiu-chat-samples.jsonl"),74);}catch(Exception e){pendingTrainingExport="";toast("系统导出界面不可用");}});}catch(Exception e){runOnUiThread(()->toast("导出未完成，请先启动服务"));}});}
     void videoSettings(){
-        base("能力","video");section("图片与视频","使用当前API卡片的图片能力。支持32MB、10分钟以内的QQ、本机与可访问的B站视频。支持每秒1、2、4帧，每8帧压缩为低清拼图，按预算分段，完整时段分析后汇总；在本机检测声音、辅助分类和转写音轨。");
+        base("能力","video");section("图片与视频","使用当前API卡片的图片能力。支持32MB、10分钟以内的QQ、本机、B站及公开网页视频。支持每秒1、2、4帧，每8帧压缩为低清拼图，按预算分段，完整时段分析后汇总；在本机检测声音、辅助分类和转写音轨。");
         Switch enabled=toggle("自动理解QQ发来的视频",prefs().getBoolean("videoEnabled",true));
         section("视频采样密度","1帧省用量；2帧兼顾动作；4帧适合快速动作。2帧、4帧会增加处理时间、模型请求及总Token，仍支持10分钟以内的视频。");
         RadioGroup rates=new RadioGroup(this);int savedRate=prefs().getInt("videoFps",1);
@@ -316,8 +316,8 @@ public final class MainActivity extends Activity {
         primary("保存视频设置",()->{try{patch(new JSONObject().put("videoEnabled",enabled.isChecked()).put("videoFps",rates.getCheckedRadioButtonId()));toast("视频偏好已保存，下次视频生效");}catch(Exception e){toast("保存失败");}});
         EditText question=input("本次想了解什么",prefs().getString("videoQuestion","结合画面概括发生了什么"),false);
         primary("选择本机视频并分析",()->{prefs().edit().putString("videoQuestion",question.getText().toString()).apply();try{startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("video/*").addCategory(Intent.CATEGORY_OPENABLE),73);}catch(Exception e){toast("系统视频选择器不可用");}});
-        EditText bili=input("B站视频链接或BV号","",false);
-        primary("读取B站视频画面",()->{String value=bili.getText().toString().trim();if(value.isEmpty()){toast("先填写视频链接或BV号");return;}String q=question.getText().toString();toast("正在获取B站视频画面…");io.submit(()->{try{JSONObject r=api("/video/analyze",new JSONObject().put("bili",value).put("question",q));runOnUiThread(()->{if(!destroyed)new AlertDialog.Builder(this).setTitle(r.optBoolean("ok")?"B站视频分析":"视频读取未完成").setMessage(r.optString("message")+"\n\n"+r.optString("answer")).setPositiveButton("完成",null).show();});}catch(Exception e){runOnUiThread(()->toast("读取未完成，请检查本地服务和B站登录"));}});});
+        EditText bili=input("网页或视频链接，也支持BV号","",false);
+        primary("读取链接里的视频",()->{String value=bili.getText().toString().trim();if(value.isEmpty()){toast("先填写视频链接或BV号");return;}String q=question.getText().toString();toast("正在查找并读取视频…");io.submit(()->{try{JSONObject r=api("/video/analyze",new JSONObject().put("bili",value).put("question",q));runOnUiThread(()->{if(!destroyed)new AlertDialog.Builder(this).setTitle(r.optBoolean("ok")?"视频分析":"视频读取未完成").setMessage(r.optString("message")+"\n\n"+r.optString("answer")).setPositiveButton("完成",null).show();});}catch(Exception e){runOnUiThread(()->toast("读取未完成，请检查本地服务、链接和站点登录"));}});});
         button("登录 / 更新B站登录",this::biliLogin);
         button("打开哔哩哔哩App",this::openBiliApp);
         button("选择视觉模型",()->go("api"));help("图片与视频说明","图片会结合聊天上下文回复。视频每秒可选1、2或4帧，每帧缩至256×144以内，8帧拼图。每次请求最多15张拼图，以10万Token为估算上限，无法代替服务商实际计费。1帧模式每段120秒，2帧60秒，4帧30秒；10分钟分别分5、10、20段后汇总。采样密度和时长越高，总用量越高。内置离线中英等多语种音轨识别和声音检测；本机抽样分类可辅助判断音乐/人声等，概率不是精确识曲，也不能凭它编造旋律。没有对白文字不等于静音。每30秒最多保留300字转写，每两分钟最多1200字，语音转写本身不调用模型。默认只结合画面和对白文字回复，明确问声音或BGM才讨论音乐。中英混说自动识别，可疑重复转写会尝试英文重听并标记不确定；短促梗音频、变速、歌声或重混仍可能识别不准；小字与快速动作也可能遗漏。后续聊天保留分析文字，不重复发送视频画面。视觉能力在模型卡片中设置；DeepSeek文字模型需单独配置视觉服务。");
@@ -419,6 +419,7 @@ public final class MainActivity extends Activity {
     void openSystem(Intent intent){try{startActivity(intent);}catch(ActivityNotFoundException e){toast("系统未提供此入口，请在应用详情中设置");}}
     String replyProgress(JSONObject state){
         if(!state.optBoolean("enabled"))return "已手动暂停 · 点击恢复自动回复";
+        if(!state.optBoolean("connected"))return "自动回复已开启 · 等待 QQ 连接，暂不能回复";
         JSONObject task=state.optJSONObject("processing");
         if(task!=null&&task.optBoolean("active"))return task.optString("phase","正在回复")+" · "+Math.max(0,(System.currentTimeMillis()-task.optLong("since",System.currentTimeMillis()))/1000)+" 秒 · 排队 "+state.optInt("queue")+" 条";
         JSONObject recovery=state.optJSONObject("deliveryRecovery");

@@ -3,6 +3,7 @@ import {contextText} from './images.mjs';
 import {browsingDeclined} from './browse-intent.mjs';
 import {publicAddress,webUrl,htmlText,searchWeb} from './web-learning.mjs';
 import {sampledVideo} from './video.mjs';
+import {sharedLinks} from './multi-parser.mjs';
 import dns from 'node:dns/promises';
 
 const bvidPattern=/BV[0-9A-Za-z]{10}(?![0-9A-Za-z])/;
@@ -39,14 +40,15 @@ export function biliVideoIntent(text,{history=[],cards=[],automatic=true,state=n
   const current=biliReference(s)||cards.map(c=>biliReference(c.url)).find(Boolean);
   if(current&&(wants||automatic&&s.length<180))return {url:current,fromHistory:false};
   if(current)return null;
-  if(!state&&/^(?:请|你|再|帮我)?(?:听听|听一下|听一听|听下|听).{0,8}(?:这个|那个|刚才)(?:的|视频|BGM|配乐|背景音乐|声音|音轨|\s)*[。！!？?\s]*$/i.test(s)){for(const item of history.filter(m=>m.role==='user').slice(-6).reverse()){const url=biliReference(contextText(item.content));if(url)return {url,fromHistory:true};}}
+  if(!state&&/^(?:请|你|再|帮我)?(?:听听|听一下|听一听|听下|听).{0,8}(?:这个|那个|刚才)(?:的|视频|BGM|配乐|背景音乐|声音|音轨|\s)*[。！!？?\s]*$/i.test(s)){for(const item of history.filter(m=>m.role==='user').slice(-6).reverse()){const value=contextText(item.content),url=biliReference(value);if(url)return {url,fromHistory:true};if(sharedLinks(value).length)break;}}
   const continuation=biliFollowup(s,state);
   if(continuation)return ['discuss','audio'].includes(continuation.kind)?null:continuation;
   if(/(?:是找的|是搜的|找的是|搜的是).{0,12}(?:吗|么|？|\?)/.test(s))return null;
   const followup=s.replace(/^@(?:deepseek|codex)\s*/i,'').trim();
   const referenceOnly=/^(?:(?:请|你|帮我|麻烦|再|继续|接着|刚才|上面|这个|那个|这段|那段|的|把|在|B站|bilibili|哔站|逼站|哔哩哔哩|看完|观看|看懂|分析|总结|概括|看看|看下|看一下|看|视频|全部|完整|内容|一下|下|吧|呀|啊)|[\s，,。.!！?？：:])+$/i.test(followup);
   const recent=history.filter(m=>m.role==='user').slice(-6);
-  const inBiliConversation=recent.some(m=>biliReference(contextText(m.content))||/(?:B站|bilibili|哔站|逼站|哔哩哔哩)/i.test(contextText(m.content)));
+  const recentReference=[...recent].reverse().find(m=>biliReference(contextText(m.content))||sharedLinks(contextText(m.content)).length);
+  const inBiliConversation=recentReference?!!biliReference(contextText(recentReference.content)):recent.some(m=>/(?:B站|bilibili|哔站|逼站|哔哩哔哩)/i.test(contextText(m.content)));
   const explicitCreator=creatorRequest(s);
   const search=referenceOnly?'':biliSearchQuery(s)||(explicitCreator?biliSearchQuery('B站 '+s):'')||(inBiliConversation&&wants&&/视频/.test(s)?biliSearchQuery('B站 '+s):'');
   if(search)return {kind:'search',query:search,mode:explicitCreator?'creator':'topic',fromHistory:false};
@@ -55,7 +57,7 @@ export function biliVideoIntent(text,{history=[],cards=[],automatic=true,state=n
   if(referenceOnly&&wants&&!/(?:搜索|搜|找)/.test(followup)){
     // Only this conversation's recent user messages can supply a missing link.
     for(const m of history.filter(m=>m.role==='user').slice(-6).reverse()){
-      const url=biliReference(contextText(m.content));if(url)return {url,fromHistory:true};
+      const value=contextText(m.content),url=biliReference(value);if(url)return {url,fromHistory:true};if(sharedLinks(value).length)break;
     }
   }
   return null;
