@@ -1,4 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="cn.qqworkbench.assistant" android:versionCode="10012" android:versionName="1.0.8">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="cn.qqworkbench.assistant" android:versionCode="10013" android:versionName="1.0.8">
   <uses-sdk android:minSdkVersion="30" android:targetSdkVersion="35"/>
   <uses-permission android:name="android.permission.INTERNET"/>
   <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>

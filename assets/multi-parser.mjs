@@ -24,13 +24,14 @@ export const platformFor=value=>{try{const u=new URL(value);return PLATFORMS.fin
 export function shareUrl(value){
  let s=String(value||'').replace(/&amp;/g,'&').trim().replace(/[.,;，。；、!！?？)）\]】]+$/g,'');
  if(s.startsWith('//'))s='https:'+s;
+ if(/^www\./i.test(s))s='https://'+s;
  if(s.startsWith('http://')&&platformFor(s))s='https://'+s.slice(7);
  if(s.length>8192)throw new Error('分享链接过长');
  return webUrl(s).href;
 }
 export function sharedLinks(text){
  const out=[];
- for(const m of String(text).slice(0,12000).matchAll(/https?:\/\/[^\s<>"'「」]+/gi))try{const u=shareUrl(m[0]);if(!out.includes(u))out.push(u);if(out.length===2)break;}catch{}
+ for(const m of String(text).slice(0,12000).matchAll(/(?:https?:\/\/|\bwww\.)[^\s<>"'「」，。；！？）】]+/gi))try{const u=shareUrl(m[0]);if(!out.includes(u))out.push(u);if(out.length===2)break;}catch{}
  return out;
 }
 export function shareCards(event){

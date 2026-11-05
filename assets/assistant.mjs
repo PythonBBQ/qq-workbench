@@ -723,13 +723,13 @@ async function main() {
       }
       else if(req.method==='GET'&&req.url==='/learning/notes')res.end(JSON.stringify({notes:learning.list()}));
       else if(req.method==='POST'&&req.url==='/learning/read'){
-        const data=await body(req);try{if(typeof data.value!=='string'||data.value.length>2048||!['read','search','share-read','web-read','web-search'].includes(data.kind))throw new Error('请输入有效的公开网页链接或主题');const items=await learning.lookup({kind:data.kind,value:data.value});if(data.save===true)learning.save(items);res.end(JSON.stringify({items,message:data.save===true?'公开资料已存入本机笔记':'分享内容读取完成，未读取视频音画'}));}catch(e){res.end(JSON.stringify({items:[],message:e.message}));}
+        const data=await body(req);try{if(typeof data.value!=='string'||data.value.length>2048||!['read','search','share-read','web-read','web-search'].includes(data.kind))throw new Error('请输入有效的公开网页链接或主题');let intent={kind:data.kind,value:data.value};if(['read','share-read','web-read'].includes(data.kind)){intent=await learning.plan(data.value,{automatic:false});if(intent?.kind!=='share-read')throw new Error('请填写公开网页链接，可在链接后面加上问题');}const items=await learning.lookup(intent);if(data.save===true)learning.save(items);const failures=items.flatMap(n=>n.readFailures||[]);res.end(JSON.stringify({items,message:(data.save===true?'公开资料已存入本机笔记':'网页内容读取完成，未读取视频音画')+(failures.length?'；部分网页未读取：'+failures.map(f=>f.message).join('；'):'')}));}catch(e){res.end(JSON.stringify({items:[],message:e.message}));}
       }
       else if(req.method==='POST'&&req.url==='/learning/preview'){
         const data=await body(req),c=config();if(typeof data.text!=='string'||data.text.length>1000)throw new Error('请输入有效的聊天测试语句');
         if(c.learningEnabled===false){res.end(JSON.stringify({items:[],message:'聊天联网已关闭，请先开启联网开关'}));return;}
         const intent=await learning.plan(data.text,{automatic:c.autoBrowse!==false,planner:apiKey?messages=>model(c.apiUrl,apiKey,{model:c.model,max_tokens:180,messages},12000,'search'):undefined});
-        try{const items=intent&&intent.kind!=='clarify'?await learning.lookup(intent):[];res.end(JSON.stringify({intent,items,message:!intent?'普通聊天，本次不联网':intent.kind==='clarify'?'请补充想搜索的主题':'已按聊天语句检索公开资料，未向QQ发送消息'}));}
+        try{const items=intent&&!['clarify','page-clarify'].includes(intent.kind)?await learning.lookup(intent):[];res.end(JSON.stringify({intent,items,message:!intent?'普通聊天，本次不联网':intent.kind==='clarify'?'请补充想搜索的主题':intent.kind==='page-clarify'?'请提供要浏览的网页链接':'已按聊天语句读取公开资料，未向QQ发送消息'}));}
         catch(e){res.end(JSON.stringify({intent,items:[],message:e.message}));}
       }
       else if(req.method==='POST'&&req.url==='/learning/delete'){const data=await body(req);if(typeof data.id!=='string'||data.id.length>32)throw new Error('Invalid note');learning.remove(data.id);res.end(JSON.stringify({message:'资料笔记已删除'}));}

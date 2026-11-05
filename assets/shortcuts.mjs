@@ -1,4 +1,5 @@
 import {deviceRequest,validDeviceOperation} from './device-tools.mjs';
+import {sharedLinks} from './multi-parser.mjs';
 export const COMMANDS=[
  ['指令','','显示全部指令'],['状态','','查看QQ和模型状态'],['用量','','查看Token用量'],['量前','次数（1–20）','查看最近几次调用用量，如＃量前5'],['暂停','','暂停自动回复'],['继续','','恢复自动回复'],['结束','','结束当前对话'],
  ['来源','','查看当前对话最近一次真实来源'],['搜索','关键词','联网搜索'],['浏览','网址','读取公开网页'],['收藏','','收藏刚发的表情'],['表情','','发一个收藏表情'],['语音','文字','朗读指定文字'],['开音','','开启语音'],['静音','','关闭语音'],['音色','晓晓','切换基础音色'],['语速','数值','调整语速百分比'],['音高','数值','调整音高百分比'],
@@ -28,7 +29,7 @@ export function parseShortcut(event){
  if(['暂停','继续'].includes(name))return operation('replyControl',{enabled:name==='继续'});
  if(name==='结束')return operation('endChat');
  if(name==='搜索')return arg?rewrite('去搜一下'+arg):need();
- if(name==='浏览'){try{const u=new URL(arg);if(u.protocol!=='https:'||u.username||u.password)throw 0;}catch{return need();}return rewrite(arg);}
+ if(name==='浏览'){if(!sharedLinks(arg).length)return need();return rewrite(arg);}
  if(name==='收藏')return operation('collect');
  if(name==='表情')return rewrite('发个表情');
  if(name==='语音')return arg&&arg.length<=260?operation('speak',{text:arg}):need();

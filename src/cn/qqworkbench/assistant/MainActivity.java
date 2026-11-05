@@ -204,11 +204,11 @@ public final class MainActivity extends Activity {
     });}catch(Exception e){runOnUiThread(()->toast("本地服务就绪后可查看名单"));}});}
     void moderationRow(LinearLayout content,String group,String qq){content.addView(plainButton((group.equals("private")?"私聊":"群 "+group)+" · QQ "+qq+" · 解除",()->io.submit(()->{try{api("/moderation/unblock",new JSONObject().put("group",group).put("target",qq));runOnUiThread(()->toast("已解除，请重新打开名单查看"));}catch(Exception e){runOnUiThread(()->toast("解除未完成"));}})));}
     void learningSettings(){
-        base("能力","learning");section("联网与分享解析","直接发送链接或QQ分享卡片，AI会读取内容结合上下文回复；搜索仍可说“去搜一下…”或用＃搜索。");
+        base("能力","learning");section("联网与网页浏览","直接发网页链接、QQ分享卡片，或发“＃浏览 网址 问题”。可继续问“这篇文章的步骤呢”，说“重新读取这个网页”会刷新。一次最多读两个链接；搜索仍用＃搜索。");
         Switch enabled=toggle("允许聊天联网",prefs().getBoolean("learningEnabled",true)),remember=toggle("保存主人分享的资料",prefs().getBoolean("learningRemember",true)),automatic=toggle("时效问题自动联网",prefs().getBoolean("autoBrowse",true));
         Switch pixiv=toggle("解析公开Pixiv插画（默认关闭）",prefs().getBoolean("learningPixiv",false));
         primary("保存联网设置",()->{try{patch(new JSONObject().put("learningEnabled",enabled.isChecked()).put("learningRemember",remember.isChecked()).put("autoBrowse",automatic.isChecked()).put("learningPixiv",pixiv.isChecked()));toast("联网设置已保存");}catch(Exception e){toast("保存失败");}});
-        section("查资料","");EditText query=input("主题或分享链接","",false);Spinner kind=choices(new String[]{"解析分享链接 / 网页","网页搜索","B站搜索"},0);Switch save=toggle("保存本次资料",true);
+        section("查资料","");EditText query=input("网址（后面可加问题）或搜索主题","",false);Spinner kind=choices(new String[]{"浏览网页 / 分享链接","网页搜索","B站搜索"},0);Switch save=toggle("保存本次资料",true);
         primary("搜索或读取",()->{String[] kinds={"share-read","web-search","search"};learn(query.getText().toString().trim(),kinds[kind.getSelectedItemPosition()],save.isChecked());});
         button("测试聊天会怎样联网",()->previewBrowse(query.getText().toString().trim()));
         button("登录B站（自动保存登录状态）",this::biliLogin);

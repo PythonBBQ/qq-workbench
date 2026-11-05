@@ -60,7 +60,7 @@ globalThis.fetch=async(url,options)=>{
   if(u.hostname==='api.bilibili.com'&&u.searchParams.get('bvid')==='BV1Umxc6JEdD')return Response.json({code:0,data:{bvid:'BV1Umxc6JEdD',title:'Synthetic full video',duration:120,cid:1234,pages:[{page:1,cid:1234,duration:120}]}});
   if(u.hostname==='api.bilibili.com')return Response.json({code:0,data:{bvid:'BV1GJ411x7h7',title:'做饭与白饭',owner:{name:'测试作者'},desc:'仅供隔离测试的公开简介'}});
   if(u.hostname==='cn.bing.com'){process.send({browse:{url:u.href,auth:options.headers?.Authorization}});return new Response('<li class="b_algo"><h2><a href="https://example.com/deepseek">DeepSeek 官方资料</a></h2><p>公开搜索摘要</p></li>',{headers:{'content-type':'text/html'}});}
-  if(u.hostname==='example.com'){process.send({browse:{url:u.href,auth:options.headers?.Authorization}});return new Response('<title>公开版本资料</title><main>'+('测试版本更新信息，仅供隔离验证。'.repeat(10))+'</main>',{headers:{'content-type':'text/html'}});}
+  if(u.hostname==='example.com'){process.send({browse:{url:u.href,auth:options.headers?.Authorization}});return new Response(u.pathname==='/provided'?'<title>用户指定的部署文档</title><main>'+('本文介绍部署的准备工作。'.repeat(650))+'部署步骤：先安装 PROVIDED_PAGE_TOOL，然后启动服务。</main>':'<title>公开版本资料</title><main>'+('测试版本更新信息，仅供隔离验证。'.repeat(10))+'</main>',{headers:{'content-type':'text/html'}});}
   if(u.hostname==='eastasia.tts.speech.microsoft.com'&&globalThis.sendControl==='speech-failed'){process.send({speechAttempt:true});return new Response('synthetic synthesis failed',{status:503});}
   if(u.hostname==='eastasia.tts.speech.microsoft.com')return new Response(Buffer.concat([Buffer.from('ID3'),Buffer.alloc(100)]));
   if(u.hostname==='qpic.cn')return new Response(new Uint8Array([1,2,3]),{headers:{'content-type':'image/png'}});
@@ -339,6 +339,16 @@ globalThis.fetch=async(url,options)=>{
     await api('/learning/cookies',{cookies:{bilibili_cookies:'SESSDATA=synthetic-private-cookie'}});
     assert.ok(!(await(await api('/learning/platforms')).text()).includes('synthetic-private-cookie'));
     assert.ok(!JSON.stringify(models).includes('synthetic-private-cookie'));
+    // A supplied ordinary webpage and its scoped follow-up reach the actual chat route.
+    n=sent.length;let beforeProvided=models.length;
+    sendCommand(312,'#浏览 https://example.com/provided，部署步骤是什么');await until(()=>sent.length===n+1);
+    assert.equal(models.length,beforeProvided+1);assert.match(JSON.stringify(models.at(-1).model.messages.at(-1).content),/PROVIDED_PAGE_TOOL/);
+    assert.ok(!JSON.stringify(models.at(-1)).includes('synthetic-private-cookie'));
+    n=sent.length;beforeProvided=models.length;
+    sendCommand(313,'这篇文章的部署步骤呢');await until(()=>sent.length===n+1);
+    assert.equal(models.length,beforeProvided+1);assert.match(JSON.stringify(models.at(-1).model.messages.at(-1).content),/PROVIDED_PAGE_TOOL/);
+    n=sent.length;beforeProvided=models.length;sendCommand(314,'#来源');await until(()=>sent.length===n+1);
+    assert.equal(models.length,beforeProvided);assert.match(sent.at(-1).message[0].data.text,/example\.com\/provided/);
     // The full ten minutes are read sequentially; each request stays below the two-minute image budget.
     const longVideo={sampling:'1fps-contact-sheet-v1',durationSeconds:600,sampledSeconds:600,frameCount:600,frames:Array.from({length:75},(_,i)=>({seconds:i*8,timestamps:Array.from({length:8},(_,j)=>i*8+j),url:'data:image/jpeg;base64,AQID'}))};
     let beforeVideo=models.length;

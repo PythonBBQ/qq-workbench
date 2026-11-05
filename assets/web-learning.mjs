@@ -32,16 +32,33 @@ async function html(value,fetcher,resolve,{signal:outer,timeoutMs=8000}={}){
     const reader=r.body.getReader();
     try{while(true){const {value:chunk,done}=await bounded(()=>reader.read(),signal);if(done)break;size+=chunk.length;if(size>1024*1024)throw new Error('网页超过 1MB 读取上限');chunks.push(chunk);}}
     finally{void reader.cancel().catch(()=>{});reader.releaseLock();}
-    return {url:u.href,source:Buffer.concat(chunks).toString('utf8')};
+    const bytes=Buffer.concat(chunks),encoding=(r.headers.get('content-type')||'').match(/charset\s*=\s*["']?([\w-]+)/i)?.[1]||bytes.subarray(0,4096).toString('ascii').match(/charset\s*=\s*["']?([\w-]+)/i)?.[1]||'utf-8';
+    let source;try{source=new TextDecoder(encoding).decode(bytes);}catch{source=bytes.toString('utf8');}
+    return {url:u.href,source};
   }throw new Error('网页跳转次数过多');
 }
 const resolver=host=>dns.lookup(host,{all:true});
+function pageExcerpt(text,question,limit=3200){
+  if(text.length<=limit)return text;
+  if(/后半(?:部分|段)?|后面的?(?:内容|部分|段落)|结尾|末尾|最后(?:一段|部分|章节)/.test(String(question||'')))return text.slice(0,400)+'\n（中间部分省略）\n'+text.slice(-(limit-450));
+  const query=String(question||'').replace(/https?:\/\/\S+|www\.\S+/gi,'').replace(/这个|网页|文章|页面|里面|内容|什么|一下|帮我|看看|总结|概括|重新|读取/g,'');
+  const terms=[...new Set([...(query.toLowerCase().match(/[a-z0-9_-]{3,}/g)||[]),...(query.match(/[\u3400-\u9fff]{2,}/g)||[]).flatMap(word=>Array.from({length:word.length-1},(_,i)=>word.slice(i,i+2)))])].slice(0,60);
+  const windows=[];
+  for(let at=0;at<text.length;at+=700){const body=text.slice(at,at+900),lower=body.toLowerCase(),score=terms.reduce((n,term)=>n+(lower.includes(term)?1:0),0);if(score)windows.push({at,score});}
+  const selected=windows.sort((a,b)=>b.score-a.score||a.at-b.at).slice(0,2).sort((a,b)=>a.at-b.at);
+  if(!selected.length)return text.slice(0,limit);
+  const ranges=[{at:0,end:500},...selected.map(w=>({at:w.at,end:Math.min(text.length,w.at+900)}))],merged=[];
+  for(const range of ranges){const last=merged.at(-1);if(last&&range.at<=last.end)last.end=Math.max(last.end,range.end);else merged.push(range);}
+  return merged.map(range=>text.slice(range.at,range.end)).join('\n（中间部分省略）\n').slice(0,limit);
+}
 export async function readWeb(value,fetcher=fetch,resolve=resolver,options={}){
   const {url,source}=await html(value,fetcher,resolve,options);
   const title=htmlText(source.match(/<title\b[^>]*>([^]*?)<\/title>/i)?.[1],160)||new URL(url).hostname;
   const main=source.match(/<(?:article|main)\b[^>]*>([^]*?)<\/(?:article|main)>/i)?.[1]||source;
-  const content=htmlText(main,2200);if(content.length<30)throw new Error('网页没有可读取的正文，可能需要登录或浏览器脚本');
-  return [{title,url,content:'资料范围：公开网页正文摘录；未执行网页脚本，未登录网站。\n'+content}];
+  const body=htmlText(main,60000);if(body.length<30)throw new Error('网页没有可读取的正文，可能需要登录或浏览器脚本');
+  if(/^(?:just a moment|access denied|attention required|安全验证|访问验证|人机验证|登录后继续)[.!！。\s]*$/i.test(title))throw new Error('网页要求登录或访问验证，未读取到文章正文');
+  const content=pageExcerpt(body,options.question),truncated=body.length>content.length;
+  return [{title,url,content:'资料范围：公开网页正文摘录；未执行网页脚本，未登录网站。'+(truncated?'正文较长，本次按问题选择部分段落，不代表全文。':'')+'\n'+content}];
 }
 export function searchResults(source,engineUrl){
   const pattern=new URL(engineUrl).hostname.endsWith('duckduckgo.com')?
