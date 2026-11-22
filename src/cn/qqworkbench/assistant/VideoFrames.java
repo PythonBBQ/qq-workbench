@@ -15,7 +15,9 @@ import java.net.*;
 
 /** Bounded visual sampling; no audio transcription or claim to watch every frame. */
 final class VideoFrames {
-    static final long MAX_BYTES=32L*1024*1024;
+    static final long MAX_BYTES=256L*1024*1024;
+    static int inputMB(int value){return value==32||value==64||value==128||value==256||value==512?value:256;}
+    static long inputBytes(Context context){return inputMB(context.getSharedPreferences("settings",0).getInt("videoInputMB",256))*1024L*1024;}
     static long[] timestamps(long durationMs){
         if(durationMs<=0||durationMs>600000)throw new IllegalArgumentException("仅支持10分钟以内的视频，建议选择短片段");
         int count=(int)((durationMs+999)/1000);long[] values=new long[count];
@@ -53,15 +55,18 @@ final class VideoFrames {
         if(!directory.isDirectory()&&!directory.mkdirs())throw new IOException("视频暂存目录不可用");
         File temporary=new File(directory,"clip-"+java.util.UUID.randomUUID().toString().replace("-","")+".bin");boolean handedOff=false;
         try(InputStream in=context.getContentResolver().openInputStream(uri)){
-            if(in==null)throw new IOException("无法打开视频");copy(in,temporary);if(temporary.length()==0)throw new IOException("视频为空");handedOff=true;
+            if(in==null)throw new IOException("无法打开视频");copy(in,temporary,inputBytes(context));if(temporary.length()==0)throw new IOException("视频为空");handedOff=true;
             return new JSONObject().put("clip",temporary.getName()).put("bytes",temporary.length());
         }finally{if(!handedOff)temporary.delete();}
     }
     static void copy(InputStream in,File file)throws Exception{
-        try(OutputStream out=new FileOutputStream(file)){long total=0;byte[] b=new byte[32768];int n;while((n=in.read(b))!=-1){total+=n;if(total>MAX_BYTES)throw new IOException("视频超过32MB，请先裁剪短片段");out.write(b,0,n);}}
+        copy(in,file,MAX_BYTES);
+    }
+    static void copy(InputStream in,File file,long limit)throws Exception{
+        try(OutputStream out=new FileOutputStream(file)){long total=0;byte[] b=new byte[32768];int n;while((n=in.read(b))!=-1){total+=n;if(total>limit)throw new IOException("视频超过"+(limit/1024/1024)+"MB，请提高原视频上限或先压缩");out.write(b,0,n);}}
     }
     static JSONObject file(File file)throws Exception{
-        if(file.length()>MAX_BYTES)throw new IOException("视频超过32MB");
+        if(file.length()>MAX_BYTES)throw new IOException("视频超过256MB");
         try(MediaMetadataRetriever reader=new MediaMetadataRetriever()){reader.setDataSource(file.getAbsolutePath());return extract(reader);}
     }
     static JSONObject remote(Context context,String value)throws Exception{
@@ -81,6 +86,10 @@ final class VideoFrames {
         return ("bilibili".equals(source)||"qq".equals(source))&&mediaHost(url,"bilibili".equals(source));
     }
     static JSONObject remote(Context context,String value,String source)throws Exception{
+        return remote(context,value,source,256);
+    }
+    static JSONObject remote(Context context,String value,String source,int maxMB)throws Exception{
+        long limit=inputMB(maxMB)*1024L*1024;
         URL url=NativeNetwork.publicUrl(value);boolean bili="bilibili".equals(source),web="web".equals(source);
         if(!mediaHost(url,source))throw new IOException("视频媒体地址不受支持");
         File directory=new File(context.getFilesDir(),"linux/rootfs/opt/qq-workbench/video-imports");
@@ -99,12 +108,12 @@ final class VideoFrames {
                 if(status!=200)throw new IOException(bili?"B站视频下载受限，请重新登录B站或稍后重试":web?"视频下载失败，可能需要登录或链接已失效":"QQ视频暂不可下载");
                 break;
             }
-            if(c.getContentLengthLong()>MAX_BYTES)throw new IOException("视频超过32MB，请导入裁剪后的片段");
+            if(c.getContentLengthLong()>limit)throw new IOException("视频超过"+inputMB(maxMB)+"MB，请提高原视频上限或先压缩");
             String type=c.getContentType();type=type==null?"":type.toLowerCase(java.util.Locale.ROOT);
             if((web||!type.isEmpty())&&!(type.startsWith("video/")||!web&&type.startsWith("audio/")||type.startsWith("application/octet-stream"))||type.contains("mpegurl"))throw new IOException("链接不是可读取的独立视频文件");
             try(InputStream in=c.getInputStream();OutputStream out=new FileOutputStream(temporary)){
                 long total=0,deadline=android.os.SystemClock.elapsedRealtime()+90000;byte[] bytes=new byte[32768];int count;
-                while((count=in.read(bytes))!=-1){total+=count;if(total>MAX_BYTES)throw new IOException("视频超过32MB，请先裁剪短片段");if(android.os.SystemClock.elapsedRealtime()>deadline)throw new IOException("视频下载超时，请选择较短片段");out.write(bytes,0,count);}
+                while((count=in.read(bytes))!=-1){total+=count;if(total>limit)throw new IOException("视频超过"+inputMB(maxMB)+"MB，请提高原视频上限或先压缩");if(android.os.SystemClock.elapsedRealtime()>deadline)throw new IOException("视频下载超时，请选择较短片段");out.write(bytes,0,count);}
             }
             {if(temporary.length()==0)throw new IOException("视频返回空内容");temporary.setReadable(false,false);temporary.setReadable(true,true);temporary.setWritable(false,false);temporary.setWritable(true,true);handedOff=true;return new JSONObject().put("clip",temporary.getName()).put("bytes",temporary.length());}
         }finally{if(c!=null)c.disconnect();if(!handedOff)temporary.delete();}

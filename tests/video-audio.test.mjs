@@ -1,6 +1,12 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
-import {transcriptObjects,compactTranscript,audioContext,withAudio,AUDIO_POLICY,pcmSignal,audioEvents,audioEvidence,asksAudio,audioReplyPolicy,audioFocusContext,suspectRepetition} from '../assets/video-audio.mjs';
+import {transcribeClip,transcriptObjects,compactTranscript,audioContext,withAudio,AUDIO_POLICY,pcmSignal,audioEvents,audioEvidence,asksAudio,audioReplyPolicy,audioFocusContext,suspectRepetition} from '../assets/video-audio.mjs';
+import fs from 'node:fs';import path from 'node:path';
 import {sampledVideo,videoBatches} from '../assets/video.mjs';
+test('audio accepts large video containers while retaining its absolute source cap',async()=>{
+ const base=path.resolve(import.meta.dirname,'../build/video-tests');fs.mkdirSync(base,{recursive:true});const work=fs.mkdtempSync(path.join(base,'audio-')),directory=path.join(work,'video-imports');fs.mkdirSync(directory);
+ const file=path.join(directory,'clip-'+'e'.repeat(32)+'.bin'),fd=fs.openSync(file,'w');
+ try{fs.ftruncateSync(fd,40*1024*1024);assert.equal((await transcribeClip(file,work)).status,'unavailable');fs.ftruncateSync(fd,512*1024*1024+1);await assert.rejects(()=>transcribeClip(file,work),/512MB/);}finally{fs.closeSync(fd);fs.unlinkSync(file);}
+});
 test('speech output parsing ignores diagnostics, braces in strings and non-transcript JSON',()=>{
  const output='Started\n'+JSON.stringify({text:'视频说了 {这是例子} 和 "引用"',tokens:['x']})+'\nDone!\n'+JSON.stringify({debug:true});
  assert.equal(transcriptObjects(output).length,1);assert.match(transcriptObjects(output)[0].text,/这是例子/);

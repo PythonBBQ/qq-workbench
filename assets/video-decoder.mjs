@@ -1,5 +1,5 @@
 import {transcribeClip} from './video-audio.mjs';
-import {samplingPlan} from './video.mjs';
+import {samplingPlan,videoLimits} from './video.mjs';
 import fs from 'node:fs';import path from 'node:path';import crypto from 'node:crypto';
 import {execFile} from 'node:child_process';import {promisify} from 'node:util';
 const exec=promisify(execFile);
@@ -11,11 +11,11 @@ async function mediaTool(binary,args,options){
     throw new Error('视频解码失败，请选择未损坏的常见MP4短片段');
   }
 }
-export async function decodeClip(file,work='/opt/qq-workbench',fps=1){
+export async function decodeClip(file,work='/opt/qq-workbench',fps=1,options={}){
   samplingPlan(1,fps);
   const real=fs.realpathSync(file),directory=fs.realpathSync(path.join(work,'video-imports'));
   if(path.dirname(real)!==directory||!/^clip-[a-f0-9]{32}\.bin$/.test(path.basename(real))||fs.lstatSync(file).isSymbolicLink())throw new Error('视频暂存路径无效');
-  const metadata=fs.statSync(real);if(!metadata.isFile()||metadata.size>32*1024*1024||!metadata.size)throw new Error('视频大小须在32MB以内');
+  const limits=videoLimits(options),metadata=fs.statSync(real);if(!metadata.isFile()||metadata.size>limits.inputBytes||!metadata.size)throw new Error('视频大小须在'+limits.inputMB+'MB以内');
   const env={PATH:'/usr/bin:/bin',HOME:'/tmp',LANG:'C.UTF-8'};
   const result=await mediaTool('/usr/bin/ffprobe',['-v','error','-protocol_whitelist','file,pipe','-format_whitelist',formats,'-show_entries','format=duration','-of','json',real],{env,timeout:12000,maxBuffer:65536});
   const duration=Number(JSON.parse(result.stdout).format?.duration);if(!Number.isFinite(duration)||duration<=0||duration>600)throw new Error('仅支持10分钟以内的视频');
@@ -27,7 +27,10 @@ export async function decodeClip(file,work='/opt/qq-workbench',fps=1){
     await mediaTool('/usr/bin/ffmpeg',['-v','error','-nostdin','-threads','1','-filter_threads','1','-protocol_whitelist','file,pipe','-format_whitelist',formats,'-i',real,'-t',String(span+1),'-an','-sn','-vf',filter,'-frames:v',String(sheets),'-threads','1','-c:v','mjpeg','-q:v','7',path.join(outputDir,'sheet-%02d.jpg')],{env,timeout:450000,maxBuffer:65536});
     let bytes=0;
     for(let i=0;i<sheets;i++){
-      const image=fs.readFileSync(path.join(outputDir,'sheet-'+String(i+1).padStart(2,'0')+'.jpg'));bytes+=image.length;
+      const sheet=path.join(outputDir,'sheet-'+String(i+1).padStart(2,'0')+'.jpg');let image=fs.readFileSync(sheet);
+      const sheetLimit=Math.floor((limits.requestBytes-65536)/15*3/4);
+      for(const quality of [12,20,28]){if(image.length<=sheetLimit)break;const compact=path.join(outputDir,'compact.jpg');await mediaTool('/usr/bin/ffmpeg',['-v','error','-nostdin','-y','-threads','1','-i',sheet,'-frames:v','1','-threads','1','-q:v',String(quality),compact],{env,timeout:12000,maxBuffer:65536});image=fs.readFileSync(compact);}
+      if(image.length>sheetLimit)throw new Error('视频单张画面压缩后仍超过请求上限，请提高截图请求大小');bytes+=image.length;
       if(!image.length||bytes>15000000*fps)throw new Error('视频压缩画面超过上限');
       frames.push({seconds:i*8/fps,timestamps:Array.from({length:Math.min(8,count-i*8)},(_,j)=>(i*8+j)/fps),url:'data:image/jpeg;base64,'+image.toString('base64')});
     }
@@ -35,12 +38,15 @@ export async function decodeClip(file,work='/opt/qq-workbench',fps=1){
     return {sampling:'fps-contact-sheet-v2',fps,durationSeconds:duration,sampledSeconds:span,frameCount:count,frames,audio};
   }finally{fs.rmSync(outputDir,{recursive:true,force:true});}
 }
-export async function downloadClip(url,fetcher,work='/opt/qq-workbench',fps=1){
+export async function downloadClip(url,fetcher,work='/opt/qq-workbench',fps=1,options={}){
+  const limits=videoLimits(options);
   const directory=path.join(work,'video-imports');fs.mkdirSync(directory,{recursive:true,mode:0o700});
   const file=path.join(directory,'clip-'+crypto.randomBytes(16).toString('hex')+'.bin');
   try{
-    const response=await fetcher(url,{redirect:'error',signal:AbortSignal.timeout(35000)});if(!response.ok)throw new Error('视频链接暂不可读');
-    const chunks=[];let size=0;for await(const chunk of response.body){size+=chunk.length;if(size>7*1024*1024)throw new Error('兼容解码仅下载7MB以内QQ短视频；更大视频请在工作台本机导入');chunks.push(chunk);}
-    fs.writeFileSync(file,Buffer.concat(chunks),{mode:0o600});return await decodeClip(file,work,fps);
+    const response=await fetcher(url,{redirect:'error',signal:AbortSignal.timeout(90000)});if(!response.ok)throw new Error('视频链接暂不可读');
+    if(Number(response.headers.get('content-length'))>limits.inputBytes){await response.body?.cancel();throw new Error('视频超过'+limits.inputMB+'MB，请提高原视频上限或先压缩');}
+    const fd=fs.openSync(file,'wx',0o600);let size=0;
+    try{for await(const chunk of response.body){size+=chunk.length;if(size>limits.inputBytes)throw new Error('视频超过'+limits.inputMB+'MB，请提高原视频上限或先压缩');fs.writeFileSync(fd,chunk);}}finally{fs.closeSync(fd);}
+    return await decodeClip(file,work,fps,options);
   }finally{try{fs.unlinkSync(file);}catch{}}
 }

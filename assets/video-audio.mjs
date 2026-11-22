@@ -92,7 +92,10 @@ async function tagAudio(names,temporary,runtime,env){
 export async function transcribeClip(file,work='/opt/qq-workbench'){
   const real=fs.realpathSync(file),directory=fs.realpathSync(path.join(work,'video-imports'));
   if(path.dirname(real)!==directory||!/^clip-[a-f0-9]{32}\.bin$/.test(path.basename(real))||fs.lstatSync(file).isSymbolicLink())throw new Error('音轨暂存路径无效');
-  if(!fs.statSync(real).isFile()||fs.statSync(real).size>32*1024*1024)throw new Error('音轨超过读取上限');
+  // The source container can be much larger than the extracted mono audio.
+  // The decoder enforces the user's input limit; retain the absolute 512MB cap
+  // here and the separate 20MB / ten-minute bounds on decoded audio below.
+  if(!fs.statSync(real).isFile()||fs.statSync(real).size>512*1024*1024)throw new Error('音轨源文件超过512MB读取上限');
   const runtime=path.join(work,'asr'),binary=path.join(runtime,'bin/sherpa-onnx-offline'),model=path.join(runtime,'model/model.int8.onnx');
   if(!fs.existsSync(binary)||!fs.existsSync(model))return {status:'unavailable'};
   const env={PATH:'/usr/bin:/bin',HOME:'/tmp',LANG:'C.UTF-8',LD_LIBRARY_PATH:path.join(runtime,'lib')};

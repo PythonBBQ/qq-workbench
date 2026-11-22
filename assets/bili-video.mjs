@@ -2,7 +2,7 @@ import {withAudio,audioEvidence,audioContext,asksAudio,audioFocusContext} from '
 import {contextText} from './images.mjs';
 import {browsingDeclined} from './browse-intent.mjs';
 import {publicAddress,webUrl,htmlText,searchWeb} from './web-learning.mjs';
-import {sampledVideo} from './video.mjs';
+import {videoLimits,sampledVideo} from './video.mjs';
 import {sharedLinks} from './multi-parser.mjs';
 import dns from 'node:dns/promises';
 
@@ -172,7 +172,8 @@ async function readJson(url,fetcher,cookie,signal){
   }
   return data.data;
 }
-export async function resolveBiliVideo(value,fetcher=fetch,{cookie='',signal:outer,resolve=host=>dns.lookup(host,{all:true})}={}){
+export async function resolveBiliVideo(value,fetcher=fetch,options={}){
+  const {cookie='',signal:outer,resolve=host=>dns.lookup(host,{all:true})}=options;
   if(typeof cookie!=='string'||cookie.length>8192||/[\r\n]/.test(cookie))throw new Error('B站登录资料无效');
   const signal=AbortSignal.any([AbortSignal.timeout(40000),...(outer?[outer]:[])]);
   let url=webUrl(value);
@@ -195,8 +196,8 @@ export async function resolveBiliVideo(value,fetcher=fetch,{cookie='',signal:out
   if(play?.is_preview||play?.need_login||play?.need_vip)throw new Error('B站只返回了预览或需要额外权限，本次不把试看当作完整视频');
   const dash=(play?.dash?.video||[]).filter(v=>typeof(v.baseUrl||v.base_url)==='string').sort((a,b)=>Number(a.bandwidth||Infinity)-Number(b.bandwidth||Infinity));
   let candidates=[];
-  if(dash.length){const track=dash[0];if(Number(track.bandwidth)>0&&Number(track.bandwidth)*duration/8>32*1024*1024)throw new Error('最低画质视频仍超过32MB，请导入裁剪后的本机片段');candidates=[track.baseUrl||track.base_url,...(track.backupUrl||track.backup_url||[])];}
-  else if(play?.durl?.length===1){const track=play.durl[0];if(Number(track.size)>32*1024*1024)throw new Error('B站视频超过32MB，请导入裁剪后的本机片段');candidates=[track.url,...(track.backup_url||[])];}
+  if(dash.length){const track=dash[0];if(Number(track.bandwidth)>0&&Number(track.bandwidth)*duration/8>videoLimits(options).inputBytes)throw new Error('最低画质视频仍超过'+videoLimits(options).inputMB+'MB，请提高原视频上限或先压缩');candidates=[track.baseUrl||track.base_url,...(track.backupUrl||track.backup_url||[])];}
+  else if(play?.durl?.length===1){const track=play.durl[0];if(Number(track.size)>videoLimits(options).inputBytes)throw new Error('B站视频超过'+videoLimits(options).inputMB+'MB，请提高原视频上限或先压缩');candidates=[track.url,...(track.backup_url||[])];}
   else throw new Error('B站暂未提供可读取的完整低清视频地址，请登录后重试；未看到视频画面');
   const urls=[];
   for(const raw of candidates)try{const media=biliMediaUrl(raw);const ips=await resolve(new URL(media).hostname);if(!ips.length||ips.some(v=>!publicAddress(v.address)))continue;if(!urls.includes(media))urls.push(media);if(urls.length===2)break;}catch{}
@@ -212,7 +213,7 @@ export async function readBiliFrames(reference,token,fetcher=fetch,options={}){
   for(const url of resolved.urls){
     let sample;
     try{
-      const r=await fetcher('http://127.0.0.1:13481/video-frames',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({url,source:'bilibili'}),signal:AbortSignal.timeout(510000)});
+      const r=await fetcher('http://127.0.0.1:13481/video-frames',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({url,source:'bilibili',inputMB:videoLimits(options).inputMB}),signal:AbortSignal.timeout(510000)});
       if(!r.ok){const error=await r.json().catch(()=>({}));throw new Error(error.message||'B站画面下载或解码未完成');}sample=await r.json();
       if(typeof sample.clip==='string'){
         if(!/^clip-[a-f0-9]{32}\.bin$/.test(sample.clip)||!options.decode)throw new Error('B站兼容解码组件未就绪');
@@ -221,7 +222,7 @@ export async function readBiliFrames(reference,token,fetcher=fetch,options={}){
     }catch(error){
       if(options.fallback)try{sample=await options.fallback(url);}catch{failure=error;continue;}else{failure=error;continue;}
     }
-    const video=sampledVideo(sample);
+    const video={...sampledVideo(sample),requestMB:videoLimits(options).requestMB};
     if(!video.frameCount||Math.abs(sample.durationSeconds-resolved.durationSeconds)>Math.max(2,resolved.durationSeconds*.02))throw new Error('B站实际下载时长与分P不一致，未作为完整视频分析');
     let complete=video;
     if(resolved.audioUrls.length&&options.audio){options.onStatus?.('正在本机转写视频音轨，不消耗模型Token');let audio={status:'failed'};for(const audioUrl of resolved.audioUrls){try{audio=await options.audio(audioUrl);if(audio.status==='ok')break;}catch{}}complete=withAudio(video,audio);}

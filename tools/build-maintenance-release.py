@@ -8,6 +8,7 @@ import argparse,copy,ctypes,hashlib,json,os,shutil,subprocess,sys,tempfile,zipfi
 
 ROOT=Path(__file__).resolve().parents[1]
 VERIFIED_BASES={
+    'c3db3c16e5b8bf7f3f33646467b23b6cf93512294042e2f34f4d2dfd114ab29e':'1.1.0 / 11000',
     # Installed and verified on PHU110; retains the accepted voice reference pack.
     '61095698ce370c985bdd7506e879d9aba6825ea423ba69f4d6914c85bd31f96d':'1.0.10 / 10035',
     'de4df9417af9ba3113d30953299581d0446c366592938a0bbe3e3c444e80d147':'1.0.7',
