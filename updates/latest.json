@@ -1,14 +1,14 @@
 {
-  "tag_name": "v1.1.0",
-  "version_code": 11000,
+  "tag_name": "v1.1.1",
+  "version_code": 11001,
   "assets": [
     {
-      "name": "QQWorkbench-Android.apk",
-      "size": 1507914658,
-      "digest": "sha256:c3db3c16e5b8bf7f3f33646467b23b6cf93512294042e2f34f4d2dfd114ab29e",
-      "browser_download_url": "https://github.com/PythonBBQ/qq-workbench/releases/download/v1.1.0/QQWorkbench-Android.apk",
-      "id": 778816458,
-      "url": "https://api.github.com/repos/PythonBBQ/qq-workbench/releases/assets/778816458"
+      "name": "QQWorkbench-from-c3db3c16e5b8bf7f3f33646467b23b6cf93512294042e2f34f4d2dfd114ab29e.qqpatch",
+      "size": 1096127,
+      "digest": "sha256:455e8784b5664fc193436d9fc7ff8ece3f19803836c0cf6ddfb889ec507a7c58",
+      "browser_download_url": "https://github.com/PythonBBQ/qq-workbench/releases/download/v1.1.1/QQWorkbench-from-c3db3c16e5b8bf7f3f33646467b23b6cf93512294042e2f34f4d2dfd114ab29e.qqpatch",
+      "id": 778955784,
+      "url": "https://api.github.com/repos/PythonBBQ/qq-workbench/releases/assets/778955784"
     }
   ]
 }
