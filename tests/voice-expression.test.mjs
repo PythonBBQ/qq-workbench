@@ -1,8 +1,40 @@
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import os from 'node:os';import path from 'node:path';
 import {VoiceMemory,voiceScope,speakingFeedback,speakingConfig} from '../assets/voice-memory.mjs';
-import {voicePrompt,voiceCapability,voiceFormatHint,voiceDecision,voiceDeliveryStyle,speechDeliveryFilter,speechPlan,speechText,splitSpeechFallback,synthesize} from '../assets/voice.mjs';
+import {voicePrompt,voiceCapability,voiceFormatHint,voiceDecision,voiceDeliveryStyle,speechDeliveryFilter,speechPlan,speechText,splitSpeechFallback,synthesize,extractVoiceChoice} from '../assets/voice.mjs';
 import {ConversationMemory,conversationScope} from '../assets/conversation-memory.mjs';
 const c={owner:'123456',voiceEnabled:true,voiceMode:'smart',speechProvider:'zipvoice'},event={message_type:'private',user_id:'123456'},scope=voiceScope(c,event,'654321');
+
+test('expanded emotional tags and fixed choices reach native voice without altering timbre or adding model calls',async()=>{
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'speech-extra-emotions-'));
+ try{const wav=Buffer.alloc(128);wav.write('RIFF');
+  for(const mood of ['sad','angry','afraid','worried','surprised']){
+   const parsed=extractVoiceChoice(`[[voice:${mood}]]我在听你说。`);
+   assert.deepEqual(parsed,{text:'我在听你说。',choice:true,emotion:mood});
+   assert.equal(speechPlan(parsed.text,{voiceEmotionPreset:mood},'neutral').emotion,mood);
+   assert.equal(speechPlan(parsed.text,{voiceEmotion:false,voiceEmotionPreset:mood},mood).emotion,'neutral');
+   let calls=0;
+   const audio=await synthesize({...c,zipVoiceModel:'full',zipVoiceSteps:16},parsed.text,{directory,emotion:parsed.emotion,deliveryStyle:'normal',native:async(route,request)=>{
+    calls++;assert.equal(request.emotion,mood);assert.equal(request.pitch,0);assert.equal(request.rate,0);assert.equal(request.deliveryStyle,'normal');
+    return {ok:true,audio:wav.toString('base64'),referenceMood:mood,referenceVariant:0,referenceSource:'character-daily'};
+   },convert:async(bin,args)=>fs.writeFileSync(args.at(-1),Buffer.alloc(100))});
+   assert.equal(calls,1);assert.equal(audio.info.referenceMood,mood);assert.equal(audio.info.referenceVariant,0);audio.cleanup();
+  }
+  assert.equal(extractVoiceChoice('[[voice:unknown]]你好').choice,null);
+  assert.equal(extractVoiceChoice('[[text]]你好').choice,false);
+ }finally{fs.rmSync(directory,{recursive:true,force:true});}
+});
+
+test('locked batch delivery overrides per-bubble bedtime cues and keeps an explicit refusal ordinary',async()=>{
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'speech-locked-delivery-'));
+ try{const wav=Buffer.alloc(128);wav.write('RIFF');
+  for(const [delivery,body,incoming,mood] of [['normal','闭上眼睛，安心睡吧。','','sad'],['soft','先聊聊今天吧。','','gentle'],['normal','慢慢放松。','正常说话','sad']]){
+   const audio=await synthesize(c,body,{directory,emotion:'sad',deliveryStyle:delivery,event:{raw_message:incoming},native:async(route,request)=>{
+    assert.equal(request.deliveryStyle,delivery);assert.equal(request.emotion,mood);
+    return {ok:true,audio:wav.toString('base64')};
+   },convert:async(bin,args)=>fs.writeFileSync(args.at(-1),Buffer.alloc(100))});audio.cleanup();
+  }
+ }finally{fs.rmSync(directory,{recursive:true,force:true});}
+});
 
 test('disabled emotion ignores stale fixed moods for reference, steps and speed together',async()=>{
  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'speech-emotion-off-'));

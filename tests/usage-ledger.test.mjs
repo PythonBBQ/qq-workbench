@@ -1,6 +1,12 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import os from 'node:os';import path from 'node:path';
 import {UsageLedger} from '../assets/usage-ledger.mjs';
 const sample={model:'synthetic-model',host:'relay.example',category:'vision',usage:{prompt_tokens:100,completion_tokens:20,prompt_tokens_details:{cached_tokens:30}}};
+test('cache misses distinguish provider-reported zeros from missing cache data',()=>{
+ const parent=path.resolve(import.meta.dirname,'../build/usage-tests');fs.mkdirSync(parent,{recursive:true});const ledger=new UsageLedger(fs.mkdtempSync(path.join(parent,'case-')));
+ const known=ledger.record(sample);assert.equal(known.missed,70);assert.equal(known.cacheReported,true);
+ const unknown=ledger.record({...sample,usage:{prompt_tokens:100,completion_tokens:20}});assert.equal(unknown.missed,null);assert.equal(unknown.cacheReported,false);assert.match(ledger.recentText(1),/缓存 未报告/);
+ const zero=ledger.record({...sample,usage:{prompt_tokens:100,completion_tokens:20,prompt_cache_hit_tokens:0,prompt_cache_miss_tokens:100}});assert.equal(zero.missed,100);assert.equal(zero.cacheReported,true);assert.match(ledger.recentText(1),/未命中 100/);
+});
 
 test('recent call query is newest first, sums only selected usage and preserves unknown fields',()=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'qqwb-usage-'));try{const u=new UsageLedger(dir);assert.match(u.recentText(5),/没有/);u.record({...sample,model:'old'});u.record({...sample,model:'new',usage:{input_tokens:40,output_tokens:10}});u.record({...sample,model:'unknown',ok:false,usage:{}});

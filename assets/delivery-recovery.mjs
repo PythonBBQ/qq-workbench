@@ -6,7 +6,8 @@ export class ReplyTasks {
   constructor(){this.scope=new AsyncLocalStorage();this.active=null;this.lastError='';}
   check(){this.scope.getStore()?.controller.signal.throwIfAborted();}
   phase(value){this.check();const task=this.scope.getStore();if(task){task.phase=value;task.phaseAt=Date.now();}}
-  cancel(message='本次回复已取消'){if(this.active)this.active.controller.abort(new Error(message));}
+  beginDelivery(){this.check();const task=this.scope.getStore();if(task)task.deliveryStarted=true;}
+  cancel(message='本次回复已取消',{finishStarted=false}={}){if(this.active&&!(finishStarted&&this.active.deliveryStarted))this.active.controller.abort(new Error(message));}
   async wait(value,timeoutMs=180000){
     const task=this.scope.getStore();if(!task)return value;
     const signal=task.controller.signal;

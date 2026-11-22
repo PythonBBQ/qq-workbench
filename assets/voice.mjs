@@ -41,7 +41,7 @@ export function voicePrompt(c,{preferences={},explicit=false,format='auto'}={}){
   const selection=explicit?'本条明确要求语音，可朗读内容选语音。':policy==='request'?'仅本条明确要求才选语音。':policy==='always'?'可朗读内容优先语音。':preference===0?'除非对方明确要求，否则用文字。':preference<35?'以文字为主，适合时偶尔语音。':preference<70?'文字与语音自然混合；安慰、亲近闲聊可语音。':'轻松闲聊偏向语音。';
   // Pace is applied by the local synthesizer; don't spend model input describing it.
   const {pace,...languagePreferences}=preferences,remembered=describeVoicePreferences(languagePreferences);
-  return '\n[回复形式]结合当前话题、情绪和上下文选择。'+selection+'不方便听、代码链接、数字清单和长解释用文字；群聊克制。开头只加[[text]]或[[voice:neutral]]，语音的neutral可换happy/gentle/shy/sad/serious；随后直接给正文，不解释标记。'+
+  return '\n[回复形式]结合当前话题、情绪和上下文选择。'+selection+'不方便听、代码链接、数字清单和长解释用文字；群聊克制。开头只加[[text]]或[[voice:neutral]]，语音的neutral可换happy/gentle/shy/sad/serious/angry/afraid/worried/surprised；sad表示失落而非困倦，angry生气，afraid害怕，worried担心，surprised惊讶；随后直接给正文，不解释标记。'+
     (c.voiceNatural===false?'':'文字先回应重点，短段落，保留准确细节；语音像当面接话，一到三句、通常20到90字，关键答案不省略，长语音由软件分条朗读。短句按意思停顿；开心轻快，安慰温和，害羞时短暂停顿和委婉接话，严肃直接。合适时自然用一处“嗯、啊、诶”，与后一句连贯；不每条硬加。少套话、复述、反问和重复称呼，不机械撒娇。不写动作旁白、笑声呼吸标签、SSML或表情，不拉长拼音或滥用省略号；必要英文数字照常。')+
     (c.voiceEmotion!==false&&c.voiceEmotionPreset==='intimate'?'语音采用软绵、含蓄暧昧的口吻，像熟悉的人靠近后低声接话，表达直接一点的亲近和眷恋；短句有自然留白，少用夸张撒娇、叠字、拖音和连续语气词，不把暧昧写成困倦、安慰或不敢说话。话题不合适时正常回答，不强行调情、不写喘息或动作标签，本条要求正常说话时恢复自然。':c.voiceEmotion!==false&&c.voiceEmotionPreset==='shy'?'害羞是被夸后轻微不好意思，话仍说完整；偶尔短暂停顿，保持平时的称呼和措辞，不装幼态、不反复结巴、不每句都说害羞或不好意思。':'')+
     (remembered?'说话偏好：'+remembered+'；本条明确要求优先。':'')+
@@ -53,7 +53,7 @@ export function voiceFormatHint(text,c,context={}){
   if(!c.voiceEnabled||c.voiceMode==='request'||Number(c.voicePreference??35)===0||['本条要求文字','近期不方便听语音','本会话记住了优先文字','主动接话使用文字','所选QQ音色仅支持群聊'].includes(decision.reason))return 'text';
   return 'auto';
 }
-export function extractVoiceChoice(value){const text=String(value||''),match=text.match(/^\s*\[\[(voice(?::(neutral|happy|gentle|shy|sad|serious))?|text)\]\]\s*/i);return {text:text.replace(/^\s*\[\[(?:voice(?::(?:neutral|happy|gentle|shy|sad|serious))?|text)\]\]\s*/i,'').replace(/\[\[(?:voice(?::[^\]\n]{1,40})?|text)\]\]/gi,'').trim(),choice:match?match[1].toLowerCase().startsWith('voice'):null,emotion:match?.[2]?.toLowerCase()||'neutral'};}
+export function extractVoiceChoice(value){const text=String(value||''),match=text.match(/^\s*\[\[(voice(?::(neutral|happy|gentle|shy|sad|serious|angry|afraid|worried|surprised))?|text)\]\]\s*/i);return {text:text.replace(/^\s*\[\[(?:voice(?::(?:neutral|happy|gentle|shy|sad|serious|angry|afraid|worried|surprised))?|text)\]\]\s*/i,'').replace(/\[\[(?:voice(?::[^\]\n]{1,40})?|text)\]\]/gi,'').trim(),choice:match?match[1].toLowerCase().startsWith('voice'):null,emotion:match?.[2]?.toLowerCase()||'neutral'};}
 
 export function voiceDecision(text,c,{reply='',event={},history=[],lastVoiceAt=0,now=Date.now(),mode='reply',modelChoice=null,preferences={}}={}){
   const refuse=/(?:不要|别|不用|关闭|停止|不方便听|不能听).{0,6}(?:语音|声音)|(?:文字|打字)回[复答]|(?:在开会|在上课|不方便听)/;
@@ -89,8 +89,8 @@ export function speechPlan(text,c={},emotion='neutral'){
   // Conservative spoken forms; identifiers, versions and ordinary numbers are left intact.
   value=value.replace(/(-?\d+(?:\.\d+)?)\s*%/g,(_,n)=>'百分之'+n.replace(/^-/,'负')).replace(/(-?\d+(?:\.\d+)?)\s*℃/g,(_,n)=>n.replace(/^-/,'零下')+'摄氏度');
   if(c.voiceEmotion===false)emotion='neutral';
-  else if(['neutral','happy','gentle','shy','sad','serious'].includes(c.voiceEmotionPreset))emotion=c.voiceEmotionPreset;
-  return {text:value,emotion:['neutral','happy','gentle','shy','sad','serious'].includes(emotion)?emotion:'neutral',phrasing:c.voiceNatural!==false};
+  else if(['neutral','happy','gentle','shy','sad','serious','angry','afraid','worried','surprised'].includes(c.voiceEmotionPreset))emotion=c.voiceEmotionPreset;
+  return {text:value,emotion:['neutral','happy','gentle','shy','sad','serious','angry','afraid','worried','surprised'].includes(emotion)?emotion:'neutral',phrasing:c.voiceNatural!==false};
 }
 export function speechDeliveryFilter(soft=false,pitch=0,gain=0){
   // One constant gain for the complete utterance: no dynamic breath/noise lift.
@@ -108,9 +108,9 @@ export function splitSpeechFallback(input){
   if(index===undefined){if(/^[\x00-\x7f]*$/.test(text))return [text];const units=Array.from(text);index=units.slice(0,Math.ceil(units.length/2)).join('').length;}
   const first=text.slice(0,index).trim(),second=text.slice(index).trim();return first&&second?[first,second]:[text];
 }
-export async function synthesize(c,text,{key='',feiyuKey='',emotion='neutral',event={},rpc,fetcher=fetch,directory,stillCurrent=()=>true,native,convert=execute}={}){
+export async function synthesize(c,text,{key='',feiyuKey='',emotion='neutral',event={},rpc,fetcher=fetch,directory,stillCurrent=()=>true,native,deliveryStyle:fixedDelivery,convert=execute}={}){
   const plan=speechPlan(text,c,emotion),value=plan.text;emotion=plan.emotion;if(!value||value.length>1200)throw new Error('语音限1200字，长回复继续使用文字');
-  const intimate=c.voiceEmotion!==false&&c.voiceEmotionPreset==='intimate',delivery=voiceDeliveryStyle(value,event,c),intimateActive=intimate&&delivery==='soft';
+  const intimate=c.voiceEmotion!==false&&c.voiceEmotionPreset==='intimate',delivery=['normal','soft'].includes(fixedDelivery)?fixedDelivery:voiceDeliveryStyle(value,event,c),intimateActive=intimate&&delivery==='soft';
   if(intimate)emotion=intimateActive?'shy':'neutral';
   if(c.speechProvider==='kokoro'||c.speechProvider==='android'||c.speechProvider==='feiyu'||c.speechProvider==='zipvoice'){
     let bytes,info=null,softDelivery=delivery==='soft'&&c.voiceEmotion!==false;

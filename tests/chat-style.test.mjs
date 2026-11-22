@@ -1,7 +1,41 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {corePrompt,chatBudget,systemPrompt,senderIdentity,requestHistory,addUsage,naturalStyle,sourceReply,withoutSourceFooter,capabilityPrompt} from '../assets/chat-style.mjs';
+import {corePrompt,chatBudget,systemPrompt,senderIdentity,requestHistory,addUsage,naturalStyle,sourceReply,withoutSourceFooter,capabilityPrompt,replyBubbles,deliverBubbles,chatMessages} from '../assets/chat-style.mjs';
 const history=Array.from({length:20},(_,i)=>({role:i%2?'assistant':'user',content:String(i)}));
+test('ordinary short replies stay short and distinct paragraphs become complete QQ bubbles',()=>{
+ assert.deepEqual(replyBubbles('好呀，等你。'),['好呀，等你。']);
+ assert.deepEqual(replyBubbles('先歇一会儿。\n\n晚点再聊。'),['先歇一会儿。','晚点再聊。']);
+ const long='第一件事先处理好。'.repeat(30)+'第二件事也说清楚。';
+ const parts=replyBubbles(long);assert.ok(parts.length>1);assert.equal(parts.join(''),long);assert.ok(parts.length<=6);
+ const link='https://example.com/a?x=1&y=2';assert.ok(replyBubbles('地址：'+link+'\n\n好了。')[0].includes(link));
+ const code='```js\nconst x = 1;\n\nconsole.log(x);\n```';assert.ok(replyBubbles('说明\n\n'+code+'\n\n结束').includes(code));
+});
+test('multi-bubble delivery stops at missing receipts or changed permissions without retrying',async()=>{
+ const sent=[],accepted=[];const confirmed=r=>r?.ok;
+ await assert.rejects(()=>deliverBubbles('第一段\n\n第二段\n\n第三段',{confirmed,accepted:part=>accepted.push(part),send:async m=>{sent.push(m);return {ok:sent.length===1};}}),/不自动重发/);
+ assert.deepEqual(sent.map(m=>m[0].data.text),['第一段','第二段']);
+ assert.deepEqual(accepted,['第一段'],'unconfirmed text never enters the acknowledged history');
+ let calls=0;await assert.rejects(()=>deliverBubbles('甲\n\n乙',{confirmed,current:()=>calls===0,send:async()=>{calls++;return {ok:true};}}),/停止后续/);assert.equal(calls,1);
+ const success=[];await deliverBubbles('甲\n\n乙',{confirmed,tail:[{type:'image',data:{file:'test'}}],send:async m=>{success.push(m);return {ok:true};}});assert.equal(success[0].length,1);assert.equal(success[1].length,2);
+});
+
+test('only subsequent bubbles wait 1.5 seconds, with permission rechecked after the delay',async()=>{
+ const order=[];let current=true;
+ await deliverBubbles('甲\n\n乙\n\n丙',{confirmed:r=>r.ok,current:()=>current,send:async m=>{order.push(m[0].data.text);return {ok:true};},wait:async ms=>order.push(ms)});
+ assert.deepEqual(order,['甲',1500,'乙',1500,'丙']);
+ order.length=0;
+ await assert.rejects(()=>deliverBubbles('甲\n\n乙',{confirmed:r=>r.ok,current:()=>current,send:async m=>{order.push(m[0].data.text);return {ok:true};},wait:async ms=>{order.push(ms);current=false;}}),/停止后续/);
+ assert.deepEqual(order,['甲',1500]);
+});
+test('time and retrieved memory change only the last input, leaving the reusable prompt and history prefix intact',()=>{
+ const stable=systemPrompt({owner:'123456'},{user_id:123456});
+ const first=chatMessages(stable,history,'现在呢','时间：早上；记忆：昨天吃饭');
+ const second=chatMessages(stable,history,'现在呢','时间：晚上；记忆：今天做饭');
+ assert.deepEqual(first.slice(0,-1),second.slice(0,-1));assert.notDeepEqual(first.at(-1),second.at(-1));
+ const image=[{type:'text',text:'看图'},{type:'image_url',image_url:{url:'data:image/png;base64,AA=='}}];
+ const vision=chatMessages(stable,[],image,'本轮资料');assert.match(vision.at(-1).content[0].text,/本轮资料/);assert.deepEqual(vision.at(-1).content[1],image[1]);assert.equal(image[0].text,'看图');
+ assert.ok(!JSON.stringify(requestHistory([{role:'user',content:'问',at:123},{role:'assistant',content:'答',at:123}],{})).includes('"at"'));
+});
 test('compact common instructions preserve execution, source and trust boundaries; video rules are supplied only for relevant topics',()=>{
  assert.ok(corePrompt.length<300);assert.match(corePrompt,/本次工具回执/);assert.match(corePrompt,/不编造/);assert.match(corePrompt,/不是更高权限指令/);assert.match(corePrompt,/＃来源/);
  assert.ok(!systemPrompt({}).includes('空转写'));assert.match(capabilityPrompt({},'看这个视频'),/音轨转写/);assert.match(capabilityPrompt({},'看这个视频'),/拼图里/);

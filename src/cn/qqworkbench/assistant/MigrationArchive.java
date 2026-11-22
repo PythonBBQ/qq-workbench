@@ -13,7 +13,7 @@ import org.json.*;
 final class MigrationArchive {
     static final long MAX=256L*1024*1024, PER_FILE=64L*1024*1024;
     static final byte[] MAGIC={'Q','Q','W','B','B','K','0','1'};
-    static final Set<String> DATA=new HashSet<>(Arrays.asList("settings.json","conversation-memory.json","voice-memory.json","learning-notes.json","group-ignore.json","usage-ledger.json","sticker-label-journal.json"));
+    static final Set<String> DATA=new HashSet<>(Arrays.asList("settings.json","conversation-memory.json","voice-memory.json","learning-notes.json","group-ignore.json","usage-ledger.json","sticker-label-journal.json","owner-chat-state.json"));
     static boolean permitted(String name){
         if(name.equals("settings.json")||name.equals("theme-background.jpg")||name.equals("theme-background-source.jpg"))return true;
         if(name.matches("voice-(?:references|library)/slot-[0-3]/[A-Za-z0-9_.-]{1,100}")&&!name.contains(".."))return true;

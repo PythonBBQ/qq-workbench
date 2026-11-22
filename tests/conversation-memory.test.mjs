@@ -1,12 +1,58 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
 import fs from 'node:fs';import os from 'node:os';import path from 'node:path';
-import {ConversationMemory,conversationScope,preference,memoryTerms,reinforceTopics,topicStrength,localDigest,eventCandidate} from '../assets/conversation-memory.mjs';
+import {ConversationMemory,conversationScope,preference,memoryTerms,reinforceTopics,topicStrength,localDigest,eventCandidate,sceneHistory,scenePrompt} from '../assets/conversation-memory.mjs';
 import {worldContext,requestHistory} from '../assets/chat-style.mjs';
 const base=path.resolve(import.meta.dirname,'../build/memory-tests');fs.mkdirSync(base,{recursive:true});
 const directory=()=>fs.mkdtempSync(path.join(base,'case-'));
 const c={owner:'123456',characterName:'鲸鱼',persona:'白饭',worldBook:'白饭|爱吃白饭',contextTurns:2};
 const event={user_id:123456,message_type:'private'};
 const scope=()=>conversationScope(c,event,'765432');
+test('partially acknowledged replies survive encrypted restart as history but are excluded from training samples',()=>{
+ const dir=directory(),store=new ConversationMemory(dir,'partial-test-key'),s=scope();
+ store.commit(s,'部分发送的提问','已确认的第一段\n（工作台记录：后续内容未获确认，已停止发送。）',c,{partial:true});
+ store.commit(s,'下一轮提问','完整回答',c);
+ const loaded=new ConversationMemory(dir,'partial-test-key');
+ assert.equal(loaded.record(s).turns[0].partial,true);
+ assert.match(JSON.stringify(loaded.history(s,c)),/已确认的第一段/);
+ const samples=loaded.export(c.owner,'765432').split('\n').map(JSON.parse);
+ assert.equal(samples.length,1);assert.equal(samples[0].messages[0].content,'下一轮提问');
+ assert.ok(!fs.readFileSync(loaded.file,'utf8').includes('已确认的第一段'));
+});
+test('idle gaps and explicit topic changes end the live scene without deleting earlier facts',()=>{
+ const now=Date.now(),pair=(user,at)=>[{role:'user',content:user,at},{role:'assistant',content:'回复',at}];
+ const old=pair('我刚吃完饭',now-2*3600000),recent=pair('我回来啦',now-60000);
+ assert.equal(sceneHistory(old,{now,query:'你好'}).length,0);
+ assert.deepEqual(sceneHistory([...old,...recent],{now}),recent);
+ assert.equal(sceneHistory(recent,{now,query:'换个话题，聊电影'}).length,0);
+ assert.equal(sceneHistory([{role:'user',content:'旧现场'},{role:'assistant',content:'旧回复'}],{now}).length,0);
+ assert.match(scenePrompt({now,previousAt:old.at(-1).at}),/重新判断当前场景/);
+ const store=new ConversationMemory(directory()),s=scope();store.commit(s,'我刚吃完饭','助手声称帮忙订餐了',c);
+ store.record(s).turns[0].at=now-2*3600000;store.save();
+ const loaded=new ConversationMemory(path.dirname(store.file));const full=loaded.history(s,c),active=sceneHistory(full,{now});
+ assert.equal(active.length,0);assert.match(loaded.context(s,c,active,'我之前做过什么'),/我刚吃完饭/);
+ assert.match(loaded.context(s,c,active,'我之前做过什么'),/不是提醒任务或助手已执行凭据/);
+ assert.ok(!loaded.context(s,c,active,'你好').includes('订餐'));
+});
+test('daily completed actions persist as user reports and cannot be created by assistant claims',()=>{
+ const dir=directory(),store=new ConversationMemory(dir,'scene-test-key'),s=scope();
+ for(const user of ['我刚吃完饭','我已经修好电脑了','我昨天看完电影了'])store.commit(s,user,'我已经替你买票了',c);
+ store.commit(s,'今天开心吗','我已经替你订餐了',c);
+ const loaded=new ConversationMemory(dir,'scene-test-key');assert.equal(loaded.record(s).events.length,3);
+ assert.ok(loaded.record(s).turns.every(t=>t.at>0));assert.ok(!JSON.stringify(loaded.record(s).events).includes('买票'));
+ for(const user of ['我想象已经修好电脑了','我刚修好电脑了吗？','你刚吃完饭','帮我修好电脑'])assert.equal(eventCandidate(user),'',user);
+ assert.match(loaded.context(s,c,[],'我之前干过什么'),/吃完饭|修好电脑|看完电影/);
+});
+test('summary coverage does not hide original details omitted from an optional model summary',async()=>{
+ const store=new ConversationMemory(directory()),s=scope();
+ for(let i=0;i<18;i++)store.commit(s,i===2?'我买的键盘型号是K87，颜色是绿色':'其他话题'+i,'好',c);
+ await store.compress(s,{...c,compressionMode:'model'},async()=> '用户聊过其他话题，没有提及细节');
+ assert.match(store.context(s,c,store.history(s,c),'键盘什么颜色'),/绿色/);
+});
+test('generic phrasing is not evidence that an unrelated old scene is relevant',()=>{
+ const turns=[{user:'我现在已经修好电脑',assistant:'终于弄好了'},{user:'我现在吃完饭',assistant:'休息一下'}];
+ assert.equal(localDigest(turns,1200,'你现在想聊什么'),'');
+ assert.match(localDigest(turns,1200,'电脑修好了吗'),/修好电脑/);
+});
 test('long conversation persists across restarts with bounded recent context and old facts, no media persistence',()=>{
  const dir=directory(),store=new ConversationMemory(dir),s=scope();
  for(let i=0;i<50;i++)store.commit(s,'第'+i+'次计划：周末做饭','第'+i+'次回答',c);

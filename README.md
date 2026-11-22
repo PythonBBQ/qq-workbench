@@ -2,9 +2,9 @@
 
 安卓本机运行的 QQ AI 助手。无需让电脑一直开机；适用 Android 11 及以上、ARM64 设备。首次启动会准备内置容器、Linux QQ 与图形环境，需要数 GB 可用空间；基础组件优先离线安装，QQ登录和模型聊天需要联网。不同厂商的后台限制仍需在系统设置放行。
 
-[下载1.0基础安装包](https://github.com/PythonBBQ/qq-workbench/releases/tag/v1.0.0) · [最新补丁/发行版](https://github.com/PythonBBQ/qq-workbench/releases/latest) · [1.0.9 本地更新说明](docs/RELEASE-1.0.9.md) · [构建和发布](BUILDING.md)
+[下载完整安装包](https://github.com/PythonBBQ/qq-workbench/releases/latest) · [1.1.0 更新说明](docs/RELEASE-1.1.0.md) · [构建和发布](BUILDING.md)
 
-本地更新版本 **1.0.9 / 10015**，增加指定网页及网页视频读取、准确显示 QQ 接入阶段；当前 OPPO 的原生登录核验问题尚未解决，不将它标记为连接修复版。详见 [本地更新说明](docs/RELEASE-1.0.9.md)。
+当前版本 **1.1.0 / 11000**，整合登录键盘与当前安装包分享、最终验收的十种参考声音、主动聊天评分与执行记录。使用同签名完整APK覆盖更新，保留账号、音色和记忆；后续维护版继续使用补丁。1.1.0 已在 OPPO PHU110 核对安装包哈希、版本页面、QQ 在线和数据保留。详见 [本版说明](docs/RELEASE-1.1.0.md)。
 
 此前 **1.0.8** 重构运行会话、备份导入和安装交接，修复“运行锁未释放”，并让语音与数据迁移互斥。导入失败保留原数据，安装取消恢复原运行状态。保留 1.0.7 的完整 ZipVoice 模型与音色预设，不加入 MOSS 测试分支。提供完整 APK 和按真实底包哈希匹配的补丁；详见 [本版说明](docs/RELEASE-1.0.8.md)、[维护架构](docs/MAINTENANCE.md)与[迁移步骤](docs/MEMORY-MIGRATION.md)。
 

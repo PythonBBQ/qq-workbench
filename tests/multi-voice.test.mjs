@@ -57,6 +57,13 @@ test('unknown receipts require a fresh connection check but do not silence later
   recovery.fail(one);assert.equal(recovery.allowed(one,true,now-1),false);now++;assert.equal(recovery.allowed(one,true,now),true);recovery.success(one);assert.equal(recovery.state().count,0);
 });
 
+test('pause preserves an already issued reply while an explicit account cancellation still aborts it',async()=>{
+ const {ReplyTasks}=await import('../assets/delivery-recovery.mjs');const tasks=new ReplyTasks();let finished=false;
+ await tasks.run(async()=>{tasks.beginDelivery();tasks.cancel('暂停',{finishStarted:true});tasks.check();finished=true;});assert.equal(finished,true);
+ await assert.rejects(()=>tasks.run(async()=>{tasks.beginDelivery();tasks.cancel('换号');tasks.check();}),/换号/);
+ await assert.rejects(()=>tasks.run(async()=>{tasks.cancel('未发送前暂停',{finishStarted:true});tasks.check();}),/未发送前暂停/);
+});
+
 test('the same chat completion chooses voice contextually; text preference and local guardrails still win',()=>{
  const c={voiceEnabled:true,voiceMode:'smart'},ctx={reply:'辛苦啦，先歇一歇吧。',event:{message_type:'private'}};
  assert.match(voicePrompt(c),/结合当前话题/);assert.equal(voicePrompt({voiceEnabled:false}),'');assert.match(voicePrompt({...c,voiceMode:'request'}),/仅本条明确要求/);

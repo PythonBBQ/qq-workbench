@@ -32,7 +32,7 @@ public final class NativeSettingsCheck {
         for(String url:new String[]{endpoint.replace("h5.qzone.qq.com","h5.qzone.qq.com.evil.example"),endpoint+"/extra",endpoint.replace("https:","http:"),endpoint.replace("h5.qzone.qq.com","h5.qzone.qq.com:8443")})check(!NativeNetwork.qzoneCredentials(new java.net.URL(url),"POST"));
         check(RuntimePolicy.mayRecover(1000,0,2));check(!RuntimePolicy.mayRecover(1000,0,3));check(RuntimePolicy.mayRecover(601000,0,3));
         check(RuntimePolicy.resetWindow(601000,0));check(RuntimePolicy.resetWindow(500,1000));
-        check(RuntimePolicy.unexpectedExit(137,false));check(!RuntimePolicy.unexpectedExit(75,false));check(!RuntimePolicy.unexpectedExit(0,false));check(!RuntimePolicy.unexpectedExit(137,true));
+        check(RuntimePolicy.unexpectedExit(137,false));check(!RuntimePolicy.unexpectedExit(75,false));check(RuntimePolicy.unexpectedExit(0,false));check(!RuntimePolicy.unexpectedExit(137,true));
         check(RuntimePolicy.retryDelay(1)==5000&&RuntimePolicy.retryDelay(100)==30000);
         check(RuntimePolicy.resumeDue(0,1000));check(!RuntimePolicy.resumeDue(1000,15999));check(RuntimePolicy.resumeDue(1000,16000));check(RuntimePolicy.resumeDue(2000,1000));
         check(RuntimePolicy.schedulingGap(1000,92000)&&!RuntimePolicy.schedulingGap(1000,31000));

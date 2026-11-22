@@ -18,7 +18,16 @@ public final class VoiceExpressionPolicyCheck {
         }
         JSONObject request=VoicePreview.request(0,settings,"intimate","嗯。");request.put("referenceVariant",1);
         check(VoicePresetBank.synthesisReference(primary,"嗯。",0,request,true)==soft);
-        check(VoicePresetBank.synthesisReference(primary,"晚安。",0,new JSONObject(),true)==soft);
+        check(VoicePresetBank.synthesisReference(primary,"晚安。",0,new JSONObject(),true)==primary);
+        for(String mood:LocalVoice.ALL_MOODS){
+            JSONObject anchor=new JSONObject(primary.toString()).put("mood",mood);
+            // Text, soft delivery, counters and the old stableReference flag must not rotate anchors.
+            for(String text:new String[]{"你好。","嗯，你还好吗？","晚安，闭上眼睛。","别难过，慢慢说。"})
+                for(int sequence=0;sequence<12;sequence++)
+                    for(boolean stable:new boolean[]{false,true})
+                        for(boolean quiet:new boolean[]{false,true})
+                            check(VoicePresetBank.synthesisReference(anchor,text,sequence,new JSONObject().put("stableReference",stable),quiet)==anchor);
+        }
         JSONObject single=new JSONObject().put("file","own-recording");
         check(VoicePresetBank.synthesisReference(single,"你好。",0,new JSONObject().put("stableReference",true),true)==single);
         JSONObject disabled=VoicePreview.request(0,new JSONObject(settings.toString()).put("voiceEmotion",false),"intimate","你好。");
@@ -31,6 +40,10 @@ public final class VoiceExpressionPolicyCheck {
         check(system.getInt("rate")==-5);check(system.getInt("pitch")==3);
         JSONObject plain=VoicePreview.request(0,new JSONObject(settings.toString()).put("voiceNatural",false),"neutral","你好。");
         check(!plain.getBoolean("phrasing"));
+        for(String extra:new String[]{"angry","afraid","worried","surprised"}){
+            JSONObject extended=VoicePreview.request(0,settings,extra,"请听我把话说完。");
+            check(extended.getString("emotion").equals(extra));check(extended.getInt("pitch")==0);check(extended.getInt("rate")==0);
+        }
         System.out.println("QQWB_VOICE_EXPRESSION_POLICY_OK: same anchor across utterances, explicit probe override, single reference, unchanged pitch, preview rates and disabled emotion");
     }
 }

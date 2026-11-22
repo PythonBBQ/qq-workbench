@@ -13,7 +13,7 @@ sys.path.insert(0,str(root));from tools.shizuku_deps import sdk_jars
 from tools.zipvoice_deps import sdk_jars as voice_jars
 jars=sdk_jars(a.cache_root)+voice_jars(a.cache_root)
 sdk=a.toolchain/'platform-35_r02/android-35/android.jar';bt=a.toolchain/'build-tools_r35_windows/android-15'
-tests=['UpdatePlanCheck','RuntimeOwnershipCheck','MigrationCheck','ResumableDownloadCheck','ApkPatchCheck','UpdateFeedCheck','VoiceExpressionPolicyCheck','WebVideoPolicyCheck']
+tests=['UpdatePlanCheck','RuntimeOwnershipCheck','RuntimeRecoveryPolicyCheck','MigrationCheck','ResumableDownloadCheck','ApkPatchCheck','UpdateFeedCheck','VoiceExpressionPolicyCheck','VoiceExtendedPackCheck','WebVideoPolicyCheck']
 work=root/'build/maintenance-host';work.mkdir(parents=True,exist_ok=True)
 def run(*parts):subprocess.run(list(map(str,parts)),check=True,cwd=root)
 with tempfile.TemporaryDirectory(dir=work) as temp:
@@ -23,4 +23,5 @@ with tempfile.TemporaryDirectory(dir=work) as temp:
     for name in tests:
         run(a.java_bin/'java.exe','-cp',os.pathsep.join(map(str,[a.json_jar,classes,sdk,*jars])),'cn.qqworkbench.assistant.'+name,temp/'patches' if name=='ApkPatchCheck' else temp,*(['--skip-host-symlink'] if name=='MigrationCheck' and os.name=='nt' else []))
 run(sys.executable,root/'tests/android-reinstall-test.py');run(sys.executable,root/'tests/apk-patch-test.py')
+run(sys.executable,root/'tools/test-snow-native.py','--bundle',a.cache_root/'assets/snowluma-bridge.tar.gz')
 print('QQWB_MAINTENANCE_HOST_OK',flush=True)

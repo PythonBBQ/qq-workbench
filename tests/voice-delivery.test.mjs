@@ -51,6 +51,29 @@ test('account changes during generation clean the pending audio and prevent furt
 test('a thrown QQ send error is never treated as synthesis failure or retried',async()=>{
  let sends=0;const batch=prepareSpeech({},text,{},async()=>({segment:{type:'record'},cleanup(){}}));await assert.rejects(()=>batch.deliver({confirmed,send:async()=>{sends++;throw Error('socket timeout');}}),/socket timeout/);assert.equal(sends,1);assert.equal(batch.fallback,false);
 });
+
+test('an unsent synthesized segment waits for transport recovery without regenerating it',async()=>{
+ let online=true,generated=0,cleaned=0,sends=0,accepted='';
+ const batch=prepareSpeech({},'先坐下来慢慢说。',{},async()=>{generated++;online=false;return {segment:{type:'record'},cleanup(){cleaned++;}};});
+ await batch.deliver({confirmed,ready:async()=>{if(!online){await new Promise(r=>setTimeout(r,10));online=true;}},send:async()=>{assert.equal(online,true);sends++;return receipt;},accepted:part=>accepted+=part});
+ assert.equal(generated,1);assert.equal(sends,1);assert.equal(cleaned,1);assert.equal(accepted,'先坐下来慢慢说。');assert.equal(batch.uncertain,false);
+});
+
+test('cancel or connection wait before send never creates an uncertain delivery',async()=>{
+ for(const code of ['VOICE_SESSION_CHANGED','VOICE_CONNECTION_WAIT']){
+  let readyCount=0,sends=0,cleaned=0;
+  const batch=prepareSpeech({},'先坐下来慢慢说。',{},async()=>({segment:{type:'record'},cleanup(){cleaned++;}}));
+  await assert.rejects(()=>batch.deliver({confirmed,ready:async()=>{if(++readyCount===2)throw Object.assign(Error('stopped before send'),{code});},send:async()=>{sends++;return receipt;}}),e=>e.code===code);
+  assert.equal(batch.uncertain,false);assert.equal(sends,0);assert.equal(cleaned,1);
+ }
+});
+
+test('only acknowledged voice prefixes enter partial memory after a later unconfirmed send',async()=>{
+ const accepted=[];let sends=0;
+ const batch=prepareSpeech({},text,{},async()=>({segment:{type:'record'},cleanup(){}}));
+ await assert.rejects(()=>batch.deliver({confirmed,send:async()=>++sends===1?receipt:{status:'timeout'},accepted:part=>accepted.push(part)}),/不确定/);
+ assert.deepEqual(accepted,[splitVoiceMessages(text)[0]]);assert.equal(batch.uncertain,true);assert.equal(sends,2);
+});
 test('long answers can retain selected voice while copyable technical content remains text',()=>{
  assert.equal(voiceDecision('继续说',{voiceEnabled:true,voiceMode:'always'},{reply:text}).voice,true);assert.equal(voiceDecision('继续说',{voiceEnabled:true,voiceMode:'smart'},{reply:text,modelChoice:true}).voice,true);assert.equal(voiceDecision('继续说',{voiceEnabled:true,voiceMode:'always'},{reply:'https://example.com'}).voice,false);
 });
@@ -58,4 +81,32 @@ test('fixed emotional preset overrides the model mood and pitch processing prese
  assert.equal(speechPlan('你好',{voiceEmotionPreset:'shy'},'happy').emotion,'shy');assert.equal(speechPlan('你好',{voiceEmotionPreset:'invalid'},'happy').emotion,'happy');
  for(const pitch of [-30,30]){const filter=speechDeliveryFilter(false,pitch);assert.match(filter,/asetrate=/);assert.match(filter,/atempo=/);assert.ok(filter.endsWith('apad=pad_dur=1.5'));assert.ok(!filter.includes('silenceremove'));}
  assert.ok(!speechDeliveryFilter(false,0).includes('asetrate'));
+});
+
+test('all bubbles share the whole-answer delivery and retain acknowledged per-part reference evidence',async()=>{
+ const input='先坐下来，我们把今天的事情说清楚。'.repeat(4)+'闭上眼睛，安心睡吧。';
+ const options={emotion:'sad',event:{raw_message:'陪我聊聊'}};
+ const original=structuredClone(options);const seen=[];
+ const batch=prepareSpeech({speechProvider:'zipvoice',zipVoiceModel:'full',zipVoiceSteps:16},input,options,async(c,part,request)=>{
+  seen.push({part,style:request.deliveryStyle,mood:request.emotion});
+  return {segment:{type:'record'},info:{referenceMood:'gentle',referenceVariant:0,deliveryStyle:request.deliveryStyle,elapsedMs:seen.length*100},cleanup(){}};
+ });
+ await batch.deliver({confirmed,send:async()=>receipt});
+ assert.ok(seen.length>1);assert.equal(seen.map(v=>v.part).join(''),input);
+ assert.ok(seen.every(v=>v.style==='soft'&&v.mood==='sad'));
+ assert.deepEqual(options,original,'caller options remain unchanged');
+ assert.equal(batch.info.parts.length,seen.length);assert.equal(batch.info.elapsedMs,seen.length*100);
+ assert.deepEqual(batch.info.parts.map(v=>v.part),seen.map((_,i)=>i+1));
+ assert.ok(batch.info.parts.every(v=>v.referenceVariant===0&&v.referenceMood==='gentle'));
+});
+
+test('explicit whole-answer delivery is preserved and unconfirmed bubbles never enter accepted metadata',async()=>{
+ const options={deliveryStyle:'normal'};let generated=0,sends=0;
+ const batch=prepareSpeech({},text,options,async(c,part,request)=>{
+  assert.equal(request.deliveryStyle,'normal');generated++;
+  return {segment:{type:'record'},info:{referenceMood:'sad',referenceVariant:0,elapsedMs:generated*10},cleanup(){}};
+ });
+ await assert.rejects(()=>batch.deliver({confirmed,send:async()=>++sends===1?receipt:{status:'timeout'}}),/不确定/);
+ assert.equal(generated,2);assert.equal(batch.info.parts.length,1);assert.equal(batch.info.parts[0].part,1);assert.equal(batch.info.elapsedMs,10);
+ assert.deepEqual(options,{deliveryStyle:'normal'});
 });

@@ -40,7 +40,7 @@ final class UpdateFlow {
         // start QQ against an unfinished restore or installer handoff.
         if(Maintenance.pending(c)){try{c.startForegroundService(new Intent(c,MaintenanceService.class).setAction("recover-update"));}catch(Exception ignored){}Intent resume=new Intent(c,MainActivity.class).putExtra("openUpdates",true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP);try{c.startActivity(resume);}catch(Exception ignored){}return;}
         if(!UsageAgreement.accepted(c))return;long target=prefs(c).getLong("installTarget",0);boolean requested=c.getSharedPreferences("runtime",0).getBoolean("requested",false);
-        if(target<=0||version(c)<target){if(requested)try{c.startForegroundService(new Intent(c,RuntimeService.class));}catch(Exception ignored){}return;}
+        if(target<=0||version(c)<target){if(requested)RuntimeRecovery.recover(c,"updated");return;}
         begin(c);c.getSharedPreferences("update-download",0).edit().putString("phase","integrating").putString("message","安装完成，正在整合本地资源").apply();
         try{c.startForegroundService(new Intent(c,RuntimeService.class));}catch(Exception e){problem(c,"请打开软件继续初始化");}
         Intent open=new Intent(c,MainActivity.class).putExtra("openUpdates",true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP);

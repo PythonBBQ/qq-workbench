@@ -9,18 +9,22 @@ import java.util.concurrent.*;
 
 /** One lifecycle-owned window; stale probes cannot open a different account page. */
 final class QqLoginWindow {
-    final MainActivity a;final int slot;final WebView web;final TextView hint;final Button identify;
+    final MainActivity a;final int slot;final WebView web;final TextView hint;final Button identify;final QqLoginInput input;
     final ExecutorService worker=Executors.newSingleThreadExecutor();boolean closed,busy,loaded,paused;String startProblem="";
     QqLoginWindow(MainActivity activity,int account,Runnable identifyAction){
         a=activity;slot=account;hint=a.text("正在检查本机环境和 QQ 窗口…",14);a.body.addView(hint);
         identify=a.plainButton("识别并连接 QQ",identifyAction);identify.setEnabled(false);a.body.addView(identify,new LinearLayout.LayoutParams(-1,a.dp(48)));
-        web=new WebView(a);a.browser=web;web.setBackgroundColor(Color.TRANSPARENT);web.setVisibility(View.GONE);
+        web=new WebView(a);a.browser=web;web.setBackgroundColor(Color.TRANSPARENT);web.setVisibility(View.GONE);web.setFocusableInTouchMode(true);input=new QqLoginInput(this);
         web.getSettings().setJavaScriptEnabled(true);web.getSettings().setDomStorageEnabled(true);web.getSettings().setAllowFileAccess(false);web.getSettings().setAllowContentAccess(false);
         web.setWebViewClient(new WebViewClient(){
+            public void onPageFinished(WebView v,String url){if(current()&&QqWindowProbe.allowed(slot,url))input.install();}
             public boolean shouldOverrideUrlLoading(WebView v,WebResourceRequest r){return !QqWindowProbe.allowed(slot,r.getUrl().toString());}
             public void onReceivedError(WebView v,WebResourceRequest r,WebResourceError error){if(r.isForMainFrame())failed();}
             public void onReceivedHttpError(WebView v,WebResourceRequest r,WebResourceResponse response){if(r.isForMainFrame())failed();}
-        });a.body.addView(web,new LinearLayout.LayoutParams(-1,a.dp(520)));
+        });
+        a.note("点击 QQ 里的账号或密码框，再用下面的输入按钮；也可以打开键盘直接输入。");
+        LinearLayout keys=new LinearLayout(a);for(int n=0;n<3;n++){final int action=n;Button key=a.plainButton(new String[]{"输入账号","输入密码","打开键盘"}[n],()->{if(action==2)input.keyboard();else input.edit(action==1);});keys.addView(key,new LinearLayout.LayoutParams(0,a.dp(48),1));}a.body.addView(keys);
+        a.body.addView(web,new LinearLayout.LayoutParams(-1,a.dp(520)));
         a.button("检测环境并重试打开",this::retry);a.button("查看环境检测和诊断",()->a.go("diagnostics"));a.loginWindow=this;retry();
     }
     boolean current(){return !closed&&!a.destroyed&&a.loginWindow==this&&a.browser==web;}
@@ -34,7 +38,7 @@ final class QqLoginWindow {
         if(slot>0&&!busy){busy=true;worker.submit(()->{try{a.api("/multi/configure",new org.json.JSONObject().put("profiles",new AccountProfiles(a).list()));a.api("/multi/start",new org.json.JSONObject().put("slot",slot));}catch(Exception e){a.runOnUiThread(()->{if(current())startProblem="此独立账号尚未启动，请等待主服务准备完成后重试。";});}finally{a.runOnUiThread(()->busy=false);}});}
         a.handler.removeCallbacks(tick);a.handler.post(tick);
     }
-    void pause(){paused=true;a.handler.removeCallbacks(tick);}
+    void pause(){paused=true;input.close();a.handler.removeCallbacks(tick);}
     void resume(){if(!current())return;paused=false;a.handler.removeCallbacks(tick);a.handler.post(tick);}
-    void close(){closed=true;a.handler.removeCallbacks(tick);worker.shutdownNow();}
+    void close(){closed=true;input.close();a.handler.removeCallbacks(tick);worker.shutdownNow();}
 }

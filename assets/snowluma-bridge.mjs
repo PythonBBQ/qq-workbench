@@ -4,6 +4,60 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {spawn} from 'node:child_process';
 
+// QQ 3.2.34 stores the core's libc++ account string at 0x230. The bundled
+// SnowLuma reader expects 0x248. Apply this only to the measured binaries;
+// neither a cached account number nor a pipe ACK establishes a session.
+export const SNOW_CORE_LAYOUT=Object.freeze({
+  qqVersion:'3.2.34-53644',
+  wrapperSha256:'8f17c51f111f33efcff42aae11850436500d7ca7d0f82935db0b826cb1459b4a',
+  sourceSha256:'fda895b1aca4479d50fac7fa5555e717c29db99c76cde88d3e70d3f5bf7d09a9',
+  adaptedSha256:'424832131dca9bfde92fb675754690c95c968360267c7386176fdaf19b8b3225',
+});
+const sha256=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
+function fileSha256(file){
+  const fd=fs.openSync(file,'r'),hash=crypto.createHash('sha256'),buffer=Buffer.alloc(262144);
+  try{let size;while((size=fs.readSync(fd,buffer,0,buffer.length,null))>0)hash.update(buffer.subarray(0,size));return hash.digest('hex');}
+  finally{fs.closeSync(fd);}
+}
+export function adaptSnowCoreLayout(source){
+  if(sha256(source)!==SNOW_CORE_LAYOUT.sourceSha256)throw new Error('SnowLuma 原生组件校验不符，未执行账号布局适配');
+  const result=Buffer.from(source),address=0xcf48;
+  if(result.subarray(0,6).toString('hex')!=='7f454c460201'||result.readUInt16LE(18)!==183)throw new Error('SnowLuma ELF 架构不符');
+  const table=Number(result.readBigUInt64LE(32)),stride=result.readUInt16LE(54),count=result.readUInt16LE(56);
+  let offset=-1;
+  for(let i=0;i<count;i++){
+    const p=table+i*stride;
+    if(result.readUInt32LE(p)!==1)continue;
+    const start=Number(result.readBigUInt64LE(p+16)),length=Number(result.readBigUInt64LE(p+32));
+    if(start<=address&&address+4<=start+length){offset=Number(result.readBigUInt64LE(p+8))+address-start;break;}
+  }
+  if(offset<0||result.readUInt32LE(offset)!==0x91092000)throw new Error('SnowLuma 账号读取指令不符');
+  result.writeUInt32LE(0x9108c000,offset); // ADD x0,x0,#0x230
+  if(sha256(result)!==SNOW_CORE_LAYOUT.adaptedSha256)throw new Error('SnowLuma 布局适配结果校验失败');
+  return result;
+}
+export function prepareSnowNative({snowRoot='/opt/qqwb-snow-1.14.22',qqRoot='/opt/QQ'}={}){
+  const original=path.join(snowRoot,'native/snowluma-linux-arm64.so');
+  const version=JSON.parse(fs.readFileSync(path.join(qqRoot,'resources/app/package.json'),'utf8')).version;
+  if(version!==SNOW_CORE_LAYOUT.qqVersion)return original;
+  if(fileSha256(path.join(qqRoot,'resources/app/wrapper.node'))!==SNOW_CORE_LAYOUT.wrapperSha256)
+    throw new Error('QQ 原生组件与已验证版本不符，未执行账号布局适配');
+  const adapted=adaptSnowCoreLayout(fs.readFileSync(original));
+  const dir=path.join(snowRoot,'native/qqwb-core230');
+  fs.mkdirSync(dir,{recursive:true,mode:0o700});
+  if(fs.lstatSync(dir).isSymbolicLink())throw new Error('SnowLuma 适配目录异常');
+  const target=path.join(dir,'snowluma-linux-arm64.so');
+  if(fs.existsSync(target)&&!fs.lstatSync(target).isSymbolicLink()&&fileSha256(target)===SNOW_CORE_LAYOUT.adaptedSha256)return target;
+  // Exclusive, per-launch staging also works when multiple account slots start.
+  const stage=target+'.'+crypto.randomBytes(8).toString('hex')+'.next';
+  try{
+    fs.writeFileSync(stage,adapted,{mode:0o600,flag:'wx'});
+    if(fileSha256(stage)!==SNOW_CORE_LAYOUT.adaptedSha256)throw new Error('SnowLuma 适配副本写入校验失败');
+    fs.renameSync(stage,target);
+  }finally{try{fs.unlinkSync(stage);}catch(e){if(e.code!=='ENOENT')throw e;}}
+  return target;
+}
+
 /** A half-open local socket must not prevent all later reconnect attempts. */
 export function socketDeadline(socket,onTimeout,{milliseconds=12000,schedule=setTimeout,cancel=clearTimeout}={}){
   let active=true;
@@ -49,6 +103,8 @@ export class SnowLumaBridge {
     if(slot){const l=instanceLayout(slot);this.home=l.home;this.wsPort=l.wsPort;this.snowPort=l.snowPort;this.runtime=l.runtime;}
   }
   start() {
+    this.nativeLibrary=prepareSnowNative({snowRoot:this.root});
+    if(this.nativeLibrary!==this.root+'/native/snowluma-linux-arm64.so')console.log('QQWB:已启用经校验的 QQ 3.2.34 账号布局适配，等待真实账号回执');
     fs.mkdirSync(this.work,{recursive:true,mode:0o700});
     const file=path.join(this.work,'console-password');
     try{this.password=fs.readFileSync(file,'utf8');}catch(e){if(e.code!=='ENOENT')throw e;}
@@ -91,7 +147,7 @@ export class SnowLumaBridge {
     this.launcherExited=false;this.configuredUin='';this.qqStartedAt=Date.now();
     this.qq=this.launch('/usr/bin/dbus-run-session',['--','/usr/bin/env',
       'SNOWLUMA_HOOK_STUB_START=true','SNOWLUMA_HOOK_SERVICE_MODE=in-process',
-      'LD_PRELOAD='+this.root+'/native/snowluma-linux-arm64.so','/opt/QQ/qq',
+      'LD_PRELOAD='+this.nativeLibrary,'/opt/QQ/qq',
       '--no-sandbox','--disable-gpu','--disable-software-rasterizer','--disable-gpu-compositing','--disable-dev-shm-usage'],
       {LD_LIBRARY_PATH:'/opt/QQ:/opt/QQ/resources/app:/usr/lib/aarch64-linux-gnu'},'qq');
   }

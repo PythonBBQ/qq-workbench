@@ -43,12 +43,18 @@ public final class RuntimeService extends Service {
         if(DataMigration.busy||Maintenance.pending(this)||stopping){stopSelf();return START_NOT_STICKY;}
         if(!UsageAgreement.accepted(this)){getSharedPreferences("runtime",0).edit().putBoolean("requested",false).commit();stopSelf();return START_NOT_STICKY;}
         android.content.SharedPreferences preferences=getSharedPreferences("runtime",0);
-        if(i==null&&(!preferences.getBoolean("requested",false)||!claimRecovery())){stopSelf();return START_NOT_STICKY;}
-        preferences.edit().putBoolean("requested",true).apply();
-        if(!running){running=true;stopped=false;update("服务已启动，正在检查本机环境…");health.scheduleWithFixedDelay(this::checkHealth,30,30,TimeUnit.SECONDS);supervisionStarted=true;worker.execute(this::supervise);}
+        boolean automatic=i==null||i.getBooleanExtra("automaticRecovery",false);
+        if(automatic&&(!RuntimeRecovery.allowed(this)||(!running&&!claimRecovery()))){RuntimeRecovery.retry(this);stopSelf();return START_NOT_STICKY;}
+        if(!automatic)preferences.edit().putBoolean("requested",true).commit();
+        RuntimeRecovery.watch(this);RuntimeRecovery.retry(this);
+        if(i!=null&&"boot".equals(i.getStringExtra("recoveryReason"))){
+            record("手机重启后正在自动检查QQ；不需要打开工作台，尚未核验在线");
+        }
+        if(!running){running=true;stopped=false;preferences.edit().putBoolean("qqConnected",false).apply();update("服务已启动，正在检查本机环境…");health.scheduleWithFixedDelay(this::checkHealth,30,30,TimeUnit.SECONDS);supervisionStarted=true;worker.execute(this::supervise);}
+        else if(automatic)health.execute(()->resumeConnection("recovery"));
         return START_STICKY;
     }
-    static void stopRequested(Context context){context.getSharedPreferences("runtime",0).edit().putBoolean("requested",false).commit();context.stopService(new Intent(context,RuntimeService.class));}
+    static void stopRequested(Context context){context.getSharedPreferences("runtime",0).edit().putBoolean("requested",false).commit();RuntimeRecovery.cancel(context);context.stopService(new Intent(context,RuntimeService.class));}
     private boolean claimRecovery(){
         android.content.SharedPreferences p=getSharedPreferences("runtime",0);long now=System.currentTimeMillis(),window=p.getLong("recoveryWindow",0);int attempts=p.getInt("recoveryAttempts",0);
         if(!RuntimePolicy.mayRecover(now,window,attempts)){update("十分钟内已恢复三次，请打开诊断检查；自动恢复已暂缓");return false;}
@@ -75,6 +81,7 @@ public final class RuntimeService extends Service {
         if(RuntimePolicy.schedulingGap(lastHealthTick,now)){record("后台检查曾暂停超过90秒，可能被系统冻结或休眠；返回后已继续检查");getSharedPreferences("runtime",0).edit().putLong("lastSchedulingGap",System.currentTimeMillis()).apply();resumeConnection("wake");}lastHealthTick=now;
         if(background!=null)background.refresh();
         try{JSONObject s=localState();UpdateFlow.finished(this);assistantReady=true;healthFailures=0;if(!s.optBoolean("connected")&&background!=null&&background.online())resumeConnection("health");getSharedPreferences("runtime",0).edit().putLong("lastHealthy",System.currentTimeMillis()).putBoolean("qqConnected",s.optBoolean("connected")).putString("healthStatus",s.optBoolean("connected")?"后台服务与QQ在线核验通过":"后台服务可达，QQ等待重新连接").apply();
+            if(s.optBoolean("connected"))RuntimeRecovery.healthy(this);
             NotificationManager manager=getSystemService(NotificationManager.class);manager.notify(17,notification(s.optBoolean("connected")?"QQ在线 · 后台检查正常":"后台运行 · QQ正在连接"));
         }catch(Exception ignored){getSharedPreferences("runtime",0).edit().putBoolean("qqConnected",false).putString("healthStatus",assistantReady?"本机检查未响应，QQ在线状态尚未核验":"正在初始化，尚未进入后台连接检查").apply();if(!assistantReady){healthFailures=0;return;}healthFailures++;if(healthFailures==3){record("连续三次本机健康检查未响应；保留仍运行的进程，避免重复启动QQ");getSharedPreferences("runtime",0).edit().putString("healthStatus","本机检查未响应，请检查省电限制或诊断").apply();getSystemService(NotificationManager.class).notify(17,notification("本地服务未响应 · 连接待核验"));}}
     }
@@ -91,19 +98,47 @@ public final class RuntimeService extends Service {
         if(adopted&&sync){UpdateFlow.begin(this);update("更新后正在停止旧会话并整合资源…");requestShutdown();boolean exited=false;for(int i=0;i<25&&!stopped;i++){Thread.sleep(1000);try{localState();}catch(Exception e){exited=true;break;}}if(!exited)throw new IOException("旧会话尚未退出，未覆盖运行中的资源");
             adopted=false;}
         if(sync){UpdateFlow.begin(this);RuntimeProcesses.unlocked(this,15000);}
-        if(adopted){update("已接管仍在运行的本机QQ会话");while(!stopped)Thread.sleep(15000);return;}
+        if(adopted){
+            update("已接管仍在运行的本机QQ会话");int missing=0;
+            while(!stopped){
+                Thread.sleep(15000);
+                try{localState();missing=0;continue;}catch(Exception unavailable){missing++;}
+                if(missing<3)continue;
+                boolean lockFree=false;
+                try{RuntimeProcesses.unlocked(this,1000);lockFree=true;}catch(Exception stillOwned){
+                    if(missing==3)record("接管会话暂未响应，原运行锁尚未确认释放；保留原进程继续检查");
+                }
+                // A quiet/frozen HTTP endpoint is not evidence that QQ exited.
+                // Relaunch only after repeated failures AND the exact runtime lock is free.
+                if(!RuntimePolicy.adoptedSessionLost(missing,lockFree))continue;
+                if(stopped||!claimRecovery())return;
+                adopted=false;assistantReady=false;
+                update("原接管会话已退出且运行锁已释放，自动恢复本机QQ…");
+                break;
+            }
+            if(stopped)return;
+        }
         int exit;
         do{
-            exit=launchOnce();
+            try{exit=launchOnce();}
+            catch(InterruptedException interrupted){Thread.currentThread().interrupt();return;}
+            catch(Exception|LinkageError failure){
+                if(stopped)return;
+                update("本次启动未完成："+failure.getClass().getSimpleName()+"；保留账号，稍后自动重试");
+                RuntimeRecovery.event(this,"启动重试原因："+failure.getClass().getSimpleName());
+                java.lang.Process failed=process;
+                if(failed!=null&&failed.isAlive()){requestShutdown();RuntimeProcesses.stop(this);RuntimeProcesses.unlocked(this,5000);}
+                process=null;exit=-1;
+            }
             if(!RuntimePolicy.unexpectedExit(exit,stopped)||!claimRecovery())break;
             int attempt=getSharedPreferences("runtime",0).getInt("recoveryAttempts",1);update("本机进程异常退出，稍后自动恢复（最多三次/十分钟）…");Thread.sleep(RuntimePolicy.retryDelay(attempt));
         }while(!stopped);
         if(!stopped&&exit==75)update("已有本机会话持有运行锁，未重复启动QQ；请到诊断检查");
-    }catch(Exception|LinkageError e){if(!stopped){update("启动失败："+e.getClass().getSimpleName()+" · "+e.getMessage());UpdateFlow.problem(this,state);}}
+    }catch(Exception|LinkageError e){if(!stopped){update("启动暂未完成："+e.getClass().getSimpleName()+"；后台将自动重试，原配置保留");UpdateFlow.problem(this,state);}}
     finally{
         java.lang.Process survivor=process;
         if(!stopped&&survivor!=null&&survivor.isAlive()){requestShutdown();survivor.destroy();try{if(!survivor.waitFor(3,TimeUnit.SECONDS))survivor.destroyForcibly();}catch(InterruptedException ignored){Thread.currentThread().interrupt();}}
-        if(network!=null){network.close();network=null;}if(!stopped){running=false;process=null;stopSelf();}}}
+        if(network!=null){network.close();network=null;}if(!stopped){RuntimeRecovery.retry(this);running=false;process=null;stopSelf();}}}
     private int launchOnce()throws Exception{
         assistantReady=false;healthFailures=0;
         Container container=new Container(this);RuntimeProcesses.unlocked(this,2000);if(stopped||Thread.currentThread().isInterrupted())return 0;container.prepare(this::update);UpdateFlow.resourcesReady(this);if(stopped||Thread.currentThread().isInterrupted())return 0;
@@ -134,8 +169,9 @@ public final class RuntimeService extends Service {
         try{c=(java.net.HttpURLConnection)new java.net.URL("http://127.0.0.1:13480/shutdown").openConnection();c.setConnectTimeout(1000);c.setReadTimeout(1500);c.setRequestMethod("POST");c.setRequestProperty("Authorization","Bearer "+new Secrets(this).ensure("internal"));c.getResponseCode();}
         catch(Exception ignored){}finally{if(c!=null)c.disconnect();}
     }
-    public void onTaskRemoved(Intent rootIntent){record("界面已离开最近任务，后台服务继续运行；系统强行停止仍会终止它");super.onTaskRemoved(rootIntent);}
+    public void onTaskRemoved(Intent rootIntent){RuntimeRecovery.retry(this);record("界面已离开最近任务，后台继续运行并保留恢复检查");super.onTaskRemoved(rootIntent);}
     public void onDestroy(){
+        RuntimeRecovery.retry(this);
         if(!supervisionStarted){if(background!=null)background.close();health.shutdownNow();worker.shutdownNow();if(wake!=null&&wake.isHeld())wake.release();super.onDestroy();return;}
         final java.lang.Process p;
         synchronized(this){stopped=true;p=process;stopping=true;}

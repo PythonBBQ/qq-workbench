@@ -8,7 +8,7 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const pause=()=>new Promise(r=>setTimeout(r,40));
 test('first-run Key applies without restart; pictures and follow-ups use context in one call, no real QQ or model traffic',async()=>{
   const parent=path.join(root,'build','flow-tests');await fs.mkdir(parent,{recursive:true});const dir=await fs.mkdtemp(path.join(parent,'case-'));
-  for(const name of ['assistant.mjs','account-instances.mjs','delivery-recovery.mjs','request-inspector.mjs','codex-jobs.mjs','shortcuts.mjs','qq-media.mjs','qzone-client.mjs','device-tools.mjs','usage-ledger.mjs','voice-delivery.mjs','voice-level.mjs','voice.mjs','voice-memory.mjs','feiyu-voice.mjs','model-client.mjs','personality-growth.mjs','group-moderation.mjs','conversation-memory.mjs','video.mjs','video-audio.mjs','bili-video.mjs','video-decoder.mjs','native-network.mjs','web-learning.mjs','browse-intent.mjs','learning.mjs','multi-parser.mjs','snowluma-bridge.mjs','images.mjs','chat-style.mjs'])await fs.copyFile(path.join(root,'assets',name),path.join(dir,name));
+  for(const name of ['assistant.mjs','owner-chat.mjs','owner-chat-score.mjs','account-instances.mjs','delivery-recovery.mjs','request-inspector.mjs','codex-jobs.mjs','shortcuts.mjs','qq-media.mjs','qzone-client.mjs','device-tools.mjs','usage-ledger.mjs','voice-delivery.mjs','voice-level.mjs','voice.mjs','voice-memory.mjs','feiyu-voice.mjs','model-client.mjs','personality-growth.mjs','group-moderation.mjs','conversation-memory.mjs','video.mjs','video-audio.mjs','bili-video.mjs','video-decoder.mjs','native-network.mjs','web-learning.mjs','browse-intent.mjs','learning.mjs','multi-parser.mjs','snowluma-bridge.mjs','images.mjs','chat-style.mjs'])await fs.copyFile(path.join(root,'assets',name),path.join(dir,name));
   await fs.writeFile(path.join(dir,'settings.json'),JSON.stringify({owner:'123456',enabled:true,others:true,rate:100,apiUrl:'https://api.deepseek.com',model:'deepseek-flash',persona:'温柔，爱吃白饭',maxReplyTokens:400,memoryEnabled:false}));
   await fs.writeFile(path.join(dir,'mock.mjs'),`
 import {SnowLumaBridge} from './snowluma-bridge.mjs';
@@ -26,6 +26,7 @@ globalThis.WebSocket=class extends EventTarget{
     if(d.action==='send_custom_face')process.send({sent:{...d.params,message:[{type:'image',data:{emoji_id:d.params.emoji_id}}]}});
     if(/^send_(group|private)_msg$/.test(d.action))process.send({sent:d.params});
     if(d.action.startsWith('send_')&&globalThis.sendControl==='unconfirmed')delete data.message_id;
+    if(d.action.startsWith('send_')&&d.params.message?.[0]?.data?.text==='第二段未确认。')delete data.message_id;
     const delay=d.action.startsWith('send_')&&globalThis.sendControl==='delayed'?200:0;
     setTimeout(()=>this.receive({echo:d.echo,status:'ok',retcode:0,data}),delay);}
   close(){this.readyState=3;}
@@ -35,16 +36,19 @@ globalThis.fetch=async(url,options)=>{
   const u=new URL(url);
   if(u.origin==='https://api.deepseek.com'||u.origin==='https://relay.example'){
     const body=JSON.parse(options.body);process.send({model:body,auth:options.headers.Authorization,host:u.hostname});
+    const last=body.messages.at(-1).content,userInput=(typeof last==='string'?last:JSON.stringify(last)).split('[工作台本轮补充')[0];
     if(globalThis.sendControl==='model-hung')await new Promise(()=>{});
     if(body.messages[0].content.includes('为QQ收藏表情生成简短'))return Response.json({choices:[{message:{content:'{\"label\":\"开心、卖萌\"}'}}]});
-    if(body.messages[0].content.includes('工作台具备QQ收藏表情发送能力')&&JSON.stringify(body.messages.at(-1)).includes('今天开心吗'))return Response.json({choices:[{message:{content:'好开心[[表情:1]]'}}]});
-    if(JSON.stringify(body.messages.at(-1)).includes('测试旧版占位回复'))return Response.json({choices:[{message:{content:'（发送了一张QQ收藏表情）'}}]});
+    if(JSON.stringify(body.messages).includes('工作台具备QQ收藏表情发送能力')&&userInput.includes('今天开心吗'))return Response.json({choices:[{message:{content:'好开心[[表情:1]]'}}]});
+    if(userInput.includes('测试旧版占位回复'))return Response.json({choices:[{message:{content:'（发送了一张QQ收藏表情）'}}]});
     if(globalThis.sendControl==='speech-failed')return Response.json({choices:[{message:{content:'先别着急，我们先把最重要的事情做好，其他事情可以慢慢来。等你休息好以后，我们再一起想想下一步，今天先照顾好自己。'}}]});
+    if(userInput.includes('测试普通两段'))return Response.json({choices:[{message:{content:'第一段先回应。\\n\\n第二段再解释。'}}]});
+    if(userInput.includes('测试分条失败'))return Response.json({choices:[{message:{content:'第一段已发送。\\n\\n第二段未确认。\\n\\n第三段不能发送。'}}]});
     if(body.model==='unavailable-model')return Response.json({error:{code:'invalid_api_key',message:'synthetic-upstream-secret'}},{status:401});
     if(body.messages[0].content.includes('联网检索路由器'))return Response.json({choices:[{message:{content:JSON.stringify({search:true,query:'DeepSeek 最新发布版本'})}}]});
     if(body.messages[0].content.includes('请将以下旧对话压缩'))await new Promise(r=>setTimeout(r,1200));
-    if(JSON.stringify(body).includes('等待切换'))await new Promise(r=>setTimeout(r,200));
-    return Response.json({choices:[{message:{content:body.messages.at(-1).content.includes('今天累坏了')?'[[voice]]辛苦啦，先歇一歇吧。':'好呀，配一碗白饭！'}}],usage:{prompt_tokens:100,completion_tokens:10,prompt_cache_hit_tokens:20}});
+    if(userInput.includes('等待切换'))await new Promise(r=>setTimeout(r,200));
+    return Response.json({choices:[{message:{content:userInput.includes('今天累坏了')?'[[voice]]辛苦啦，先歇一歇吧。':'好呀，配一碗白饭！'}}],usage:{prompt_tokens:100,completion_tokens:10,prompt_cache_hit_tokens:20}});
   }
   if(u.origin==='http://127.0.0.1:13481'&&u.pathname==='/device/action'){const request=JSON.parse(options.body);process.send({device:request});return Response.json({ok:true,output:'synthetic battery: 80%',message:'执行完成'});}
   if(u.origin==='http://127.0.0.1:13481'&&u.pathname==='/video-frames'&&JSON.parse(options.body).source==='web'){const request=JSON.parse(options.body);process.send({webVideoRead:request});if(request.url.includes('denied'))return Response.json({},{status:403});return Response.json({audio:{status:'ok',segments:[{start:0,end:1,text:'网页片段中的真实对白'}]},sampling:'1fps-contact-sheet-v1',durationSeconds:1,sampledSeconds:1,frameCount:1,frames:[{timestamps:[0],url:'data:image/jpeg;base64,AQID'}]});}
@@ -65,7 +69,11 @@ globalThis.fetch=async(url,options)=>{
   if(u.hostname==='cn.bing.com'){process.send({browse:{url:u.href,auth:options.headers?.Authorization}});return new Response('<li class="b_algo"><h2><a href="https://example.com/deepseek">DeepSeek 官方资料</a></h2><p>公开搜索摘要</p></li>',{headers:{'content-type':'text/html'}});}
   if(u.hostname==='example.com'){process.send({browse:{url:u.href,auth:options.headers?.Authorization}});return new Response(u.pathname==='/provided'?'<title>用户指定的部署文档</title><main>'+('本文介绍部署的准备工作。'.repeat(650))+'部署步骤：先安装 PROVIDED_PAGE_TOOL，然后启动服务。</main>':'<title>公开版本资料</title><main>'+('测试版本更新信息，仅供隔离验证。'.repeat(10))+'</main>',{headers:{'content-type':'text/html'}});}
   if(u.hostname==='eastasia.tts.speech.microsoft.com'&&globalThis.sendControl==='speech-failed'){process.send({speechAttempt:true});return new Response('synthetic synthesis failed',{status:503});}
-  if(u.hostname==='eastasia.tts.speech.microsoft.com')return new Response(Buffer.concat([Buffer.from('ID3'),Buffer.alloc(100)]));
+  if(u.hostname==='eastasia.tts.speech.microsoft.com'){
+    if(globalThis.sendControl==='speech-reconnect'){socket.readyState=3;socket.dispatchEvent(new Event('close'));await new Promise(r=>setTimeout(r,250));}
+    if(globalThis.sendControl==='speech-delayed'){process.send({speechAttempt:true});await new Promise(r=>setTimeout(r,400));}
+    return new Response(Buffer.concat([Buffer.from('ID3'),Buffer.alloc(100)]));
+  }
   if(u.hostname==='qpic.cn')return new Response(new Uint8Array([1,2,3]),{headers:{'content-type':'image/png'}});
   if(u.hostname==='mp.weixin.qq.com')return new Response('<h1 id="activity-name">分享文章</h1><a id="js_name">公开作者</a><div id="js_content"><p>只存在于本次分享中的公开正文。</p><img data-src="https://qpic.cn/shared-article.png"/></div>',{headers:{'content-type':'text/html'}});
   throw new Error('Unmocked network refused');
@@ -74,7 +82,7 @@ globalThis.fetch=async(url,options)=>{
   const child=fork(path.join(dir,'assistant.mjs'),[],{execArgv:['--import',pathToFileURL(path.join(dir,'mock.mjs')).href],env:{...process.env,WORKBENCH_TOKEN:token,DEEPSEEK_API_KEY:'',VISION_API_KEY:''},stdio:['ignore','pipe','pipe','ipc']});
   child.stdout.on('data',v=>log+=v);child.stderr.on('data',v=>log+=v);child.on('exit',()=>exited=true);child.on('message',m=>{if(m.speechAttempt)speechAttempts++;if(m.videoRead)videoReads.push(1);if(m.webVideoRead)webVideoReads.push(m.webVideoRead);if(m.device)devices.push(m.device);if(m.rpc)rpcs.push(m.rpc);if(m.model)models.push(m);if(m.sent)sent.push(m.sent);if(m.browse)browses.push(m.browse);});
   const api=async(route,body,auth=true)=>fetch('http://127.0.0.1:13480'+route,{method:body===undefined?'GET':'POST',headers:{...(auth?{Authorization:'Bearer '+token}:{}),'Content-Type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(1000)});
-  const until=async(fn)=>{const end=Date.now()+6000;while(Date.now()<end){if(exited)throw new Error(log||'child exited');try{const r=await fn();if(r)return r;}catch(e){if(e.message.includes('child'))throw e;}await pause();}throw new Error('Flow timeout: '+log);};
+  const until=async(fn)=>{const end=Date.now()+6000;while(Date.now()<end){if(exited)throw new Error(log||'child exited');try{const r=await fn();if(r)return r;}catch(e){if(e.message.includes('child'))throw e;}await pause();}throw new Error('Flow timeout: '+log+JSON.stringify({sent:sent.length,last:sent.slice(-3),speechAttempts}));};
   try{
     const state=await until(async()=>{const r=await api('/state');const s=await r.json();return s.connected?s:null;});assert.equal(state.modelConfigured,false);assert.match(state.connectionMessage,/核验通过/);
     assert.equal((await api('/credentials',{apiKey:'fake-key',visionKey:''},false)).status,401);
@@ -102,7 +110,7 @@ globalThis.fetch=async(url,options)=>{
     await new Promise(r=>setTimeout(r,100));assert.equal(sent.length,5);
     assert.equal((await api('/learning/notes',undefined,false)).status,401);
     assert.equal((await api('/learning/read',{kind:'read',value:'https://www.bilibili.com/video/BV1GJ411x7h7',save:true},false)).status,401);
-    const read=await(await api('/learning/read',{kind:'read',value:'https://www.bilibili.com/video/BV1GJ411x7h7',save:true})).json();assert.equal(read.items.length,1);assert.equal((await(await api('/learning/notes')).json()).notes.length,1);
+    const read=await(await api('/learning/read',{kind:'read',value:'https://www.bilibili.com/video/BV1GJ411x7h7',save:true})).json();assert.equal(read.items.length,1,JSON.stringify(read));assert.equal((await(await api('/learning/notes')).json()).notes.length,1);
     child.send({event:{...event,message_id:108,message:[{type:'text',data:{text:'只查简介 https://www.bilibili.com/video/BV1GJ411x7h7 你学到了什么'}}]}});await until(()=>sent.length===6);assert.match(models[4].model.messages.at(-1).content,/未观看视频/);
     assert.equal((await api('/learning/delete',{id:'all'})).status,200);assert.equal((await(await api('/learning/notes')).json()).notes.length,0);
     // A built-in QQ face reaches the model and later history instead of an empty message.
@@ -151,11 +159,11 @@ globalThis.fetch=async(url,options)=>{
     sendOwner(114,'记住：我喜欢白饭');await until(()=>sent.length===10);
     let memories=await until(async()=>{const list=await(await api('/memory/list')).json();return list.sessions.length?list.sessions:null;});
     assert.equal(memories[0].turns,1);assert.equal(memories[0].notes[0].content,'我喜欢白饭');
-    assert.match(models.at(-1).model.messages[0].content,/白饭是这只鲸鱼的最爱/);
+    assert.match(JSON.stringify(models.at(-1).model.messages),/白饭是这只鲸鱼的最爱/);
     let exported=await(await api('/memory/export',{})).json();assert.equal(JSON.parse(exported.jsonl).messages[0].content,'记住：我喜欢白饭');
     const memoryId=memories[0].id;
     assert.equal((await api('/memory/note',{id:memoryId,content:'回答简短'})).status,200);
-    sendOwner(115,'我明天去医院复查');await until(()=>sent.length===11);assert.match(models.at(-1).model.messages[0].content,/回答简短/);
+    sendOwner(115,'我明天去医院复查');await until(()=>sent.length===11);assert.match(JSON.stringify(models.at(-1).model.messages),/回答简短/);
     const dated=await until(async()=>{const list=await(await api('/memory/list')).json();return list.sessions.find(r=>r.id===memoryId)?.events?.[0]||null;});
     assert.equal(dated.content,'我明天去医院复查');assert.equal((await api('/memory/delete',{id:memoryId,eventId:dated.id},false)).status,401);
     assert.equal((await api('/memory/delete',{id:memoryId,eventId:dated.id})).status,200);const kept=(await(await api('/memory/list')).json()).sessions.find(r=>r.id===memoryId);assert.equal(kept.events.length,0);assert.ok(kept.notes.some(n=>n.content==='回答简短'));
@@ -223,7 +231,7 @@ globalThis.fetch=async(url,options)=>{
     let n=sent.length;sendOwner(200,'请温柔一点，回答简短一点');await until(()=>sent.length===n+1);
     const growthRows=await until(async()=>{const a=(await(await api('/growth/list')).json()).sessions;return a.find(r=>r.scores.warmth>0)?a:null;});
     const grown=growthRows.find(r=>r.scores.warmth>0);assert.equal(grown.scores.detail,-1);
-    n=sent.length;sendOwner(201,'今天过得怎么样');await until(()=>sent.length===n+1);assert.match(models.at(-1).model.messages[0].content,/酒馆对话养成/);assert.match(models.at(-1).model.messages[0].content,/更温柔/);
+    n=sent.length;sendOwner(201,'今天过得怎么样');await until(()=>sent.length===n+1);assert.match(JSON.stringify(models.at(-1).model.messages),/酒馆对话养成/);assert.match(JSON.stringify(models.at(-1).model.messages),/更温柔/);
     await api('/growth/update',{id:grown.id,locked:true});n=sent.length;sendOwner(202,'再温柔一点');await until(()=>sent.length===n+1);
     assert.equal((await(await api('/growth/list')).json()).sessions.find(r=>r.id===grown.id).scores.warmth,1);
     // Owner moderation is applied immediately even while a target's model request is pending.
@@ -362,7 +370,7 @@ globalThis.fetch=async(url,options)=>{
     child.send({event:{...event,message_id:320,message:[{type:'video',data:{url:'https://gchat.qpic.cn/full-video.mp4'}}]}});await until(()=>sent.length===n+1);assert.equal(models.length,beforeVideo+6);
     n=sent.length;sendCommand(321,'最后发生了什么');await until(()=>sent.length===n+1);assert.ok(!JSON.stringify(models.at(-1).model).includes('data:image/jpeg'));
     // BV-only reading and the screenshot's follow-up now include actual frames, without leaking site cookies or playback signatures.
-    n=sent.length;beforeVideo=models.length;sendCommand(330,'BV1Umxc6JEdD看看这个哔站视频');await until(()=>sent.length===n+1);assert.equal(models.length,beforeVideo+1);assert.equal(models.at(-1).model.messages.at(-1).content.filter(p=>p.type==='image_url').length,15);assert.match(JSON.stringify(models.at(-1).model.messages.at(-1)),/每秒抽取1帧/);assert.ok(!JSON.stringify(models.at(-1)).includes('未观看视频'));assert.ok(!JSON.stringify(models.at(-1).model).includes('Music 98%'));assert.match(models.at(-1).model.messages[0].content,/没有询问声音或音乐/);
+    n=sent.length;beforeVideo=models.length;sendCommand(330,'BV1Umxc6JEdD看看这个哔站视频');await until(()=>sent.length===n+1);assert.equal(models.length,beforeVideo+1);assert.equal(models.at(-1).model.messages.at(-1).content.filter(p=>p.type==='image_url').length,15);assert.match(JSON.stringify(models.at(-1).model.messages.at(-1)),/每秒抽取1帧/);assert.ok(!JSON.stringify(models.at(-1)).includes('未观看视频'));assert.ok(!JSON.stringify(models.at(-1).model).includes('Music 98%'));assert.match(JSON.stringify(models.at(-1).model.messages),/没有询问声音或音乐/);
     n=sent.length;beforeVideo=models.length;const readsBeforeMusic=videoReads.length;sendCommand(349,'听听这个视频BGM');await until(()=>sent.length===n+1);assert.equal(models.length,beforeVideo+1);assert.equal(videoReads.length,readsBeforeMusic,'cached audio followup performs no new download');assert.match(JSON.stringify(models.at(-1).model.messages.at(-1)),/Music 98%/);assert.match(JSON.stringify(models.at(-1).model.messages.at(-1)),/不能说没声音/);
     n=sent.length;beforeVideo=models.length;sendCommand(331,'看完视频');await until(()=>sent.length===n+1);assert.equal(models.length,beforeVideo+1);assert.equal(models.at(-1).model.messages.at(-1).content.filter(p=>p.type==='image_url').length,15);
     n=sent.length;sendCommand(332,'最后发生了什么');await until(()=>sent.length===n+1);assert.ok(!JSON.stringify(models.at(-1).model).includes('data:image/jpeg'));
@@ -427,13 +435,26 @@ globalThis.fetch=async(url,options)=>{
     // Smart audio sends a real record segment through the mocked QQ adapter, not pretend text.
     await update({voiceEnabled:true,voiceMode:'smart',speechProvider:'azure',speechRegion:'eastasia'});await api('/voice/credentials',{key:'synthetic-speech-key'});
     n=sent.length;const beforeSmart=models.length;sendOwner(359,'今天累坏了');await until(()=>sent.length===n+1);assert.equal(sent.at(-1).message[0].type,'record');assert.equal(models.length,beforeSmart+1);assert.match((await(await api('/voice/state')).json()).last.decision,/聊天模型/);
-    n=sent.length;const beforeVoice=models.length;sendOwner(360,'语音说说');await until(()=>sent.length===n+1);assert.equal(sent.at(-1).message[0].type,'record');assert.equal(models.length,beforeVoice+1,'voice decision adds no model call');assert.match(models.at(-1).model.messages[0].content,/回复形式/);assert.match(models.at(-1).model.messages.at(-1).content,/直接生成要朗读的口语正文/);
-    n=sent.length;sendOwner(361,'别用语音，打字回答');await until(()=>sent.length===n+1);assert.equal(sent.at(-1).message[0].type,'text');assert.match(models.at(-1).model.messages[0].content,/\[语音能力\]已开启/);assert.match(models.at(-1).model.messages[0].content,/本会话最近一条语音已被QQ接口受理/);assert.match(models.at(-1).model.messages[0].content,/本条使用文字/);
+    n=sent.length;const beforeVoice=models.length;sendOwner(360,'语音说说');await until(()=>sent.length===n+1);assert.equal(sent.at(-1).message[0].type,'record');assert.equal(models.length,beforeVoice+1,'voice decision adds no model call');assert.match(JSON.stringify(models.at(-1).model.messages),/回复形式/);assert.match(models.at(-1).model.messages.at(-1).content,/直接生成要朗读的口语正文/);
+    n=sent.length;sendOwner(361,'别用语音，打字回答');await until(()=>sent.length===n+1);assert.equal(sent.at(-1).message[0].type,'text');assert.match(JSON.stringify(models.at(-1).model.messages),/\[语音能力\]已开启/);assert.match(JSON.stringify(models.at(-1).model.messages),/本会话最近一条语音已被QQ接口受理/);assert.match(JSON.stringify(models.at(-1).model.messages),/本条使用文字/);
     n=sent.length;const usageModels=models.length;sendCommand(362,'#量前5');await until(()=>sent.length===n+1);assert.match(sent.at(-1).message[0].data.text,/最近 5 次模型调用/);assert.equal(models.length,usageModels);n=sent.length;child.send({event:{...event,user_id:888888,message_id:363,message:[{type:'text',data:{text:'#量前5'}}]}});await new Promise(r=>setTimeout(r,100));assert.equal(sent.length,n,'non-owner cannot read usage');
     const inspections=await(await api('/requests/list')).json();assert.ok(inspections.requests.length>0);assert.equal((await api('/requests/get',{id:inspections.requests[0].id},false)).status,401);const inspected=await(await api('/requests/get',{id:inspections.requests[0].id})).json();assert.match(JSON.stringify(inspected.request.body),/别用语音/);assert.ok(!JSON.stringify(inspected).includes('synthetic-speech-key'));
     const voiceState=await(await api('/voice/state')).json();assert.equal(voiceState.last.status,'accepted');assert.ok(!JSON.stringify(voiceState).includes('synthetic-speech-key'));
     child.send({control:'speech-failed'});n=sent.length;const fallbackModels=models.length;sendOwner(364,'用语音回复，测试分段');await until(()=>sent.length===n+2);assert.equal(speechAttempts,1,'failed synthesis is not retried');assert.equal(models.length,fallbackModels+1,'paragraph splitting adds no model call');assert.equal(sent.at(-1).message[0].type,'text');const paragraphs=sent.slice(n).map(item=>item.message[0].data.text);assert.equal(paragraphs.length,2);assert.equal(paragraphs.join(''),'先别着急，我们先把最重要的事情做好，其他事情可以慢慢来。等你休息好以后，我们再一起想想下一步，今天先照顾好自己。');assert.equal((await(await api('/voice/state')).json()).last.status,'fallback');child.send({control:'normal'});
-    n=sent.length;sendOwner(365,'用文字说，你不是可以发语音吗');await until(()=>sent.length===n+1);assert.match(models.at(-1).model.messages[0].content,/本会话上次合成失败/);assert.match(models.at(-1).model.messages[0].content,/不能当成永久无语音能力/);
+    n=sent.length;sendOwner(365,'用文字说，你不是可以发语音吗');await until(()=>sent.length===n+1);assert.match(JSON.stringify(models.at(-1).model.messages),/本会话上次合成失败/);assert.match(JSON.stringify(models.at(-1).model.messages),/不能当成永久无语音能力/);
+    // A short transport interruption while generating does not invalidate the same QQ session.
+    n=sent.length;const reconnectModels=models.length;child.send({control:'speech-reconnect'});sendOwner(366,'语音说说');
+    await until(()=>sent.length===n+1);await until(async()=>(await(await api('/voice/state')).json()).last.status==='accepted');
+    assert.equal(sent.at(-1).message[0].type,'record');assert.equal(models.length,reconnectModels+1,'reconnection must not regenerate the answer');
+    assert.equal((await(await api('/state')).json()).deliveryRecovery.count,0);
+    child.send({control:'normal'});
+    // Real configuration changes still cancel synthesis before any send, without a timeout warning or hold.
+    n=sent.length;const delayedAttempts=speechAttempts;child.send({control:'speech-delayed'});sendOwner(367,'语音说说');await until(()=>speechAttempts===delayedAttempts+1);
+    await update({enabled:false});await until(async()=>!(await(await api('/state')).json()).processing.active);await new Promise(r=>setTimeout(r,450));
+    assert.equal(sent.length,n);const cancelledVoice=await(await api('/voice/state')).json();assert.equal(cancelledVoice.last.status,'cancelled');assert.ok(!cancelledVoice.last.message.includes('发送超时'));assert.equal((await(await api('/state')).json()).deliveryRecovery.count,0);
+    child.send({control:'normal'});await update({enabled:true});
+    // A transient invalid/partial settings read must not pretend the user switched owner or disabled voice.
+    await fs.writeFile(path.join(dir,'settings.json'),'{');assert.equal((await(await api('/state')).json()).enabled,true);await fs.writeFile(path.join(dir,'settings.json'),JSON.stringify(active));
     await update({enabled:false});await api('/runtime/resume',{reason:'idle'});assert.equal((await(await api('/state')).json()).enabled,false,'manual pause survives network recovery');
     // Real assistant queue: an upstream that ignores cancellation must not pin draining forever.
     await update({enabled:true,voiceEnabled:false,learningEnabled:false});
@@ -444,5 +465,29 @@ globalThis.fetch=async(url,options)=>{
     child.send({control:'normal'});await update({enabled:true});
     for(let i=0;i<8;i++){sendOwner(371+i,'恢复后连续私聊 '+i);await until(()=>sent.length===n+i+1);}
     assert.equal((await(await api('/state')).json()).processing.active,false);
+    n=sent.length;const beforeBubbles=models.length;sendOwner(390,'测试普通两段');await until(()=>sent.length===n+2);
+    assert.deepEqual(sent.slice(n).map(m=>m.message[0].data.text),['第一段先回应。','第二段再解释。']);
+    assert.equal(models.length,beforeBubbles+1,'splitting never calls another model');
+    sendOwner(391,'继续刚才的话题');await until(()=>sent.length===n+3);
+    const previousAnswers=models.at(-1).model.messages.filter(m=>m.role==='assistant');assert.equal(previousAnswers.filter(m=>m.content==='第一段先回应。\n\n第二段再解释。').length,1,'split answer is remembered as one logical turn');
+    assert.equal(models.at(-1).model.messages[0].content,models.at(-2).model.messages[0].content,'dynamic per-turn context never changes the stable system prompt');
+    assert.ok(!JSON.stringify(models.at(-1).model.messages.slice(1,-1)).includes('工作台本轮补充'),'per-turn supplemental prompts are not duplicated into saved history');
+    n=sent.length;sendOwner(392,'测试分条失败');await until(()=>sent.length===n+2);await until(async()=>!(await(await api('/state')).json()).processing.active);
+    await new Promise(r=>setTimeout(r,100));assert.deepEqual(sent.slice(n).map(m=>m.message[0].data.text),['第一段已发送。','第二段未确认。']);
+    n=sent.length;sendOwner(393,'下一条继续聊天');await until(()=>sent.length===n+1);assert.ok(!sent.some(m=>m.message?.[0]?.data?.text==='第三段不能发送。'));
+    const partialAnswers=models.at(-1).model.messages.filter(m=>m.role==='assistant'&&m.content.includes('第一段已发送。'));
+    assert.equal(partialAnswers.length,1,'one partially delivered response remains one logical turn');
+    assert.match(partialAnswers[0].content,/后续内容未获确认/);
+    assert.ok(!partialAnswers[0].content.includes('第二段未确认。'));
+    assert.ok(!partialAnswers[0].content.includes('第三段不能发送。'));
+    const completeSamples=(await(await api('/memory/export',{})).json()).jsonl;
+    assert.ok(!completeSamples.includes('测试分条失败'),'partial delivery is memory, not a complete training sample');
+    // Once the first bubble is issued, pause/settings changes affect later turns only.
+    n=sent.length;sendOwner(394,'测试普通两段');await until(()=>sent.length===n+1);
+    await update({enabled:false,persona:'新的聊天场景'});
+    await until(()=>sent.length===n+2);await until(async()=>!(await(await api('/state')).json()).processing.active);
+    assert.deepEqual(sent.slice(n).map(m=>m.message[0].data.text),['第一段先回应。','第二段再解释。']);
+    const pausedCount=sent.length;sendOwner(395,'暂停以后的新消息');await new Promise(r=>setTimeout(r,120));assert.equal(sent.length,pausedCount);
+    await update({enabled:true});
   }finally{try{await api('/shutdown',{});}catch{}await until(()=>exited||false).catch(()=>child.kill());if(child.connected)child.disconnect();}
 });

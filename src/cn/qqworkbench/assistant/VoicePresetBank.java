@@ -29,11 +29,10 @@ final class VoicePresetBank {
         return matching.get(Math.floorMod(sequence,matching.size()));
     }
     static JSONObject synthesisReference(JSONObject primary,String text,int sequence,JSONObject request,Boolean soft)throws Exception{
-        // Preserve the user's selected anchor for shy/intimate expression.
-        // A soft-tagged alternative may have a different timbre or room sound.
-        // Explicit variant indices remain available to isolated listening probes.
-        if(request.optInt("referenceVariant",-1)<0&&request.optBoolean("stableReference",false))return primary;
-        return select(primary,text,sequence,request.optInt("referenceVariant",-1),soft);
+        // One fixed anchor per mood, including normal speech and multi-bubble replies.
+        // Retain old variants only for an explicit listening probe or later recovery.
+        int requested=request.optInt("referenceVariant",-1);
+        return requested<0?primary:select(primary,text,sequence,requested,soft);
     }
     static JSONObject acknowledgment(File profile,String text,String mood,int sequence)throws Exception{
         if(!safeAlias(text))return null;File file=new File(profile,"acknowledgments.json"),reference=new File(profile,mood+".json");if(!file.isFile()||!reference.isFile())return null;
